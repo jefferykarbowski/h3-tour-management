@@ -92,6 +92,19 @@ class H3TM_Tour_Manager {
             $zip->close();
             unlink($temp_file);
             
+            // Check if files are in a subdirectory and move them up
+            $this->fix_tour_directory_structure($tour_path);
+            
+            // Verify index file exists at top level
+            $index_exists = file_exists($tour_path . '/index.html') || 
+                           file_exists($tour_path . '/index.htm');
+            
+            if (!$index_exists) {
+                $this->delete_directory($tour_path);
+                $result['message'] = __('Invalid tour structure: No index.html found at root level.', 'h3-tour-management');
+                return $result;
+            }
+            
             // Skip PHP index file creation - just use original index.html
             // if ($this->create_php_index($tour_path, $tour_name)) {
             //     $result['success'] = true;
@@ -458,6 +471,87 @@ DirectoryIndex index.php index.html index.htm
                 $key = array_search($old_name, $user_tours);
                 $user_tours[$key] = $new_name;
                 update_user_meta($user->ID, 'h3tm_tours', array_values($user_tours));
+            }
+        }
+    }
+    
+    /**
+     * Fix tour directory structure by moving files from subdirectory to root
+     */
+    private function fix_tour_directory_structure($tour_path) {
+        // Get all items in the tour directory
+        $items = scandir($tour_path);
+        $directories = array();
+        $has_index_at_root = false;
+        
+        // Check current structure
+        foreach ($items as $item) {
+            if ($item == '.' || $item == '..') {
+                continue;
+            }
+            
+            $item_path = $tour_path . '/' . $item;
+            
+            // Check if index file exists at root
+            if ($item === 'index.html' || $item === 'index.htm') {
+                $has_index_at_root = true;
+            }
+            
+            // Collect directories
+            if (is_dir($item_path)) {
+                $directories[] = $item;
+            }
+        }
+        
+        // If index already at root, nothing to do
+        if ($has_index_at_root) {
+            return true;
+        }
+        
+        // If there's exactly one directory, check if it contains the tour files
+        if (count($directories) === 1) {
+            $subdir = $tour_path . '/' . $directories[0];
+            
+            // Check if this subdirectory contains index.html/index.htm
+            if (file_exists($subdir . '/index.html') || file_exists($subdir . '/index.htm')) {
+                // Move all files from subdirectory to parent
+                $this->move_directory_contents($subdir, $tour_path);
+                
+                // Remove the now-empty subdirectory
+                rmdir($subdir);
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Move all contents from source directory to destination
+     */
+    private function move_directory_contents($source, $destination) {
+        $items = scandir($source);
+        
+        foreach ($items as $item) {
+            if ($item == '.' || $item == '..') {
+                continue;
+            }
+            
+            $source_path = $source . '/' . $item;
+            $dest_path = $destination . '/' . $item;
+            
+            // If destination already exists, we need to handle it
+            if (file_exists($dest_path)) {
+                // If both are directories, merge them
+                if (is_dir($source_path) && is_dir($dest_path)) {
+                    $this->move_directory_contents($source_path, $dest_path);
+                    rmdir($source_path);
+                } else {
+                    // For files, skip if destination exists (don't overwrite)
+                    continue;
+                }
+            } else {
+                // Move the file or directory
+                rename($source_path, $dest_path);
             }
         }
     }
