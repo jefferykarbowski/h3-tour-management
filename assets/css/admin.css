@@ -1,0 +1,83 @@
+.h3tm-admin-container {
+    max-width: 1200px;
+    margin: 20px 0;
+}
+
+.h3tm-section {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+    margin-bottom: 20px;
+    padding: 20px;
+}
+
+.h3tm-section h2 {
+    margin-top: 0;
+    padding-top: 0;
+}
+
+.h3tm-analytics-info,
+.h3tm-analytics-shortcode {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+    margin-bottom: 20px;
+    padding: 20px;
+}
+
+.h3tm-analytics-info h2,
+.h3tm-analytics-shortcode h2 {
+    margin-top: 0;
+}
+
+.h3tm-analytics-shortcode code {
+    display: inline-block;
+    padding: 10px 15px;
+    background: #f1f1f1;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-size: 14px;
+    margin: 10px 0;
+}
+
+/* Select2 override for WordPress admin */
+.select2-container--default .select2-selection--single,
+.select2-container--default .select2-selection--multiple {
+    border-color: #8c8f94;
+    min-height: 30px;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 28px;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+    margin-top: 4px;
+}
+
+/* Tour table actions */
+.wp-list-table .button + .button {
+    margin-left: 5px;
+}
+
+/* Upload form */
+#h3tm-upload-form .form-table th {
+    width: 150px;
+}
+
+/* Notice styles */
+#upload-result,
+#test-email-result {
+    margin-top: 10px;
+}
+
+#upload-result p,
+#test-email-result p {
+    margin: 0.5em 0;
+    padding: 2px;
+}
+
+/* Analytics button on user profile */
+#h3tm-analytics-result-[id] {
+    font-weight: 600;
+}

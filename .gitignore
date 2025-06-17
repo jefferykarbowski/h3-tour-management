@@ -1,0 +1,27 @@
+# IDE
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# WordPress
+*.log
+
+# Development
+node_modules/
+vendor/
+composer.lock
+package-lock.json
+
+# Build files
+*.zip
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Plugin update checker (if you want to exclude it)
+# plugin-update-checker/
