@@ -3,7 +3,7 @@
  * Plugin Name: H3 Tour Management
  * Plugin URI: https://github.com/jefferykarbowski/h3-tour-management
  * Description: Comprehensive 3D Tour Management system with analytics, email notifications, and user management
- * Version: 1.0.7
+ * Version: 1.0.8
  * Author: H3 Photography
  * Author URI: https://h3vt.com/
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('H3TM_VERSION', '1.0.7');
+define('H3TM_VERSION', '1.0.8');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -30,8 +30,8 @@ require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-admin.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-user-fields.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-email.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-manager.php';
-// Use 3dVista-style analytics display
-require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-shortcodes-v3.php';
+// Use simplified analytics display
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-shortcodes-v4.php';
 
 // Activation hook
 register_activation_hook(__FILE__, array('H3TM_Activator', 'activate'));
@@ -48,7 +48,7 @@ function h3tm_init() {
     new H3TM_Analytics();
     new H3TM_Email();
     new H3TM_Tour_Manager();
-    new H3TM_Shortcodes_V3();
+    new H3TM_Shortcodes_V4();
 }
 
 // Disable new user notification emails (moved from functions.php)

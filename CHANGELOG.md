@@ -5,6 +5,25 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] - 2025-01-18
+
+### Changed
+- Simplified analytics display with clean, modern design
+- Removed header bar and complex charts that weren't rendering
+- Combined tour selector and date range in single control panel
+- Added "All Tours" option to view combined analytics
+
+### Fixed
+- Country distribution bars now display correctly
+- Removed non-functional SVG circles and complex charts
+- Improved layout with better visual hierarchy
+
+### Added
+- Horizontal bar charts for country distribution
+- Percentage display for each country
+- Clean white card-based design
+- Better responsive layout for mobile
+
 ## [1.0.7] - 2025-01-18
 
 ### Changed
