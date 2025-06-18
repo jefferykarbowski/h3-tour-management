@@ -15,25 +15,26 @@ class H3TM_Analytics {
      * Initialize Google Analytics
      */
     private function initialize_analytics() {
-        $root = realpath($_SERVER["DOCUMENT_ROOT"]);
-        $autoload_path = $root . '/vendor/autoload.php';
+        // Use configuration helper for paths
+        require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-config.php';
+        
+        $autoload_path = H3TM_Config::get_autoload_path();
         
         if (!file_exists($autoload_path)) {
-            throw new Exception('Google API client library not found. Please install it via Composer.');
+            throw new Exception('Google API client library not found. Please install it via Composer. Expected at: ' . $autoload_path);
         }
         
         require_once $autoload_path;
         
-        $KEY_FILE_LOCATION = $root . '/service-account-credentials.json';
+        $KEY_FILE_LOCATION = H3TM_Config::get_credentials_path();
         if (!file_exists($KEY_FILE_LOCATION)) {
             throw new Exception('Google Analytics service account credentials file not found at: ' . $KEY_FILE_LOCATION);
         }
         
         $client = new Google_Client();
         
-        // SSL fix for localhost development
-        if (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false || 
-            strpos($_SERVER['HTTP_HOST'] ?? '', '.local') !== false) {
+        // SSL verification based on environment
+        if (!H3TM_Config::should_verify_ssl()) {
             $httpClient = new \GuzzleHttp\Client([
                 'verify' => false
             ]);
@@ -409,8 +410,12 @@ class H3TM_Analytics {
         $users = new Google_Service_AnalyticsData_Metric();
         $users->setName("totalUsers");
         
-        $fullReferrer = new Google_Service_AnalyticsData_Dimension();
-        $fullReferrer->setName("pageReferrer");
+        // Use sessionSource instead of pageReferrer for better data
+        $source = new Google_Service_AnalyticsData_Dimension();
+        $source->setName("sessionSource");
+        
+        $medium = new Google_Service_AnalyticsData_Dimension();
+        $medium->setName("sessionMedium");
         
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
@@ -431,7 +436,7 @@ class H3TM_Analytics {
         $request = new Google_Service_AnalyticsData_RunReportRequest();
         $request->setProperty($PROPERTY_ID);
         $request->setDateRanges([$dateRange]);
-        $request->setDimensions([$fullReferrer]);
+        $request->setDimensions([$source, $medium]);
         $request->setMetrics([$users]);
         $request->setOrderBys([$ordering]);
         $request->setDimensionFilter($filterExpression);
@@ -444,7 +449,7 @@ class H3TM_Analytics {
      * Format referrer results as table
      */
     private function referrer_results($response) {
-        $referrerTable = '<table class="styled-table" style="font-family: sans-serif;border-collapse: collapse;margin: 25px 0;font-size: 0.9em;min-width: 400px;box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);width: 100%;color: #000;text-align: left;background-color: #f3f3f3;"><thead><tr style="background-color: #000;color: #ffffff;"><th style="padding: 12px 15px;">Referrer</th><th style="padding: 12px 15px;">Users</th></tr></thead><tbody>';
+        $referrerTable = '<table class="styled-table" style="font-family: sans-serif;border-collapse: collapse;margin: 25px 0;font-size: 0.9em;min-width: 400px;box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);width: 100%;color: #000;text-align: left;background-color: #f3f3f3;"><thead><tr style="background-color: #000;color: #ffffff;"><th style="padding: 12px 15px;">Source / Medium</th><th style="padding: 12px 15px;">Users</th></tr></thead><tbody>';
         
         $rows = $response->getRows();
         
@@ -453,9 +458,20 @@ class H3TM_Analytics {
                 $referrerTable .= '<tr style="background-color: #f3f3f3;color: #000000;">';
                 
                 $dimensionValues = $row->getDimensionValues();
-                foreach ($dimensionValues as $dimensionValue) {
-                    $referrerTable .= '<td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . esc_html($dimensionValue->getValue()) . '</td>';
+                // Combine source and medium
+                $source = $dimensionValues[0]->getValue();
+                $medium = isset($dimensionValues[1]) ? $dimensionValues[1]->getValue() : '';
+                
+                // Handle empty or (not set) values
+                if (empty($source) || $source === '(not set)') {
+                    $source = 'direct';
                 }
+                if (empty($medium) || $medium === '(not set)') {
+                    $medium = 'none';
+                }
+                
+                $referrer = $source . ' / ' . $medium;
+                $referrerTable .= '<td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . esc_html($referrer) . '</td>';
                 
                 $metricValues = $row->getMetricValues();
                 foreach ($metricValues as $metricValue) {
@@ -464,6 +480,11 @@ class H3TM_Analytics {
                 
                 $referrerTable .= '</tr>';
             }
+        } else {
+            // No referrer data found
+            $referrerTable .= '<tr style="background-color: #f3f3f3;color: #000000;">';
+            $referrerTable .= '<td colspan="2" style="font-family: Arial, sans-serif;padding: 12px 15px;text-align: center;font-style: italic;">No referrer data available</td>';
+            $referrerTable .= '</tr>';
         }
         
         $referrerTable .= '</tbody></table>';
