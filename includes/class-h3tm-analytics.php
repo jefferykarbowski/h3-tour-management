@@ -199,8 +199,8 @@ class H3TM_Analytics {
         $allTimeData = $this->report_results($allTimeStats);
         
         $oneThousandDaysAgo = date('Y-m-d', strtotime('-999 days'));
-        $referringSites = $this->get_referring_sites($tour_title, $oneThousandDaysAgo);
-        $referrerTable = $this->referrer_results($referringSites);
+        $countries = $this->get_countries($tour_title, $oneThousandDaysAgo);
+        $countryTable = $this->country_results($countries);
         
         $usersResponse = $this->get_new_vs_returning_users($tour_title, $oneThousandDaysAgo);
         $usersChart = $this->new_vs_returning_users_chart($usersResponse);
@@ -292,8 +292,8 @@ class H3TM_Analytics {
                                                 </td>
                                                 <td style="width: 20px;padding: 12px 15px;font-size: 0;line-height: 0;font-family: Arial, sans-serif;">&nbsp;</td>
                                                 <td style="width: 260px;padding: 12px 15px;vertical-align: top;color: #153643;font-family: Arial, sans-serif;">
-                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">Referring Traffic</p>
-                                                    ' . $referrerTable . '
+                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">Visitors by Country</p>
+                                                    ' . $countryTable . '
                                                 </td>
                                             </tr>
                                         </table>
@@ -398,9 +398,9 @@ class H3TM_Analytics {
     }
     
     /**
-     * Get referring sites
+     * Get countries
      */
-    private function get_referring_sites($page_title, $start_date) {
+    private function get_countries($page_title, $start_date) {
         $PROPERTY_ID = "properties/491286260";
         
         $dateRange = new Google_Service_AnalyticsData_DateRange();
@@ -410,12 +410,12 @@ class H3TM_Analytics {
         $users = new Google_Service_AnalyticsData_Metric();
         $users->setName("totalUsers");
         
-        // Use sessionSource instead of pageReferrer for better data
-        $source = new Google_Service_AnalyticsData_Dimension();
-        $source->setName("sessionSource");
+        $sessions = new Google_Service_AnalyticsData_Metric();
+        $sessions->setName("sessions");
         
-        $medium = new Google_Service_AnalyticsData_Dimension();
-        $medium->setName("sessionMedium");
+        // Use country dimension
+        $country = new Google_Service_AnalyticsData_Dimension();
+        $country->setName("country");
         
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
@@ -436,8 +436,8 @@ class H3TM_Analytics {
         $request = new Google_Service_AnalyticsData_RunReportRequest();
         $request->setProperty($PROPERTY_ID);
         $request->setDateRanges([$dateRange]);
-        $request->setDimensions([$source, $medium]);
-        $request->setMetrics([$users]);
+        $request->setDimensions([$country]);
+        $request->setMetrics([$users, $sessions]);
         $request->setOrderBys([$ordering]);
         $request->setDimensionFilter($filterExpression);
         $request->setLimit(10);
@@ -446,49 +446,41 @@ class H3TM_Analytics {
     }
     
     /**
-     * Format referrer results as table
+     * Format country results as table
      */
-    private function referrer_results($response) {
-        $referrerTable = '<table class="styled-table" style="font-family: sans-serif;border-collapse: collapse;margin: 25px 0;font-size: 0.9em;min-width: 400px;box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);width: 100%;color: #000;text-align: left;background-color: #f3f3f3;"><thead><tr style="background-color: #000;color: #ffffff;"><th style="padding: 12px 15px;">Source / Medium</th><th style="padding: 12px 15px;">Users</th></tr></thead><tbody>';
+    private function country_results($response) {
+        $countryTable = '<table class="styled-table" style="font-family: sans-serif;border-collapse: collapse;margin: 25px 0;font-size: 0.9em;min-width: 400px;box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);width: 100%;color: #000;text-align: left;background-color: #f3f3f3;"><thead><tr style="background-color: #000;color: #ffffff;"><th style="padding: 12px 15px;">Country</th><th style="padding: 12px 15px;">Users</th></tr></thead><tbody>';
         
         $rows = $response->getRows();
         
         if (!empty($rows)) {
             foreach ($rows as $row) {
-                $referrerTable .= '<tr style="background-color: #f3f3f3;color: #000000;">';
+                $countryTable .= '<tr style="background-color: #f3f3f3;color: #000000;">';
                 
                 $dimensionValues = $row->getDimensionValues();
-                // Combine source and medium
-                $source = $dimensionValues[0]->getValue();
-                $medium = isset($dimensionValues[1]) ? $dimensionValues[1]->getValue() : '';
+                $countryName = $dimensionValues[0]->getValue();
                 
-                // Handle empty or (not set) values
-                if (empty($source) || $source === '(not set)') {
-                    $source = 'direct';
-                }
-                if (empty($medium) || $medium === '(not set)') {
-                    $medium = 'none';
+                // Handle (not set) values
+                if (empty($countryName) || $countryName === '(not set)') {
+                    $countryName = 'Unknown';
                 }
                 
-                $referrer = $source . ' / ' . $medium;
-                $referrerTable .= '<td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . esc_html($referrer) . '</td>';
+                $countryTable .= '<td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . esc_html($countryName) . '</td>';
                 
                 $metricValues = $row->getMetricValues();
-                foreach ($metricValues as $metricValue) {
-                    $referrerTable .= '<td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . esc_html($metricValue->getValue()) . '</td>';
-                }
+                $countryTable .= '<td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . esc_html($metricValues[0]->getValue()) . '</td>';
                 
-                $referrerTable .= '</tr>';
+                $countryTable .= '</tr>';
             }
         } else {
-            // No referrer data found
-            $referrerTable .= '<tr style="background-color: #f3f3f3;color: #000000;">';
-            $referrerTable .= '<td colspan="2" style="font-family: Arial, sans-serif;padding: 12px 15px;text-align: center;font-style: italic;">No referrer data available</td>';
-            $referrerTable .= '</tr>';
+            // No country data found
+            $countryTable .= '<tr style="background-color: #f3f3f3;color: #000000;">';
+            $countryTable .= '<td colspan="2" style="font-family: Arial, sans-serif;padding: 12px 15px;text-align: center;font-style: italic;">No country data available</td>';
+            $countryTable .= '</tr>';
         }
         
-        $referrerTable .= '</tbody></table>';
-        return $referrerTable;
+        $countryTable .= '</tbody></table>';
+        return $countryTable;
     }
     
     /**

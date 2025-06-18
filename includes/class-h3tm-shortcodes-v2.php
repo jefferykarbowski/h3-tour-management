@@ -398,30 +398,30 @@ class H3TM_Shortcodes_V2 {
                             <?php endif; ?>
                         </div>
                         
-                        <!-- Traffic Sources -->
+                        <!-- Countries -->
                         <div class="analytics-table">
-                            <h2>Traffic Sources</h2>
-                            <?php if (!empty($analytics_data['sources'])): ?>
+                            <h2>Visitors by Country</h2>
+                            <?php if (!empty($analytics_data['countries'])): ?>
                                 <table>
                                     <thead>
                                         <tr>
-                                            <th>Source / Medium</th>
+                                            <th>Country</th>
                                             <th class="number">Users</th>
                                             <th class="number">Sessions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php foreach ($analytics_data['sources'] as $source): ?>
+                                        <?php foreach ($analytics_data['countries'] as $country): ?>
                                             <tr>
-                                                <td><?php echo esc_html($source['source'] . ' / ' . $source['medium']); ?></td>
-                                                <td class="number"><?php echo number_format($source['users']); ?></td>
-                                                <td class="number"><?php echo number_format($source['sessions']); ?></td>
+                                                <td><?php echo esc_html($country['name']); ?></td>
+                                                <td class="number"><?php echo number_format($country['users']); ?></td>
+                                                <td class="number"><?php echo number_format($country['sessions']); ?></td>
                                             </tr>
                                         <?php endforeach; ?>
                                     </tbody>
                                 </table>
                             <?php else: ?>
-                                <div class="no-data">No traffic source data available</div>
+                                <div class="no-data">No country data available</div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -569,17 +569,14 @@ class H3TM_Shortcodes_V2 {
                 }
             }
             
-            // Get traffic sources
-            $source = new Google_Service_AnalyticsData_Dimension();
-            $source->setName('sessionSource');
-            
-            $medium = new Google_Service_AnalyticsData_Dimension();
-            $medium->setName('sessionMedium');
+            // Get countries
+            $country = new Google_Service_AnalyticsData_Dimension();
+            $country->setName('country');
             
             $request = new Google_Service_AnalyticsData_RunReportRequest();
             $request->setProperty($PROPERTY_ID);
             $request->setDateRanges([$dateRange]);
-            $request->setDimensions([$source, $medium]);
+            $request->setDimensions([$country]);
             $request->setMetrics([$users, $sessions]);
             $request->setDimensionFilter($filterExpression);
             $request->setLimit(10);
@@ -591,29 +588,24 @@ class H3TM_Shortcodes_V2 {
             $ordering->setDesc(true);
             $request->setOrderBys([$ordering]);
             
-            $sourcesResponse = $this->analytics_service->properties->runReport($PROPERTY_ID, $request);
+            $countriesResponse = $this->analytics_service->properties->runReport($PROPERTY_ID, $request);
             
-            $sources = array();
-            $rows = $sourcesResponse->getRows();
+            $countries = array();
+            $rows = $countriesResponse->getRows();
             if (!empty($rows)) {
                 foreach ($rows as $row) {
                     $dims = $row->getDimensionValues();
                     $mets = $row->getMetricValues();
                     
-                    $sourceVal = $dims[0]->getValue();
-                    $mediumVal = $dims[1]->getValue();
+                    $countryName = $dims[0]->getValue();
                     
                     // Handle empty values
-                    if (empty($sourceVal) || $sourceVal === '(not set)') {
-                        $sourceVal = 'direct';
-                    }
-                    if (empty($mediumVal) || $mediumVal === '(not set)') {
-                        $mediumVal = 'none';
+                    if (empty($countryName) || $countryName === '(not set)') {
+                        $countryName = 'Unknown';
                     }
                     
-                    $sources[] = array(
-                        'source' => $sourceVal,
-                        'medium' => $mediumVal,
+                    $countries[] = array(
+                        'name' => $countryName,
                         'users' => $mets[0]->getValue(),
                         'sessions' => $mets[1]->getValue()
                     );
@@ -623,7 +615,7 @@ class H3TM_Shortcodes_V2 {
             return array(
                 'metrics' => $metrics,
                 'pages' => $pages,
-                'sources' => $sources
+                'countries' => $countries
             );
             
         } catch (Exception $e) {
