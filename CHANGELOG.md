@@ -5,6 +5,19 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2025-01-18
+
+### Added
+- Hero image banner with tour thumbnail at top of analytics page
+- "View Tour" button in controls bar
+- Professional styling matching the original design
+
+### Changed
+- Improved layout with side-by-side tables for Top Pages and Traffic Sources
+- Better responsive design for mobile devices
+- Enhanced visual hierarchy with proper typography and spacing
+- Updated duration formatting for better readability
+
 ## [1.0.4] - 2025-01-18
 
 ### Fixed
