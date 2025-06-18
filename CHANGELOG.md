@@ -5,6 +5,21 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] - 2025-01-18
+
+### Changed
+- Complete redesign of analytics display to match 3dVista Cloud interface
+- Dark theme with cyan accent colors matching 3dVista branding
+- New layout with Global Analytics section showing total metrics and top countries
+- Individual tour analytics with progress circles and country distribution charts
+
+### Added
+- Time range selector (All Time, Last Year, Last Month, Last Week, Custom)
+- Progress circle visualizations for tour percentages
+- Country distribution bar charts for each tour
+- Responsive design optimized for all screen sizes
+- 3dVista Cloud branding in header
+
 ## [1.0.6] - 2025-01-18
 
 ### Changed
