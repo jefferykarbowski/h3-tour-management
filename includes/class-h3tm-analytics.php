@@ -161,20 +161,26 @@ class H3TM_Analytics {
         
         $tour_manager = new H3TM_Tour_Manager();
         
-        foreach ($tours as $tour) {
-            $tour_title = trim($tour_manager->get_tour_title($tour));
-            $email_body = $this->generate_analytics_email($tour, $tour_title);
-            
-            $to = $user->user_email;
+        // Generate consolidated email for all tours
+        $email_body = $this->generate_consolidated_analytics_email($tours, $tour_manager);
+        
+        $to = $user->user_email;
+        
+        // Create subject based on number of tours
+        if (count($tours) == 1) {
+            $tour_title = trim($tour_manager->get_tour_title($tours[0]));
             $subject = sprintf(__('Tour Analytics for %s', 'h3-tour-management'), $tour_title);
-            $headers = array('Content-Type: text/html; charset=UTF-8');
-            
-            $from_name = get_option('h3tm_email_from_name', 'H3 Photography');
-            $from_email = get_option('h3tm_email_from_address', get_option('admin_email'));
-            $headers[] = 'From: ' . $from_name . ' <' . $from_email . '>';
-            
-            wp_mail($to, $subject, $email_body, $headers);
+        } else {
+            $subject = sprintf(__('Tour Analytics - %d Tours', 'h3-tour-management'), count($tours));
         }
+        
+        $headers = array('Content-Type: text/html; charset=UTF-8');
+        
+        $from_name = get_option('h3tm_email_from_name', 'H3 Photography');
+        $from_email = get_option('h3tm_email_from_address', get_option('admin_email'));
+        $headers[] = 'From: ' . $from_name . ' <' . $from_email . '>';
+        
+        wp_mail($to, $subject, $email_body, $headers);
     }
     
     /**
@@ -302,6 +308,175 @@ class H3TM_Analytics {
                             </table>
                         </td>
                     </tr>
+                    <tr>
+                        <td style="padding: 30px;background: #c1272d;font-family: Arial, sans-serif;">
+                            <table role="presentation" style="width:100%;border-collapse:collapse;border:0;border-spacing:0;font-size:9px;font-family:Arial,sans-serif;">
+                                <tr>
+                                    <td style="padding: 12px 15px;width: 50%;font-family: Arial, sans-serif;" align="left">
+                                        <p style="margin:0;font-size:14px;line-height:16px;font-family:Arial,sans-serif;color:#ffffff;">
+                                            <a href="https://h3vt.com/"><img width="150" src="https://h3vt.com/wp-content/uploads/2021/07/H3-Logo.png" style="text-align:center" /></a><br>
+                                            &reg; H3 Photography ' . date("Y") . '<br>
+                                        </p>
+                                    </td>
+                                    <td style="padding: 12px 15px;width: 50%;font-family: Arial, sans-serif; text-align: right;" align="right">
+                                        <table role="presentation" style="border-collapse: collapse;border: 0;border-spacing: 0;font-family: Arial, sans-serif;  text-align: right;" align="right">
+                                            <tr>
+                                                <td style="padding: 0 0 0 10px;font-family: Arial, sans-serif;  text-align: right;" align="right">
+                                                    <a href="https://h3vt.com/tour-analytics/" style="color:#ffffff;  text-align: right;">View More Analytics on our Site</a>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>';
+        
+        return $body;
+    }
+    
+    /**
+     * Generate consolidated analytics email for multiple tours
+     */
+    private function generate_consolidated_analytics_email($tours, $tour_manager) {
+        // Start with email header
+        $body = '<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="x-apple-disable-message-reformatting">
+    <title></title>
+    <!--[if mso]>
+    <noscript>
+        <xml>
+            <o:OfficeDocumentSettings>
+                <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+        </xml>
+    </noscript>
+    <![endif]-->
+</head>
+<body style="margin:0;padding:0;">
+    <table role="presentation" style="width: 100%;border-collapse: collapse;border: 0;border-spacing: 0;background: #ffffff;font-family: Arial, sans-serif;">
+        <tr>
+            <td align="center" style="padding: 12px 15px;font-family: Arial, sans-serif;">
+                <table role="presentation" style="width: 602px;border-collapse: collapse;border: 1px solid #cccccc;border-spacing: 0;text-align: left;font-family: Arial, sans-serif;">';
+        
+        // Add a section for each tour
+        foreach ($tours as $tour) {
+            $tour_title = trim($tour_manager->get_tour_title($tour));
+            
+            // Get analytics data for this tour
+            $weekAgo = date('Y-m-d', strtotime('-7 days'));
+            $weekStats = $this->get_report($tour_title, $weekAgo);
+            $weekData = $this->report_results($weekStats);
+            
+            $monthAgo = date('Y-m-d', strtotime('-30 days'));
+            $monthStats = $this->get_report($tour_title, $monthAgo);
+            $monthData = $this->report_results($monthStats);
+            
+            $ninetyDaysAgo = date('Y-m-d', strtotime('-90 days'));
+            $ninetyDayStats = $this->get_report($tour_title, $ninetyDaysAgo);
+            $ninetyDayData = $this->report_results($ninetyDayStats);
+            
+            $threeYearsAgo = date('Y-m-d', strtotime('-3 years'));
+            $allTimeStats = $this->get_report($tour_title, $threeYearsAgo);
+            $allTimeData = $this->report_results($allTimeStats);
+            
+            $oneThousandDaysAgo = date('Y-m-d', strtotime('-999 days'));
+            $countries = $this->get_countries($tour_title, $oneThousandDaysAgo);
+            $countryTable = $this->country_results($countries);
+            
+            $usersResponse = $this->get_new_vs_returning_users($tour_title, $oneThousandDaysAgo);
+            $usersChart = $this->new_vs_returning_users_chart($usersResponse);
+            
+            // Add tour section
+            $body .= '
+                    <tr>
+                        <td align="center" style="padding: 40px 0 30px 0;background: #000000;font-family: Arial, sans-serif;">
+                            <img src="' . site_url('/' . H3TM_TOUR_DIR . '/' . rawurlencode($tour) . '/thumbnail.png') . '" alt="' . esc_attr($tour) . '" width="300" >
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 36px 30px 42px 30px;font-family: Arial, sans-serif;">
+                            <table role="presentation" style="width: 100%;border-collapse: collapse;border: 0;border-spacing: 0;font-family: Arial, sans-serif;">
+                                <tr>
+                                    <td style="padding: 0 0 36px 0;color: #153643;font-family: Arial, sans-serif;">
+                                        <h1 style="font-size:24px;margin:0 0 20px 0;font-family:Arial,sans-serif;">' . esc_html($tour_title) . '</h1>
+                                        <table class="styled-table" style="font-family: sans-serif;border-collapse: collapse;margin: 25px 0;font-size: 0.9em;min-width: 400px;box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);width: 100%;color: #000;text-align: left;background-color: #f3f3f3;">
+                                            <thead>
+                                                <tr style="background-color: #000;color: #ffffff;">
+                                                    <th style="padding: 12px 15px;"></th>
+                                                    <th style="padding: 12px 15px;">Total Photos Viewed</th>
+                                                    <th style="padding: 12px 15px;">Total Tour Views</th>
+                                                    <th style="padding: 12px 15px;">Total Visitors</th>
+                                                    <th style="padding: 12px 15px;">Images Per Visitor</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr style="border-bottom: 1px solid #dddddd;">
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">Last 7 Days</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[0] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[1] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[2] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[3] . '</td>
+                                                </tr>
+                                                <tr style="border-bottom: 1px solid #dddddd;">
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">Last Month</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[0] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[1] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[2] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[3] . '</td>
+                                                </tr>
+                                                <tr style="border-bottom: 1px solid #dddddd;">
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">Last 90 Days</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[0] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[1] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[2] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[3] . '</td>
+                                                </tr>
+                                                <tr style="border-bottom: 1px solid #dddddd;">
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">All Time</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[0] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[1] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[2] . '</td>
+                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[3] . '</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px 15px;font-family: Arial, sans-serif;">
+                                        <table role="presentation" style="width: 100%;border-collapse: collapse;border: 0;border-spacing: 0;font-family: Arial, sans-serif;">
+                                            <tr>
+                                                <td style="width: 260px;padding: 12px 15px;vertical-align: top;color: #153643;font-family: Arial, sans-serif;">
+                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">New vs Returning Visitors</p>
+                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">' . $usersChart . '</p>
+                                                </td>
+                                                <td style="width: 20px;padding: 12px 15px;font-size: 0;line-height: 0;font-family: Arial, sans-serif;">&nbsp;</td>
+                                                <td style="width: 260px;padding: 12px 15px;vertical-align: top;color: #153643;font-family: Arial, sans-serif;">
+                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">Visitors by Country</p>
+                                                    ' . $countryTable . '
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>';
+        }
+        
+        // Add footer
+        $body .= '
                     <tr>
                         <td style="padding: 30px;background: #c1272d;font-family: Arial, sans-serif;">
                             <table role="presentation" style="width:100%;border-collapse:collapse;border:0;border-spacing:0;font-size:9px;font-family:Arial,sans-serif;">
