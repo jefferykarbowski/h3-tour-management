@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\.69d14cda53aa9642bf418060e6cbb4c34b345ad0-audit.json",
+    "files": [
+        {
+            "date": 1757692058681,
+            "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-09-12.log",
+            "hash": "e84b5d728dc6e21e6727a2ab2e5613042821267bd959c24d38c18d212df2423d"
+        }
+    ],
+    "hashType": "sha256"
+}

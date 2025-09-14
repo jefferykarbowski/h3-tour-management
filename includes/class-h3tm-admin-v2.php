@@ -369,6 +369,27 @@ class H3TM_Admin_V2 {
             $temp_dir = $upload_dir['basedir'] . '/h3-tours-temp';
             $upload_temp_dir = $temp_dir . '/' . $unique_id;
             
+            // Check disk space (need at least 100MB free) - use h3panos directory instead of uploads
+            $h3panos_path = ABSPATH . 'h3panos';
+            $check_path = file_exists($h3panos_path) ? $h3panos_path : $upload_dir['basedir'];
+            $free_space = @disk_free_space($check_path);
+            
+            // Create debug info for admin display
+            $debug_info = array(
+                'handler' => 'V2',
+                'check_path' => $check_path,
+                'h3panos_exists' => file_exists($h3panos_path),
+                'check_path_exists' => file_exists($check_path),
+                'free_space_mb' => $free_space !== false ? round($free_space / 1024 / 1024) : 'UNKNOWN',
+                'required_mb' => 100,
+                'abspath' => ABSPATH,
+                'upload_basedir' => $upload_dir['basedir']
+            );
+            
+            if ($free_space !== false && $free_space < 100 * 1024 * 1024) {
+                throw new Exception(__('Insufficient disk space on server', 'h3-tour-management') . ' DEBUG: ' . json_encode($debug_info));
+            }
+            
             if (!file_exists($upload_temp_dir)) {
                 wp_mkdir_p($upload_temp_dir);
             }

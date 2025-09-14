@@ -443,11 +443,27 @@ class H3TM_Admin {
             }
         }
         
-        // Check disk space (need at least 100MB free)
-        $free_space = @disk_free_space($upload_dir['basedir']);
+        // Check disk space (need at least 100MB free) - use h3panos directory instead of uploads
+        $h3panos_path = ABSPATH . 'h3panos';
+        $check_path = file_exists($h3panos_path) ? $h3panos_path : $upload_dir['basedir'];
+        $free_space = @disk_free_space($check_path);
+        
+        // Create debug info for admin display
+        $debug_info = array(
+            'check_path' => $check_path,
+            'h3panos_exists' => file_exists($h3panos_path),
+            'check_path_exists' => file_exists($check_path),
+            'free_space_mb' => $free_space !== false ? round($free_space / 1024 / 1024) : 'UNKNOWN',
+            'required_mb' => 100,
+            'abspath' => ABSPATH,
+            'upload_basedir' => $upload_dir['basedir']
+        );
+        
         if ($free_space !== false && $free_space < 100 * 1024 * 1024) {
-            error_log('H3TM Upload Error: Insufficient disk space. Free: ' . ($free_space / 1024 / 1024) . 'MB');
-            wp_send_json_error(__('Insufficient disk space on server', 'h3-tour-management'));
+            wp_send_json_error(array(
+                'message' => __('Insufficient disk space on server', 'h3-tour-management'),
+                'debug' => $debug_info
+            ));
         }
         
         // Create unique directory for this upload

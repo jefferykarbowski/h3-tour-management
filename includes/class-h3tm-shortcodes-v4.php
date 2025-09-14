@@ -341,6 +341,19 @@ class H3TM_Shortcodes_V4 {
             <div class="global-analytics">
                 <h2><?php echo esc_html($display_title); ?> Analytics</h2>
                 
+                <?php if (isset($_GET['debug']) && $_GET['debug'] === '1' && isset($analytics_data['debug_info'])): ?>
+                    <div style="background: #f0f0f0; padding: 15px; margin-bottom: 20px; font-size: 12px; border-radius: 4px;">
+                        <strong>🔍 Debug Info:</strong><br>
+                        Tours Searched: <?php echo esc_html($analytics_data['debug_info']['tours_searched'] ?? 'unknown'); ?><br>
+                        Has Data: <?php echo ($analytics_data['debug_info']['has_data'] ?? false) ? 'Yes' : 'No'; ?><br>
+                        Rows Found: <?php echo esc_html($analytics_data['debug_info']['rows_found'] ?? 0); ?><br>
+                        Method Used: <?php echo esc_html($analytics_data['debug_info']['method_used'] ?? 'unknown'); ?><br>
+                        <?php if (isset($analytics_data['debug_info']['exception_type'])): ?>
+                            Exception: <?php echo esc_html($analytics_data['debug_info']['exception_type']); ?><br>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+                
                 <?php if (isset($analytics_data['error'])): ?>
                     <div class="analytics-error">
                         <strong>Error:</strong> <?php echo esc_html($analytics_data['error']); ?>
@@ -510,7 +523,7 @@ class H3TM_Shortcodes_V4 {
             $request = new Google_Service_AnalyticsData_RunReportRequest();
             $request->setProperty($PROPERTY_ID);
             $request->setDateRanges([$dateRange]);
-            $request->setMetrics([$sessions, $users, $events, $avgSessionDuration]);
+            $request->setMetrics([$events, $sessions, $users, $avgSessionDuration]); // EXACT SAME ORDER AS EMAIL ANALYTICS
             if ($filterExpression) {
                 $request->setDimensionFilter($filterExpression);
             }
@@ -528,10 +541,10 @@ class H3TM_Shortcodes_V4 {
             if (!empty($rows)) {
                 $row = $rows[0];
                 $metricValues = $row->getMetricValues();
-                $metrics['sessions'] = $metricValues[0]->getValue();
-                $metrics['users'] = $metricValues[1]->getValue();
-                $metrics['events'] = $metricValues[2]->getValue();
-                $metrics['avgSessionDuration'] = $metricValues[3]->getValue();
+                $metrics['events'] = $metricValues[0]->getValue();     // Photo views (events first in email order)
+                $metrics['sessions'] = $metricValues[1]->getValue();   // Tour views  
+                $metrics['users'] = $metricValues[2]->getValue();      // Visitors
+                $metrics['avgSessionDuration'] = $metricValues[3]->getValue(); // Duration
             }
             
             // Get countries
@@ -539,12 +552,28 @@ class H3TM_Shortcodes_V4 {
             
             return array(
                 'metrics' => $metrics,
-                'countries' => $countries
+                'countries' => $countries,
+                'debug_info' => array(
+                    'tours_searched' => $tour_title,
+                    'has_data' => !empty($rows),
+                    'rows_found' => count($rows),
+                    'method_used' => 'fixed_email_order_combined',
+                    'available_page_titles' => array_slice($availableTitles, 0, 10),
+                    'total_available_titles' => count($availableTitles),
+                    'filter_type' => 'EXACT',
+                    'property_id' => $PROPERTY_ID
+                )
             );
             
         } catch (Exception $e) {
             return array(
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'debug_info' => array(
+                    'tours_searched' => isset($tour_titles) ? implode(', ', $tour_titles) : 'unknown',
+                    'has_data' => false,
+                    'exception_type' => get_class($e),
+                    'method_used' => 'fixed_email_order_combined_failed'
+                )
             );
         }
     }
@@ -591,7 +620,7 @@ class H3TM_Shortcodes_V4 {
             $request = new Google_Service_AnalyticsData_RunReportRequest();
             $request->setProperty($PROPERTY_ID);
             $request->setDateRanges([$dateRange]);
-            $request->setMetrics([$sessions, $users, $events, $avgSessionDuration]);
+            $request->setMetrics([$events, $sessions, $users, $avgSessionDuration]); // EXACT SAME ORDER AS EMAIL ANALYTICS
             $request->setDimensionFilter($filterExpression);
             
             $response = $this->analytics_service->properties->runReport($PROPERTY_ID, $request);
@@ -604,13 +633,35 @@ class H3TM_Shortcodes_V4 {
             );
             
             $rows = $response->getRows();
+            
+            // Enhanced debugging: Try query without filter to see available data
+            $debugRequest = new Google_Service_AnalyticsData_RunReportRequest();
+            $debugRequest->setProperty($PROPERTY_ID);
+            $debugRequest->setDateRanges([$dateRange]);
+            $debugRequest->setMetrics([$sessions]);
+            
+            // Add pageTitle dimension to see what titles exist
+            $pageTitle = new Google_Service_AnalyticsData_Dimension();
+            $pageTitle->setName('pageTitle');
+            $debugRequest->setDimensions([$pageTitle]);
+            $debugRequest->setLimit(50);
+            
+            $debugResponse = $this->analytics_service->properties->runReport($PROPERTY_ID, $debugRequest);
+            $debugRows = $debugResponse->getRows();
+            $availableTitles = array();
+            if (!empty($debugRows)) {
+                foreach($debugRows as $debugRow) {
+                    $dimensionValues = $debugRow->getDimensionValues();
+                    $availableTitles[] = $dimensionValues[0]->getValue();
+                }
+            }
             if (!empty($rows)) {
                 $row = $rows[0];
                 $metricValues = $row->getMetricValues();
-                $metrics['sessions'] = $metricValues[0]->getValue();
-                $metrics['users'] = $metricValues[1]->getValue();
-                $metrics['events'] = $metricValues[2]->getValue();
-                $metrics['avgSessionDuration'] = $metricValues[3]->getValue();
+                $metrics['events'] = $metricValues[0]->getValue();     // Photo views (events first in email order)
+                $metrics['sessions'] = $metricValues[1]->getValue();   // Tour views  
+                $metrics['users'] = $metricValues[2]->getValue();      // Visitors
+                $metrics['avgSessionDuration'] = $metricValues[3]->getValue(); // Duration
             }
             
             // Get countries
@@ -618,12 +669,28 @@ class H3TM_Shortcodes_V4 {
             
             return array(
                 'metrics' => $metrics,
-                'countries' => $countries
+                'countries' => $countries,
+                'debug_info' => array(
+                    'tours_searched' => $tour_title,
+                    'has_data' => !empty($rows),
+                    'rows_found' => count($rows),
+                    'method_used' => 'fixed_email_order_combined',
+                    'available_page_titles' => array_slice($availableTitles, 0, 10),
+                    'total_available_titles' => count($availableTitles),
+                    'filter_type' => 'EXACT',
+                    'property_id' => $PROPERTY_ID
+                )
             );
             
         } catch (Exception $e) {
             return array(
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'debug_info' => array(
+                    'tours_searched' => isset($tour_titles) ? implode(', ', $tour_titles) : 'unknown',
+                    'has_data' => false,
+                    'exception_type' => get_class($e),
+                    'method_used' => 'fixed_email_order_combined_failed'
+                )
             );
         }
     }

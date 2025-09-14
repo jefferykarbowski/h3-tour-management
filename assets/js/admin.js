@@ -113,7 +113,29 @@ jQuery(document).ready(function($) {
                         }
                     } else {
                         $result.removeClass('notice-success').addClass('notice-error');
-                        $result.html('<p>Error at chunk ' + currentChunk + ': ' + response.data + '</p>');
+                        
+                        // Check if response has debug info
+                        if (response.data && typeof response.data === 'object' && response.data.debug) {
+                            var debugInfo = response.data.debug;
+                            var debugHtml = '<p><strong>Error at chunk ' + currentChunk + ':</strong> ' + (response.data.message || response.data) + '</p>';
+                            debugHtml += '<div style="background:#f0f0f0;padding:10px;margin:10px 0;border-radius:5px;font-family:monospace;font-size:12px;">';
+                            debugHtml += '<strong>Debug Information:</strong><br>';
+                            debugHtml += 'Check Path: ' + debugInfo.check_path + '<br>';
+                            debugHtml += 'H3panos Exists: ' + (debugInfo.h3panos_exists ? 'YES' : 'NO') + '<br>';
+                            debugHtml += 'Check Path Exists: ' + (debugInfo.check_path_exists ? 'YES' : 'NO') + '<br>';
+                            debugHtml += 'Free Space: ' + debugInfo.free_space_mb + ' MB<br>';
+                            debugHtml += 'Required: ' + debugInfo.required_mb + ' MB<br>';
+                            debugHtml += 'ABSPATH: ' + debugInfo.abspath + '<br>';
+                            debugHtml += 'Upload Dir: ' + debugInfo.upload_basedir + '<br>';
+                            if (debugInfo.handler) {
+                                debugHtml += 'Handler: ' + debugInfo.handler + '<br>';
+                            }
+                            debugHtml += '</div>';
+                            $result.html(debugHtml);
+                        } else {
+                            $result.html('<p>Error at chunk ' + currentChunk + ': ' + response.data + '</p>');
+                        }
+                        
                         $result.show();
                         $('#upload-progress-wrapper').hide();
                         $spinner.removeClass('is-active');
