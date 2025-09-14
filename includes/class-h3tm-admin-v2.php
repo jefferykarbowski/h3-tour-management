@@ -369,25 +369,31 @@ class H3TM_Admin_V2 {
             $temp_dir = $upload_dir['basedir'] . '/h3-tours-temp';
             $upload_temp_dir = $temp_dir . '/' . $unique_id;
             
-            // Check disk space (need at least 100MB free) - use h3panos directory instead of uploads
+            // Skip disk space check on Pantheon (disk_free_space unreliable)
+            // Test write permissions instead
             $h3panos_path = ABSPATH . 'h3panos';
-            $check_path = file_exists($h3panos_path) ? $h3panos_path : $upload_dir['basedir'];
-            $free_space = @disk_free_space($check_path);
             
             // Create debug info for admin display
             $debug_info = array(
                 'handler' => 'V2',
-                'check_path' => $check_path,
+                'is_pantheon' => (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0),
+                'h3panos_path' => $h3panos_path,
                 'h3panos_exists' => file_exists($h3panos_path),
-                'check_path_exists' => file_exists($check_path),
-                'free_space_mb' => $free_space !== false ? round($free_space / 1024 / 1024) : 'UNKNOWN',
-                'required_mb' => 100,
+                'h3panos_writeable' => is_writeable($h3panos_path),
                 'abspath' => ABSPATH,
-                'upload_basedir' => $upload_dir['basedir']
+                'upload_basedir' => $upload_dir['basedir'],
+                'disk_space_check' => 'skipped_on_pantheon'
             );
             
-            if ($free_space !== false && $free_space < 100 * 1024 * 1024) {
-                throw new Exception(__('Insufficient disk space on server', 'h3-tour-management') . ' DEBUG: ' . json_encode($debug_info));
+            // Test write permissions instead of disk space
+            if (!is_writeable($h3panos_path)) {
+                if (!file_exists($h3panos_path)) {
+                    if (!wp_mkdir_p($h3panos_path)) {
+                        throw new Exception(__('Cannot create tours directory', 'h3-tour-management') . ' DEBUG: ' . json_encode($debug_info));
+                    }
+                } else {
+                    throw new Exception(__('Tours directory is not writeable', 'h3-tour-management') . ' DEBUG: ' . json_encode($debug_info));
+                }
             }
             
             if (!file_exists($upload_temp_dir)) {

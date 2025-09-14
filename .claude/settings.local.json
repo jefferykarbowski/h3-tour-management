@@ -12,7 +12,8 @@
       "Read(//c/Users/Jeff/Local Sites/h3vt/app/public/h3panos/**)",
       "mcp__playwright__browser_navigate",
       "Read(//c/Users/Jeff/Local Sites/h3vt/app/public/**)",
-      "WebFetch(domain:docs.pantheon.io)"
+      "WebFetch(domain:docs.pantheon.io)",
+      "mcp__zen__thinkdeep"
     ],
     "deny": []
   }

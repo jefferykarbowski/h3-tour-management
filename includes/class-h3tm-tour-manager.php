@@ -7,12 +7,10 @@ class H3TM_Tour_Manager {
     private $tour_dir;
     
     public function __construct() {
-        $this->tour_dir = ABSPATH . H3TM_TOUR_DIR;
+        $this->tour_dir = H3TM_Pantheon_Helper::get_h3panos_path();
         
-        // Create tour directory if it doesn't exist
-        if (!file_exists($this->tour_dir)) {
-            wp_mkdir_p($this->tour_dir);
-        }
+        // Ensure tour directory exists (Pantheon-aware)
+        H3TM_Pantheon_Helper::ensure_h3panos_directory();
     }
     
     /**
@@ -172,6 +170,16 @@ class H3TM_Tour_Manager {
             return $result;
         }
         
+        // Add debug info for rename operation
+        $debug_info = array(
+            'old_path' => $old_path,
+            'new_path' => $new_path,
+            'old_exists' => file_exists($old_path),
+            'new_exists' => file_exists($new_path),
+            'parent_writeable' => is_writeable(dirname($old_path)),
+            'is_pantheon' => (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0)
+        );
+        
         if (rename($old_path, $new_path)) {
             // Update tour name for all users
             $this->update_tour_name_for_users($old_name, $new_name);
@@ -179,7 +187,7 @@ class H3TM_Tour_Manager {
             $result['success'] = true;
             $result['message'] = __('Tour renamed successfully.', 'h3-tour-management');
         } else {
-            $result['message'] = __('Failed to rename tour.', 'h3-tour-management');
+            $result['message'] = __('Failed to rename tour.', 'h3-tour-management') . ' Debug: ' . json_encode($debug_info);
         }
         
         return $result;

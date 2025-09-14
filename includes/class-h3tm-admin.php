@@ -443,27 +443,37 @@ class H3TM_Admin {
             }
         }
         
-        // Check disk space (need at least 100MB free) - use h3panos directory instead of uploads
+        // Skip disk space check on Pantheon (disk_free_space unreliable)
+        // Instead test write permissions directly
         $h3panos_path = ABSPATH . 'h3panos';
-        $check_path = file_exists($h3panos_path) ? $h3panos_path : $upload_dir['basedir'];
-        $free_space = @disk_free_space($check_path);
         
         // Create debug info for admin display
         $debug_info = array(
-            'check_path' => $check_path,
+            'is_pantheon' => (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0),
+            'h3panos_path' => $h3panos_path,
             'h3panos_exists' => file_exists($h3panos_path),
-            'check_path_exists' => file_exists($check_path),
-            'free_space_mb' => $free_space !== false ? round($free_space / 1024 / 1024) : 'UNKNOWN',
-            'required_mb' => 100,
+            'h3panos_writeable' => is_writeable($h3panos_path),
             'abspath' => ABSPATH,
-            'upload_basedir' => $upload_dir['basedir']
+            'upload_basedir' => $upload_dir['basedir'],
+            'disk_space_check' => 'skipped_on_pantheon'
         );
         
-        if ($free_space !== false && $free_space < 100 * 1024 * 1024) {
-            wp_send_json_error(array(
-                'message' => __('Insufficient disk space on server', 'h3-tour-management'),
-                'debug' => $debug_info
-            ));
+        // Test write permissions instead of disk space
+        if (!is_writeable($h3panos_path)) {
+            // Try to create directory if it doesn't exist
+            if (!file_exists($h3panos_path)) {
+                if (!wp_mkdir_p($h3panos_path)) {
+                    wp_send_json_error(array(
+                        'message' => __('Cannot create tours directory', 'h3-tour-management'),
+                        'debug' => $debug_info
+                    ));
+                }
+            } else {
+                wp_send_json_error(array(
+                    'message' => __('Tours directory is not writeable', 'h3-tour-management'),
+                    'debug' => $debug_info
+                ));
+            }
         }
         
         // Create unique directory for this upload
