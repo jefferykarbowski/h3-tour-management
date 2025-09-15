@@ -96,17 +96,24 @@ class H3TM_Tour_Manager {
             'target_dir_writable' => is_writeable($h3_tours_dir),
             'is_pre_uploaded' => $is_pre_uploaded,
             'is_pantheon' => (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0),
-            'abspath' => ABSPATH
+            'abspath' => ABSPATH,
+            'paths_identical' => ($file['tmp_name'] === $temp_file)
         );
 
         if ($is_pre_uploaded) {
-            // File is already uploaded via chunks, just rename it
-            if (!rename($file['tmp_name'], $temp_file)) {
-                rmdir($tour_path);
-                $error_msg = __('Failed to move uploaded file.', 'h3-tour-management');
-                error_log('H3TM Upload Error: Failed to rename chunked file | Debug: ' . json_encode($debug_info));
-                $result['message'] = $error_msg;
-                return $result;
+            // Check if file is already in correct location (chunked upload case)
+            if ($file['tmp_name'] === $temp_file) {
+                // File is already in the correct location, no need to move
+                error_log('H3TM Upload Info: File already in correct location, skipping move | Debug: ' . json_encode($debug_info));
+            } else {
+                // File needs to be moved to correct location
+                if (!rename($file['tmp_name'], $temp_file)) {
+                    rmdir($tour_path);
+                    $error_msg = __('Failed to move uploaded file.', 'h3-tour-management');
+                    error_log('H3TM Upload Error: Failed to rename chunked file | Debug: ' . json_encode($debug_info));
+                    $result['message'] = $error_msg;
+                    return $result;
+                }
             }
         } else {
             // Traditional upload
