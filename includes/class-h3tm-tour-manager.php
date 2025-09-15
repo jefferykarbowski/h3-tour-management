@@ -715,8 +715,18 @@ DirectoryIndex index.php index.html index.htm
                     continue;
                 }
             } else {
-                // Move the file or directory
-                rename($source_path, $dest_path);
+                // Move the file or directory (Pantheon-compatible)
+                if (is_dir($source_path)) {
+                    // For directories, copy recursively then delete
+                    if ($this->copy_directory_optimized($source_path, $dest_path)) {
+                        $this->delete_directory($source_path);
+                    }
+                } else {
+                    // For files, copy then delete
+                    if (copy($source_path, $dest_path)) {
+                        unlink($source_path);
+                    }
+                }
             }
         }
     }
