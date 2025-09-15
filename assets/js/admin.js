@@ -602,20 +602,21 @@ jQuery(document).ready(function($) {
                         }
                         H3TM_TourRename.showSuccessMessage(successMsg);
 
-                        // Optional: reload page after delay to refresh everything
-                        setTimeout(function() {
-                            if (confirm('Tour renamed successfully! Would you like to refresh the page to see all updates?')) {
-                                location.reload();
-                            }
-                        }, 2000);
+                        // Auto-refresh after success (like upload function)
+                        H3TM_TourRename.showRenameSuccessAndReload('Tour renamed successfully! Refreshing page...');
                     } else {
                         // Error - handle debug info like upload function
                         H3TM_TourRename.handleRenameError(response, oldName, newName, $button, $row, retryCount, maxRetries);
                     }
                 },
                 error: function(xhr, status, error) {
-                    if (retryCount < maxRetries && (status === 'timeout' || xhr.status === 0 || xhr.status >= 500)) {
-                        // Retry on timeout, network errors, or server errors (like upload function)
+                    console.log('Rename error:', status, error, xhr);
+
+                    if (status === 'timeout') {
+                        // On timeout, assume success since rename appears after manual refresh (like upload)
+                        H3TM_TourRename.showRenameTimeoutSuccess(oldName, newName, $button, $row);
+                    } else if (retryCount < maxRetries && (xhr.status === 0 || xhr.status >= 500)) {
+                        // Retry on network errors or server errors (like upload function)
                         console.log('Retrying rename operation (attempt ' + (retryCount + 1) + ')');
                         setTimeout(function() {
                             H3TM_TourRename.performRename(oldName, newName, $button, $row, retryCount + 1);
@@ -624,9 +625,7 @@ jQuery(document).ready(function($) {
                         // Final error - give up after retries
                         var errorMessage = 'Failed to rename tour after ' + maxRetries + ' attempts.';
 
-                        if (status === 'timeout') {
-                            errorMessage += ' The request timed out.';
-                        } else if (xhr.status === 0) {
+                        if (xhr.status === 0) {
                             errorMessage += ' Network error.';
                         } else if (xhr.status >= 500) {
                             errorMessage += ' Server error.';
@@ -692,6 +691,55 @@ jQuery(document).ready(function($) {
 
             this.hideProgressOverlay();
             $button.prop('disabled', false);
+        },
+
+        /**
+         * Show rename success with automatic refresh (like upload function)
+         */
+        showRenameSuccessAndReload: function(message) {
+            this.hideProgressOverlay();
+
+            var countdown = 3;
+            var countdownInterval = setInterval(function() {
+                // Update progress text with countdown
+                $('#upload-progress-text').text(message + ' (' + countdown + 's)');
+                countdown--;
+
+                if (countdown < 0) {
+                    clearInterval(countdownInterval);
+                    location.reload();
+                }
+            }, 1000);
+        },
+
+        /**
+         * Handle timeout with success assumption (like upload function)
+         */
+        showRenameTimeoutSuccess: function(oldName, newName, $button, $row) {
+            this.hideProgressOverlay();
+            $button.prop('disabled', false);
+
+            // Show warning with manual refresh option
+            var notice = '<div class="notice notice-warning is-dismissible h3tm-notice">' +
+                        '<p><strong>Rename Status:</strong> The rename operation timed out, but the tour may have been renamed successfully. ' +
+                        '<button type="button" class="button button-secondary" onclick="location.reload();">Refresh Page to Check</button></p>' +
+                        '<button type="button" class="notice-dismiss"><span class="screen-reader-text">Dismiss this notice.</span></button>' +
+                        '</div>';
+
+            // Insert notice
+            var $target = $('.wp-header-end').length ? $('.wp-header-end') : $('#wpbody-content h1').first();
+            if ($target.length) {
+                $target.after(notice);
+            } else {
+                $('#wpbody-content').prepend(notice);
+            }
+
+            // Handle dismiss button
+            $('.h3tm-notice .notice-dismiss').on('click', function() {
+                $(this).closest('.h3tm-notice').fadeOut(300, function() {
+                    $(this).remove();
+                });
+            });
         },
 
         /**
