@@ -467,9 +467,12 @@ class H3TM_Shortcodes_V4 {
     private function get_combined_analytics($tours, $start_date) {
         try {
             $this->initialize_analytics();
-            
+
             $PROPERTY_ID = "properties/491286260";
-            
+
+            // Initialize availableTitles to prevent null array_slice error
+            $availableTitles = array();
+
             // Combine all tour titles for filtering
             $tour_titles = array_column($tours, 'title');
             
