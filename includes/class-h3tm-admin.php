@@ -580,25 +580,71 @@ class H3TM_Admin {
         // Clean up temp directory
         $this->cleanup_temp_dir($upload_temp_dir);
         
-        // Process the uploaded file
-        $tour_manager = $this->get_tour_manager();
-        $file_info = array(
-            'name' => $file_name,
-            'tmp_name' => $final_file,
-            'error' => UPLOAD_ERR_OK
-        );
-        
-        // Use the existing upload_tour method with the combined file
-        $result = $tour_manager->upload_tour($tour_name, $file_info, true);
-        
-        if ($result['success']) {
-            wp_send_json_success($result['message']);
-        } else {
-            // Clean up the final file if processing failed
+        // Process the uploaded file with enhanced error handling
+        try {
+            $tour_manager = $this->get_tour_manager();
+            $file_info = array(
+                'name' => $file_name,
+                'tmp_name' => $final_file,
+                'error' => UPLOAD_ERR_OK,
+                'size' => file_exists($final_file) ? filesize($final_file) : 0
+            );
+
+            // Debug info for troubleshooting
+            $debug_info = array(
+                'tour_name' => $tour_name,
+                'file_name' => $file_name,
+                'final_file' => $final_file,
+                'final_file_exists' => file_exists($final_file),
+                'final_file_size' => file_exists($final_file) ? filesize($final_file) : 0,
+                'using_optimized' => $this->use_optimized,
+                'tour_manager_class' => get_class($tour_manager)
+            );
+
+            // Use the existing upload_tour method with the combined file
+            $result = $tour_manager->upload_tour($tour_name, $file_info, true);
+
+            // Verify result structure
+            if (!is_array($result) || !isset($result['success'])) {
+                error_log('H3TM Process Upload Error: Invalid result structure | Debug: ' . json_encode($debug_info));
+                wp_send_json_error(array(
+                    'message' => 'Invalid result from upload_tour method',
+                    'debug' => $debug_info
+                ));
+            }
+
+            if ($result['success']) {
+                wp_send_json_success($result['message']);
+            } else {
+                // Clean up the final file if processing failed
+                if (file_exists($final_file)) {
+                    unlink($final_file);
+                }
+
+                // Enhanced error response with debug info
+                error_log('H3TM Process Upload Error: ' . $result['message'] . ' | Debug: ' . json_encode($debug_info));
+                wp_send_json_error(array(
+                    'message' => $result['message'],
+                    'debug' => $debug_info
+                ));
+            }
+        } catch (Exception $e) {
+            // Catch any unexpected exceptions
+            error_log('H3TM Process Upload Exception: ' . $e->getMessage() . ' | File: ' . $final_file);
+
+            // Clean up the final file
             if (file_exists($final_file)) {
                 unlink($final_file);
             }
-            wp_send_json_error($result['message']);
+
+            wp_send_json_error(array(
+                'message' => 'Upload processing failed: ' . $e->getMessage(),
+                'debug' => array(
+                    'exception_type' => get_class($e),
+                    'file' => $final_file,
+                    'tour_name' => $tour_name
+                )
+            ));
         }
     }
     
