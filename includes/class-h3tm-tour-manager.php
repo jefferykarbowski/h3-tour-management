@@ -180,12 +180,52 @@ class H3TM_Tour_Manager {
             'is_pantheon' => (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0)
         );
         
-        // Try multiple methods for Pantheon compatibility
+        // Use copy-and-delete approach like upload process (Pantheon-compatible)
         $rename_success = false;
         $debug_info['attempts'] = array();
         
-        // Method 1: Shell command (often works on Pantheon)
-        if (function_exists('exec') && !$rename_success) {
+        try {
+            // Method 1: Copy-and-delete approach (same as upload process)
+            // Create new directory
+            if (!wp_mkdir_p($new_path)) {
+                throw new Exception('Failed to create new directory');
+            }
+            
+            // Copy all files recursively
+            $copy_success = $this->copy_directory_recursive($old_path, $new_path);
+            if (!$copy_success) {
+                throw new Exception('Failed to copy files to new directory');
+            }
+            
+            // Verify copy worked
+            if (!file_exists($new_path . '/index.htm') && !file_exists($new_path . '/index.html')) {
+                throw new Exception('Copy verification failed - no index file found');
+            }
+            
+            // Delete old directory
+            if (!$this->delete_directory($old_path)) {
+                // Copy succeeded but cleanup failed - this is acceptable
+                $debug_info['cleanup_warning'] = 'Old directory not fully deleted';
+            }
+            
+            $rename_success = true;
+            $debug_info['method'] = 'copy_and_delete';
+            $debug_info['attempts'][] = 'copy_and_delete_success';
+            
+        } catch (Exception $e) {
+            $debug_info['attempts'][] = array(
+                'method' => 'copy_and_delete_failed',
+                'error' => $e->getMessage()
+            );
+            
+            // Clean up partial copy if it exists
+            if (file_exists($new_path)) {
+                $this->delete_directory($new_path);
+            }
+        }
+        
+        // Fallback: Try shell command
+        if (!$rename_success && function_exists('exec')) {
             $old_escaped = escapeshellarg($old_path);
             $new_escaped = escapeshellarg($new_path);
             $command = "mv $old_escaped $new_escaped 2>&1";
@@ -204,39 +244,6 @@ class H3TM_Tour_Manager {
                     'return_code' => $return_code,
                     'output' => implode(' ', $output)
                 );
-            }
-        }
-        
-        // Method 2: WordPress Filesystem API
-        if (!$rename_success) {
-            if (!function_exists('WP_Filesystem')) {
-                require_once(ABSPATH . 'wp-admin/includes/file.php');
-            }
-            
-            $creds = request_filesystem_credentials('', '', false, false, array());
-            if (WP_Filesystem($creds)) {
-                global $wp_filesystem;
-                
-                if ($wp_filesystem->move($old_path, $new_path)) {
-                    $rename_success = true;
-                    $debug_info['method'] = 'wp_filesystem';
-                    $debug_info['attempts'][] = 'wp_filesystem_success';
-                } else {
-                    $debug_info['attempts'][] = 'wp_filesystem_failed';
-                }
-            } else {
-                $debug_info['attempts'][] = 'wp_filesystem_unavailable';
-            }
-        }
-        
-        // Method 3: PHP rename fallback
-        if (!$rename_success) {
-            if (rename($old_path, $new_path)) {
-                $rename_success = true;
-                $debug_info['method'] = 'php_rename';
-                $debug_info['attempts'][] = 'php_rename_success';
-            } else {
-                $debug_info['attempts'][] = 'php_rename_failed';
             }
         }
         
@@ -478,6 +485,42 @@ DirectoryIndex index.php index.html index.htm
         }
         
         return $media;
+    }
+    
+    /**
+     * Copy directory recursively (Pantheon-compatible approach)
+     */
+    private function copy_directory_recursive($source, $destination) {
+        if (!is_dir($source)) {
+            return false;
+        }
+        
+        // Ensure destination exists
+        if (!wp_mkdir_p($destination)) {
+            return false;
+        }
+        
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+        
+        foreach ($iterator as $item) {
+            $target_path = $destination . DIRECTORY_SEPARATOR . $iterator->getSubPathName();
+            
+            if ($item->isDir()) {
+                if (!wp_mkdir_p($target_path)) {
+                    return false;
+                }
+            } else {
+                // Copy file
+                if (!copy($item->getPathname(), $target_path)) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
     }
     
     /**
