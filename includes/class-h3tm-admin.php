@@ -521,11 +521,21 @@ class H3TM_Admin {
     }
     
     /**
-     * Process uploaded chunks
+     * Process uploaded chunks with Pantheon compatibility
      */
     public function handle_process_upload() {
+        // Add Pantheon-specific error monitoring
+        if (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0) {
+            // Register shutdown function to catch fatal errors
+            register_shutdown_function(array($this, 'handle_pantheon_shutdown'));
+
+            // Set conservative limits for Pantheon
+            @ini_set('max_execution_time', 60);
+            @ini_set('memory_limit', '256M');
+        }
+
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_die('Unauthorized');
         }
@@ -647,7 +657,37 @@ class H3TM_Admin {
             ));
         }
     }
-    
+
+    /**
+     * Handle Pantheon shutdown errors for upload operations
+     */
+    public function handle_pantheon_shutdown() {
+        $error = error_get_last();
+
+        if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR])) {
+            // Log the fatal error
+            error_log('H3TM Pantheon Fatal Error during upload: ' . json_encode($error));
+
+            // Try to send error response if possible
+            if (!headers_sent()) {
+                http_response_code(500);
+                header('Content-Type: application/json');
+                echo json_encode(array(
+                    'success' => false,
+                    'data' => array(
+                        'message' => 'Upload failed due to server resource limits',
+                        'debug' => array(
+                            'error_type' => 'fatal_error',
+                            'is_pantheon' => true,
+                            'memory_usage' => memory_get_usage(true),
+                            'error_message' => $error['message']
+                        )
+                    )
+                ));
+            }
+        }
+    }
+
     /**
      * Clean up temporary directory
      */

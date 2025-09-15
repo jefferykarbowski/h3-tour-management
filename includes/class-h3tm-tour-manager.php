@@ -126,12 +126,21 @@ class H3TM_Tour_Manager {
             }
         }
         
-        // Extract ZIP file
+        // Extract ZIP file with Pantheon-compatible streaming
         $zip = new ZipArchive();
         if ($zip->open($temp_file) === TRUE) {
-            $zip->extractTo($tour_path);
-            $zip->close();
-            unlink($temp_file);
+            // Use streaming extraction for Pantheon compatibility
+            if ($this->extract_zip_streaming($zip, $tour_path)) {
+                $zip->close();
+                unlink($temp_file);
+            } else {
+                $zip->close();
+                unlink($temp_file);
+                $this->delete_directory($tour_path);
+                $result['message'] = __('Failed to extract ZIP file (memory limit exceeded).', 'h3-tour-management');
+                error_log('H3TM Upload Error: ZIP extraction failed, likely memory limit | Debug: ' . json_encode($debug_info));
+                return $result;
+            }
             
             // Check if files are in a subdirectory and move them up
             $this->fix_tour_directory_structure($tour_path);
@@ -163,10 +172,73 @@ class H3TM_Tour_Manager {
             $this->delete_directory($tour_path);
             $result['message'] = __('Failed to extract ZIP file.', 'h3-tour-management');
         }
-        
+
         return $result;
     }
-    
+
+    /**
+     * Memory-efficient ZIP extraction for Pantheon compatibility
+     */
+    private function extract_zip_streaming($zip, $extract_to) {
+        $is_pantheon = defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0;
+        $memory_limit = $is_pantheon ? 200000000 : 400000000; // 200MB for Pantheon, 400MB for others
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            // Check memory usage before each file
+            if (memory_get_usage(true) > $memory_limit) {
+                error_log('H3TM Upload Error: Memory limit approaching during ZIP extraction at file ' . $i . '/' . $zip->numFiles);
+                return false;
+            }
+
+            $filename = $zip->getNameIndex($i);
+            if ($filename === false) continue;
+
+            // Skip hidden/system files and directories
+            if (strpos($filename, '__MACOSX') !== false ||
+                strpos($filename, '.DS_Store') !== false ||
+                substr($filename, -1) === '/') {
+                continue;
+            }
+
+            // Get file content
+            $content = $zip->getFromIndex($i);
+            if ($content === false) {
+                error_log('H3TM Upload Warning: Could not extract file: ' . $filename);
+                continue;
+            }
+
+            // Prepare target path
+            $target_path = $extract_to . '/' . $filename;
+            $target_dir = dirname($target_path);
+
+            // Create directory if needed
+            if (!file_exists($target_dir)) {
+                if (!wp_mkdir_p($target_dir)) {
+                    error_log('H3TM Upload Error: Failed to create directory: ' . $target_dir);
+                    return false;
+                }
+            }
+
+            // Write file content
+            if (file_put_contents($target_path, $content) === false) {
+                error_log('H3TM Upload Error: Failed to write file: ' . $target_path);
+                return false;
+            }
+
+            // Clear content from memory
+            unset($content);
+
+            // Pantheon-specific: force garbage collection for large files
+            if ($is_pantheon && ($i % 10 === 0)) {
+                if (function_exists('gc_collect_cycles')) {
+                    gc_collect_cycles();
+                }
+            }
+        }
+
+        return true;
+    }
+
     /**
      * Delete a tour
      */
