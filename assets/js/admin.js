@@ -396,11 +396,17 @@ jQuery(document).ready(function($) {
         },
 
         /**
-         * Perform the actual rename operation with progress indication
+         * Perform the actual rename operation with retry logic and debug handling (like upload)
          */
-        performRename: function(oldName, newName, $button, $row) {
-            // Show progress overlay
-            this.showProgressOverlay('Renaming tour...');
+        performRename: function(oldName, newName, $button, $row, retryCount) {
+            retryCount = retryCount || 0;
+            var maxRetries = 3; // Same as upload function
+
+            // Show progress overlay with retry info if applicable
+            var progressMessage = retryCount > 0
+                ? 'Retrying rename operation (attempt ' + (retryCount + 1) + ')...'
+                : 'Renaming tour...';
+            this.showProgressOverlay(progressMessage);
 
             // Disable button
             $button.prop('disabled', true);
@@ -414,12 +420,18 @@ jQuery(document).ready(function($) {
                     new_name: newName,
                     nonce: h3tm_ajax.nonce
                 },
-                timeout: 120000, // 2 minute timeout for large tours
+                timeout: 60000, // 60 second timeout per attempt (like upload chunks)
                 success: function(response) {
                     if (response && response.success) {
                         // Success - update UI
                         H3TM_TourRename.updateTourRow($row, $button, oldName, newName);
-                        H3TM_TourRename.showSuccessMessage('Tour renamed successfully!');
+
+                        // Show success message with debug info if available
+                        var successMsg = 'Tour renamed successfully!';
+                        if (response.data && response.data.debug && response.data.debug.using_optimized) {
+                            successMsg += ' (Using optimized backend)';
+                        }
+                        H3TM_TourRename.showSuccessMessage(successMsg);
 
                         // Optional: reload page after delay to refresh everything
                         setTimeout(function() {
@@ -428,31 +440,89 @@ jQuery(document).ready(function($) {
                             }
                         }, 2000);
                     } else {
-                        // Error - extract message properly
-                        var errorMessage = H3TM_TourRename.extractErrorMessage(response);
-                        H3TM_TourRename.showErrorMessage('Rename failed: ' + errorMessage);
+                        // Error - handle debug info like upload function
+                        H3TM_TourRename.handleRenameError(response, oldName, newName, $button, $row, retryCount, maxRetries);
                     }
                 },
                 error: function(xhr, status, error) {
-                    var errorMessage = 'An error occurred while renaming the tour.';
+                    if (retryCount < maxRetries && (status === 'timeout' || xhr.status === 0 || xhr.status >= 500)) {
+                        // Retry on timeout, network errors, or server errors (like upload function)
+                        console.log('Retrying rename operation (attempt ' + (retryCount + 1) + ')');
+                        setTimeout(function() {
+                            H3TM_TourRename.performRename(oldName, newName, $button, $row, retryCount + 1);
+                        }, 2000); // Wait 2 seconds before retry
+                    } else {
+                        // Final error - give up after retries
+                        var errorMessage = 'Failed to rename tour after ' + maxRetries + ' attempts.';
 
-                    if (status === 'timeout') {
-                        errorMessage = 'The rename operation timed out. The tour may still be processing in the background.';
-                    } else if (xhr.status === 0) {
-                        errorMessage = 'Network error. Please check your connection and try again.';
-                    } else if (xhr.status >= 500) {
-                        errorMessage = 'Server error. Please try again or contact support.';
-                    } else if (xhr.responseJSON && xhr.responseJSON.data) {
-                        errorMessage = xhr.responseJSON.data;
+                        if (status === 'timeout') {
+                            errorMessage += ' The request timed out.';
+                        } else if (xhr.status === 0) {
+                            errorMessage += ' Network error.';
+                        } else if (xhr.status >= 500) {
+                            errorMessage += ' Server error.';
+                        } else if (xhr.responseJSON && xhr.responseJSON.data) {
+                            errorMessage = xhr.responseJSON.data;
+                        }
+
+                        H3TM_TourRename.showErrorMessage(errorMessage + ' Please check your server logs for more details.');
+                        H3TM_TourRename.hideProgressOverlay();
+                        $button.prop('disabled', false);
                     }
-
-                    H3TM_TourRename.showErrorMessage(errorMessage);
-                },
-                complete: function() {
-                    H3TM_TourRename.hideProgressOverlay();
-                    $button.prop('disabled', false);
                 }
             });
+        },
+
+        /**
+         * Handle rename errors with debug information display (like upload function)
+         */
+        handleRenameError: function(response, oldName, newName, $button, $row, retryCount, maxRetries) {
+            // Check if response has debug info like upload function
+            if (response.data && typeof response.data === 'object' && response.data.debug) {
+                var debugInfo = response.data.debug;
+                var errorHtml = '<p><strong>Rename Error:</strong> ' + (response.data.message || response.data) + '</p>';
+                errorHtml += '<div style="background:#f0f0f0;padding:10px;margin:10px 0;border-radius:5px;font-family:monospace;font-size:12px;">';
+                errorHtml += '<strong>Debug Information:</strong><br>';
+                errorHtml += 'Operation: ' + debugInfo.operation + '<br>';
+                errorHtml += 'Old Name: ' + debugInfo.old_name + '<br>';
+                errorHtml += 'New Name: ' + debugInfo.new_name + '<br>';
+                errorHtml += 'Is Pantheon: ' + (debugInfo.is_pantheon ? 'YES' : 'NO') + '<br>';
+                errorHtml += 'H3panos Path: ' + debugInfo.h3panos_path + '<br>';
+                errorHtml += 'H3panos Exists: ' + (debugInfo.h3panos_exists ? 'YES' : 'NO') + '<br>';
+                errorHtml += 'H3panos Writeable: ' + (debugInfo.h3panos_writeable ? 'YES' : 'NO') + '<br>';
+                errorHtml += 'Old Tour Exists: ' + (debugInfo.old_tour_exists ? 'YES' : 'NO') + '<br>';
+                errorHtml += 'New Tour Exists: ' + (debugInfo.new_tour_exists ? 'YES' : 'NO') + '<br>';
+                errorHtml += 'Using Optimized: ' + (debugInfo.using_optimized ? 'YES' : 'NO') + '<br>';
+                errorHtml += 'ABSPATH: ' + debugInfo.abspath + '<br>';
+                errorHtml += 'Handler: ' + debugInfo.handler + '<br>';
+                errorHtml += '</div>';
+
+                // Create a detailed error notice
+                var notice = '<div class="notice notice-error is-dismissible h3tm-notice h3tm-debug-notice">' + errorHtml +
+                           '<button type="button" class="notice-dismiss"><span class="screen-reader-text">Dismiss this notice.</span></button></div>';
+
+                // Insert detailed debug notice
+                var $target = $('.wp-header-end').length ? $('.wp-header-end') : $('#wpbody-content h1').first();
+                if ($target.length) {
+                    $target.after(notice);
+                } else {
+                    $('#wpbody-content').prepend(notice);
+                }
+
+                // Handle dismiss button
+                $('.h3tm-debug-notice .notice-dismiss').on('click', function() {
+                    $(this).closest('.h3tm-debug-notice').fadeOut(300, function() {
+                        $(this).remove();
+                    });
+                });
+            } else {
+                // Simple error message
+                var errorMessage = this.extractErrorMessage(response);
+                this.showErrorMessage('Rename failed: ' + errorMessage);
+            }
+
+            this.hideProgressOverlay();
+            $button.prop('disabled', false);
         },
 
         /**

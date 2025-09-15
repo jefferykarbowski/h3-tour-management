@@ -658,10 +658,43 @@
     margin: 10px 0;
 }
 
+/* Debug Notice Styling (matches upload error display) */
+.h3tm-debug-notice {
+    border-left: 4px solid #d63638;
+}
+
+.h3tm-debug-notice div[style*="background:#f0f0f0"] {
+    background: #f8f9fa !important;
+    border: 1px solid #e1e4e7;
+    border-radius: 6px;
+    padding: 16px;
+    margin: 12px 0;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre-wrap;
+}
+
+.h3tm-debug-notice strong {
+    color: #1d2327;
+    font-weight: 600;
+}
+
+/* Responsive debug info */
+@media screen and (max-width: 782px) {
+    .h3tm-debug-notice div[style*="background:#f0f0f0"] {
+        font-size: 12px;
+        padding: 12px;
+        overflow-x: scroll;
+    }
+}
+
 /* Print Styles */
 @media print {
     .h3tm-modal-overlay,
-    .h3tm-progress-overlay {
+    .h3tm-progress-overlay,
+    .h3tm-debug-notice {
         display: none !important;
     }
 }
