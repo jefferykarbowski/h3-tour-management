@@ -180,40 +180,74 @@ class H3TM_Tour_Manager {
             'is_pantheon' => (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0)
         );
         
-        // Use WordPress Filesystem API for Pantheon compatibility
-        if (!function_exists('WP_Filesystem')) {
-            require_once(ABSPATH . 'wp-admin/includes/file.php');
+        // Try multiple methods for Pantheon compatibility
+        $rename_success = false;
+        $debug_info['attempts'] = array();
+        
+        // Method 1: Shell command (often works on Pantheon)
+        if (function_exists('exec') && !$rename_success) {
+            $old_escaped = escapeshellarg($old_path);
+            $new_escaped = escapeshellarg($new_path);
+            $command = "mv $old_escaped $new_escaped 2>&1";
+            
+            $output = array();
+            $return_code = 0;
+            exec($command, $output, $return_code);
+            
+            if ($return_code === 0 && file_exists($new_path) && !file_exists($old_path)) {
+                $rename_success = true;
+                $debug_info['method'] = 'shell_mv';
+                $debug_info['attempts'][] = 'shell_mv_success';
+            } else {
+                $debug_info['attempts'][] = array(
+                    'method' => 'shell_mv_failed',
+                    'return_code' => $return_code,
+                    'output' => implode(' ', $output)
+                );
+            }
         }
         
-        $creds = request_filesystem_credentials('', '', false, false, array());
-        if (WP_Filesystem($creds)) {
-            global $wp_filesystem;
+        // Method 2: WordPress Filesystem API
+        if (!$rename_success) {
+            if (!function_exists('WP_Filesystem')) {
+                require_once(ABSPATH . 'wp-admin/includes/file.php');
+            }
             
-            // Use WordPress filesystem move function
-            if ($wp_filesystem->move($old_path, $new_path)) {
-                // Update tour name for all users
-                $this->update_tour_name_for_users($old_name, $new_name);
+            $creds = request_filesystem_credentials('', '', false, false, array());
+            if (WP_Filesystem($creds)) {
+                global $wp_filesystem;
                 
-                $result['success'] = true;
-                $result['message'] = __('Tour renamed successfully.', 'h3-tour-management');
-                $debug_info['method'] = 'wp_filesystem';
+                if ($wp_filesystem->move($old_path, $new_path)) {
+                    $rename_success = true;
+                    $debug_info['method'] = 'wp_filesystem';
+                    $debug_info['attempts'][] = 'wp_filesystem_success';
+                } else {
+                    $debug_info['attempts'][] = 'wp_filesystem_failed';
+                }
             } else {
-                $debug_info['method'] = 'wp_filesystem_failed';
-                $debug_info['wp_filesystem_available'] = true;
-                $result['message'] = __('Failed to rename tour using WordPress filesystem.', 'h3-tour-management') . ' Debug: ' . json_encode($debug_info);
+                $debug_info['attempts'][] = 'wp_filesystem_unavailable';
             }
-        } else {
-            // Fallback to PHP rename if WordPress filesystem not available
+        }
+        
+        // Method 3: PHP rename fallback
+        if (!$rename_success) {
             if (rename($old_path, $new_path)) {
-                $this->update_tour_name_for_users($old_name, $new_name);
-                $result['success'] = true;
-                $result['message'] = __('Tour renamed successfully.', 'h3-tour-management');
-                $debug_info['method'] = 'php_rename_fallback';
+                $rename_success = true;
+                $debug_info['method'] = 'php_rename';
+                $debug_info['attempts'][] = 'php_rename_success';
             } else {
-                $debug_info['method'] = 'php_rename_failed';
-                $debug_info['wp_filesystem_available'] = false;
-                $result['message'] = __('Failed to rename tour.', 'h3-tour-management') . ' Debug: ' . json_encode($debug_info);
+                $debug_info['attempts'][] = 'php_rename_failed';
             }
+        }
+        
+        if ($rename_success) {
+            // Update tour name for all users
+            $this->update_tour_name_for_users($old_name, $new_name);
+            
+            $result['success'] = true;
+            $result['message'] = __('Tour renamed successfully.', 'h3-tour-management');
+        } else {
+            $result['message'] = __('Failed to rename tour using all methods.', 'h3-tour-management') . ' Debug: ' . json_encode($debug_info);
         }
         
         return $result;
