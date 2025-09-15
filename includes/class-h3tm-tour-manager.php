@@ -63,22 +63,58 @@ class H3TM_Tour_Manager {
             return $result;
         }
         
-        // Handle file movement
+        // Handle file movement - ensure target directory exists first
         $upload_dir = wp_upload_dir();
         $temp_file = $upload_dir['basedir'] . '/h3-tours/' . basename($file['name']);
-        
+
+        // Create h3-tours directory if it doesn't exist (like upload handlers)
+        $h3_tours_dir = $upload_dir['basedir'] . '/h3-tours';
+        if (!file_exists($h3_tours_dir)) {
+            if (!wp_mkdir_p($h3_tours_dir)) {
+                rmdir($tour_path);
+                $result['message'] = __('Failed to create upload directory.', 'h3-tour-management');
+                error_log('H3TM Upload Error: Failed to create h3-tours directory: ' . $h3_tours_dir);
+                return $result;
+            }
+        }
+
+        // Verify directory is writable
+        if (!is_writeable($h3_tours_dir)) {
+            rmdir($tour_path);
+            $result['message'] = __('Upload directory is not writable.', 'h3-tour-management');
+            error_log('H3TM Upload Error: h3-tours directory not writable: ' . $h3_tours_dir);
+            return $result;
+        }
+
+        // Add debug information for troubleshooting
+        $debug_info = array(
+            'source_file' => $file['tmp_name'],
+            'target_file' => $temp_file,
+            'source_exists' => file_exists($file['tmp_name']),
+            'target_dir' => $h3_tours_dir,
+            'target_dir_exists' => file_exists($h3_tours_dir),
+            'target_dir_writable' => is_writeable($h3_tours_dir),
+            'is_pre_uploaded' => $is_pre_uploaded,
+            'is_pantheon' => (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0),
+            'abspath' => ABSPATH
+        );
+
         if ($is_pre_uploaded) {
             // File is already uploaded via chunks, just rename it
             if (!rename($file['tmp_name'], $temp_file)) {
                 rmdir($tour_path);
-                $result['message'] = __('Failed to move uploaded file.', 'h3-tour-management');
+                $error_msg = __('Failed to move uploaded file.', 'h3-tour-management');
+                error_log('H3TM Upload Error: Failed to rename chunked file | Debug: ' . json_encode($debug_info));
+                $result['message'] = $error_msg;
                 return $result;
             }
         } else {
             // Traditional upload
             if (!move_uploaded_file($file['tmp_name'], $temp_file)) {
                 rmdir($tour_path);
-                $result['message'] = __('Failed to move uploaded file.', 'h3-tour-management');
+                $error_msg = __('Failed to move uploaded file.', 'h3-tour-management');
+                error_log('H3TM Upload Error: Failed to move uploaded file | Debug: ' . json_encode($debug_info));
+                $result['message'] = $error_msg;
                 return $result;
             }
         }
