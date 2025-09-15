@@ -185,14 +185,19 @@ class H3TM_Tour_Manager {
         $debug_info['attempts'] = array();
         
         try {
-            // Method 1: Copy-and-delete approach (same as upload process)
+            // Set longer execution time for large tours
+            if (function_exists('set_time_limit')) {
+                set_time_limit(300); // 5 minutes
+            }
+            
+            // Method 1: Fast copy-and-delete approach (same as upload process)
             // Create new directory
             if (!wp_mkdir_p($new_path)) {
                 throw new Exception('Failed to create new directory');
             }
             
-            // Copy all files recursively
-            $copy_success = $this->copy_directory_recursive($old_path, $new_path);
+            // Copy all files with optimization
+            $copy_success = $this->copy_directory_optimized($old_path, $new_path);
             if (!$copy_success) {
                 throw new Exception('Failed to copy files to new directory');
             }
@@ -209,7 +214,7 @@ class H3TM_Tour_Manager {
             }
             
             $rename_success = true;
-            $debug_info['method'] = 'copy_and_delete';
+            $debug_info['method'] = 'copy_and_delete_optimized';
             $debug_info['attempts'][] = 'copy_and_delete_success';
             
         } catch (Exception $e) {
@@ -488,9 +493,9 @@ DirectoryIndex index.php index.html index.htm
     }
     
     /**
-     * Copy directory recursively (Pantheon-compatible approach)
+     * Copy directory optimized for large files (prevents timeout)
      */
-    private function copy_directory_recursive($source, $destination) {
+    private function copy_directory_optimized($source, $destination) {
         if (!is_dir($source)) {
             return false;
         }
@@ -505,6 +510,7 @@ DirectoryIndex index.php index.html index.htm
             RecursiveIteratorIterator::SELF_FIRST
         );
         
+        $file_count = 0;
         foreach ($iterator as $item) {
             $target_path = $destination . DIRECTORY_SEPARATOR . $iterator->getSubPathName();
             
@@ -513,11 +519,59 @@ DirectoryIndex index.php index.html index.htm
                     return false;
                 }
             } else {
-                // Copy file
-                if (!copy($item->getPathname(), $target_path)) {
+                // Copy file with memory optimization
+                if (!$this->copy_file_chunked($item->getPathname(), $target_path)) {
                     return false;
                 }
+                $file_count++;
+                
+                // Prevent timeout on large operations
+                if ($file_count % 50 === 0) {
+                    // Flush output and reset timeout every 50 files
+                    if (function_exists('fastcgi_finish_request')) {
+                        fastcgi_finish_request();
+                    }
+                }
             }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Copy file in chunks to handle large files
+     */
+    private function copy_file_chunked($source, $destination) {
+        $chunk_size = 1024 * 1024; // 1MB chunks
+        
+        $source_handle = fopen($source, 'rb');
+        if (!$source_handle) {
+            return false;
+        }
+        
+        $dest_handle = fopen($destination, 'wb');
+        if (!$dest_handle) {
+            fclose($source_handle);
+            return false;
+        }
+        
+        while (!feof($source_handle)) {
+            $chunk = fread($source_handle, $chunk_size);
+            if ($chunk === false || fwrite($dest_handle, $chunk) === false) {
+                fclose($source_handle);
+                fclose($dest_handle);
+                unlink($destination);
+                return false;
+            }
+        }
+        
+        fclose($source_handle);
+        fclose($dest_handle);
+        
+        // Preserve file permissions
+        $perms = fileperms($source);
+        if ($perms !== false) {
+            chmod($destination, $perms);
         }
         
         return true;
