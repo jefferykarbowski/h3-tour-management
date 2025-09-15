@@ -52,13 +52,13 @@ jQuery(document).ready(function($) {
         $spinner.addClass('is-active');
         $result.hide();
         
-        // Show progress bar
+        // Show progress bar - now uses CSS classes for gradient styling
         if ($progressBar.length === 0) {
-            $form.after('<div id="upload-progress-wrapper" style="margin-top: 10px; display: none;">' +
-                '<div id="upload-progress" style="width: 100%; height: 20px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; overflow: hidden;">' +
-                '<div id="upload-progress-bar" style="width: 0%; height: 100%; background: #c1272d; transition: width 0.3s;"></div>' +
+            $form.after('<div id="upload-progress-wrapper" style="display: none;">' +
+                '<div id="upload-progress">' +
+                '<div id="upload-progress-bar"></div>' +
                 '</div>' +
-                '<div id="upload-progress-text" style="text-align: center; margin-top: 5px;">0%</div>' +
+                '<div id="upload-progress-text">0%</div>' +
                 '</div>');
             $progressBar = $('#upload-progress');
             $progressText = $('#upload-progress-text');
@@ -241,7 +241,7 @@ jQuery(document).ready(function($) {
                         $row.remove();
                     });
                 } else {
-                    alert('Error: ' + response.data);
+                    alert('Error: ' + H3TM_TourRename.extractErrorMessage(response));
                 }
             },
             error: function() {
@@ -253,52 +253,357 @@ jQuery(document).ready(function($) {
         });
     });
     
-    // Handle tour rename
+    // Handle tour rename with professional modal dialog
     $('.rename-tour').on('click', function() {
         var oldName = $(this).data('tour');
-        var newName = prompt('Enter new name for tour "' + oldName + '":', oldName);
-        
-        if (!newName || newName === oldName) {
-            return;
-        }
-        
         var $button = $(this);
         var $row = $button.closest('tr');
-        
-        $button.prop('disabled', true);
-        
-        $.ajax({
-            url: h3tm_ajax.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'h3tm_rename_tour',
-                old_name: oldName,
-                new_name: newName,
-                nonce: h3tm_ajax.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    // Update the row with new name
-                    $row.find('td:first').text(newName);
-                    $row.data('tour', newName);
-                    $button.data('tour', newName);
-                    $row.find('.delete-tour').data('tour', newName);
-                    
-                    // Update URL
-                    var newUrl = $row.find('a').attr('href').replace(encodeURIComponent(oldName), encodeURIComponent(newName));
-                    $row.find('a').attr('href', newUrl).text(newUrl);
-                } else {
-                    alert('Error: ' + response.data);
-                }
-            },
-            error: function() {
-                alert('An error occurred while renaming the tour.');
-            },
-            complete: function() {
-                $button.prop('disabled', false);
-            }
+
+        // Create and show rename modal
+        H3TM_TourRename.showModal(oldName, function(newName) {
+            H3TM_TourRename.performRename(oldName, newName, $button, $row);
         });
     });
+
+    // Initialize tour rename functionality
+    var H3TM_TourRename = {
+        modal: null,
+
+        /**
+         * Show professional rename modal dialog
+         */
+        showModal: function(oldName, onConfirm) {
+            var modal = this.createModal(oldName);
+            var $modal = $(modal);
+
+            // Add to page and show
+            $('body').append($modal);
+            $modal.addClass('h3tm-modal-show');
+
+            // Focus on input after animation
+            setTimeout(function() {
+                $modal.find('#h3tm-new-name').focus().select();
+            }, 200);
+
+            // Handle form submission
+            $modal.find('#h3tm-rename-form').on('submit', function(e) {
+                e.preventDefault();
+                var newName = $modal.find('#h3tm-new-name').val().trim();
+
+                if (H3TM_TourRename.validateInput(newName, oldName, $modal)) {
+                    H3TM_TourRename.closeModal($modal);
+                    onConfirm(newName);
+                }
+            });
+
+            // Handle cancel/close buttons
+            $modal.find('.h3tm-modal-cancel, .h3tm-modal-close').on('click', function() {
+                H3TM_TourRename.closeModal($modal);
+            });
+
+            // Handle escape key
+            $(document).on('keydown.h3tm-rename', function(e) {
+                if (e.keyCode === 27) { // Escape key
+                    H3TM_TourRename.closeModal($modal);
+                }
+            });
+        },
+
+        /**
+         * Create modal HTML structure
+         */
+        createModal: function(oldName) {
+            return '<div class="h3tm-modal-overlay" role="dialog" aria-labelledby="h3tm-rename-title" aria-describedby="h3tm-rename-desc">\n' +
+                   '  <div class="h3tm-modal-container">\n' +
+                   '    <div class="h3tm-modal-header">\n' +
+                   '      <h3 id="h3tm-rename-title">Rename Tour</h3>\n' +
+                   '      <button type="button" class="h3tm-modal-close" aria-label="Close dialog">&times;</button>\n' +
+                   '    </div>\n' +
+                   '    <div class="h3tm-modal-body">\n' +
+                   '      <p id="h3tm-rename-desc">Enter a new name for the tour "<strong>' + this.escapeHtml(oldName) + '</strong>"</p>\n' +
+                   '      <form id="h3tm-rename-form">\n' +
+                   '        <div class="h3tm-form-field">\n' +
+                   '          <label for="h3tm-new-name">New Tour Name:</label>\n' +
+                   '          <input type="text" id="h3tm-new-name" name="new_name" value="' + this.escapeHtml(oldName) + '" required maxlength="255" autocomplete="off" />\n' +
+                   '          <div class="h3tm-field-error" id="h3tm-name-error" role="alert" aria-live="polite"></div>\n' +
+                   '          <div class="h3tm-field-hint">Only letters, numbers, spaces, hyphens, and underscores are allowed.</div>\n' +
+                   '        </div>\n' +
+                   '      </form>\n' +
+                   '    </div>\n' +
+                   '    <div class="h3tm-modal-footer">\n' +
+                   '      <button type="button" class="button button-secondary h3tm-modal-cancel">Cancel</button>\n' +
+                   '      <button type="submit" form="h3tm-rename-form" class="button button-primary h3tm-rename-confirm">Rename Tour</button>\n' +
+                   '    </div>\n' +
+                   '  </div>\n' +
+                   '</div>';
+        },
+
+        /**
+         * Validate user input
+         */
+        validateInput: function(newName, oldName, $modal) {
+            var $error = $modal.find('#h3tm-name-error');
+            var $input = $modal.find('#h3tm-new-name');
+
+            // Clear previous errors
+            $error.text('').hide();
+            $input.removeClass('h3tm-field-error-input');
+
+            // Validation rules
+            if (!newName) {
+                this.showFieldError($error, $input, 'Tour name is required.');
+                return false;
+            }
+
+            if (newName === oldName) {
+                this.showFieldError($error, $input, 'Please enter a different name.');
+                return false;
+            }
+
+            if (newName.length < 2) {
+                this.showFieldError($error, $input, 'Tour name must be at least 2 characters long.');
+                return false;
+            }
+
+            if (newName.length > 255) {
+                this.showFieldError($error, $input, 'Tour name is too long (maximum 255 characters).');
+                return false;
+            }
+
+            // Check for invalid characters
+            var invalidChars = /[^a-zA-Z0-9\s\-_]/;
+            if (invalidChars.test(newName)) {
+                this.showFieldError($error, $input, 'Tour name contains invalid characters.');
+                return false;
+            }
+
+            // Check for reserved names
+            var reservedNames = ['con', 'prn', 'aux', 'nul', 'com1', 'com2', 'com3', 'lpt1', 'lpt2'];
+            if (reservedNames.indexOf(newName.toLowerCase()) !== -1) {
+                this.showFieldError($error, $input, 'This name is reserved and cannot be used.');
+                return false;
+            }
+
+            return true;
+        },
+
+        /**
+         * Show field error message
+         */
+        showFieldError: function($error, $input, message) {
+            $error.text(message).show();
+            $input.addClass('h3tm-field-error-input').focus();
+        },
+
+        /**
+         * Perform the actual rename operation with progress indication
+         */
+        performRename: function(oldName, newName, $button, $row) {
+            // Show progress overlay
+            this.showProgressOverlay('Renaming tour...');
+
+            // Disable button
+            $button.prop('disabled', true);
+
+            $.ajax({
+                url: h3tm_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'h3tm_rename_tour',
+                    old_name: oldName,
+                    new_name: newName,
+                    nonce: h3tm_ajax.nonce
+                },
+                timeout: 120000, // 2 minute timeout for large tours
+                success: function(response) {
+                    if (response && response.success) {
+                        // Success - update UI
+                        H3TM_TourRename.updateTourRow($row, $button, oldName, newName);
+                        H3TM_TourRename.showSuccessMessage('Tour renamed successfully!');
+
+                        // Optional: reload page after delay to refresh everything
+                        setTimeout(function() {
+                            if (confirm('Tour renamed successfully! Would you like to refresh the page to see all updates?')) {
+                                location.reload();
+                            }
+                        }, 2000);
+                    } else {
+                        // Error - extract message properly
+                        var errorMessage = H3TM_TourRename.extractErrorMessage(response);
+                        H3TM_TourRename.showErrorMessage('Rename failed: ' + errorMessage);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    var errorMessage = 'An error occurred while renaming the tour.';
+
+                    if (status === 'timeout') {
+                        errorMessage = 'The rename operation timed out. The tour may still be processing in the background.';
+                    } else if (xhr.status === 0) {
+                        errorMessage = 'Network error. Please check your connection and try again.';
+                    } else if (xhr.status >= 500) {
+                        errorMessage = 'Server error. Please try again or contact support.';
+                    } else if (xhr.responseJSON && xhr.responseJSON.data) {
+                        errorMessage = xhr.responseJSON.data;
+                    }
+
+                    H3TM_TourRename.showErrorMessage(errorMessage);
+                },
+                complete: function() {
+                    H3TM_TourRename.hideProgressOverlay();
+                    $button.prop('disabled', false);
+                }
+            });
+        },
+
+        /**
+         * Extract error message from WordPress AJAX response
+         */
+        extractErrorMessage: function(response) {
+            if (!response) {
+                return 'Unknown error occurred.';
+            }
+
+            // WordPress wp_send_json_error() can send data in different formats
+            if (typeof response.data === 'string') {
+                return response.data;
+            } else if (response.data && response.data.message) {
+                return response.data.message;
+            } else if (response.data && typeof response.data === 'object') {
+                return JSON.stringify(response.data);
+            } else if (response.message) {
+                return response.message;
+            }
+
+            return 'An unknown error occurred.';
+        },
+
+        /**
+         * Update tour row with new name
+         */
+        updateTourRow: function($row, $button, oldName, newName) {
+            // Update tour name in first column
+            $row.find('td:first').text(newName);
+
+            // Update data attributes
+            $row.data('tour', newName);
+            $button.data('tour', newName);
+            $row.find('.delete-tour').data('tour', newName);
+
+            // Update URL if present
+            var $link = $row.find('a');
+            if ($link.length) {
+                var currentHref = $link.attr('href');
+                if (currentHref) {
+                    var newHref = currentHref.replace(
+                        encodeURIComponent(oldName),
+                        encodeURIComponent(newName)
+                    );
+                    $link.attr('href', newHref).text(newHref);
+                }
+            }
+
+            // Add visual feedback
+            $row.addClass('h3tm-row-updated');
+            setTimeout(function() {
+                $row.removeClass('h3tm-row-updated');
+            }, 3000);
+        },
+
+        /**
+         * Show progress overlay
+         */
+        showProgressOverlay: function(message) {
+            var overlay = '<div id="h3tm-progress-overlay" class="h3tm-progress-overlay">\n' +
+                         '  <div class="h3tm-progress-container">\n' +
+                         '    <div class="h3tm-spinner"></div>\n' +
+                         '    <p class="h3tm-progress-message">' + this.escapeHtml(message) + '</p>\n' +
+                         '    <div class="h3tm-progress-details">This may take a moment for large tours...</div>\n' +
+                         '  </div>\n' +
+                         '</div>';
+
+            $('body').append(overlay);
+            $('#h3tm-progress-overlay').addClass('h3tm-show');
+        },
+
+        /**
+         * Hide progress overlay
+         */
+        hideProgressOverlay: function() {
+            $('#h3tm-progress-overlay').removeClass('h3tm-show');
+            setTimeout(function() {
+                $('#h3tm-progress-overlay').remove();
+            }, 300);
+        },
+
+        /**
+         * Show success message
+         */
+        showSuccessMessage: function(message) {
+            this.showNotice(message, 'success');
+        },
+
+        /**
+         * Show error message
+         */
+        showErrorMessage: function(message) {
+            this.showNotice(message, 'error');
+        },
+
+        /**
+         * Show WordPress-style notice
+         */
+        showNotice: function(message, type) {
+            var notice = '<div class="notice notice-' + type + ' is-dismissible h3tm-notice">\n' +
+                        '  <p>' + this.escapeHtml(message) + '</p>\n' +
+                        '  <button type="button" class="notice-dismiss"><span class="screen-reader-text">Dismiss this notice.</span></button>\n' +
+                        '</div>';
+
+            // Insert after page title or at top of content
+            var $target = $('.wp-header-end').length ? $('.wp-header-end') : $('#wpbody-content h1').first();
+            if ($target.length) {
+                $target.after(notice);
+            } else {
+                $('#wpbody-content').prepend(notice);
+            }
+
+            // Handle dismiss button
+            $('.h3tm-notice .notice-dismiss').on('click', function() {
+                $(this).closest('.h3tm-notice').fadeOut(300, function() {
+                    $(this).remove();
+                });
+            });
+
+            // Auto-remove success messages after 5 seconds
+            if (type === 'success') {
+                setTimeout(function() {
+                    $('.h3tm-notice.notice-success').fadeOut(300, function() {
+                        $(this).remove();
+                    });
+                }, 5000);
+            }
+        },
+
+        /**
+         * Close modal dialog
+         */
+        closeModal: function($modal) {
+            $modal.removeClass('h3tm-modal-show');
+            $(document).off('keydown.h3tm-rename');
+
+            setTimeout(function() {
+                $modal.remove();
+            }, 300);
+        },
+
+        /**
+         * Escape HTML to prevent XSS
+         */
+        escapeHtml: function(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    };
     
     // Handle test email
     $('#h3tm-test-email-form').on('submit', function(e) {

@@ -3,8 +3,14 @@
  * Admin functionality
  */
 class H3TM_Admin {
-    
+
+    private $use_optimized = false;
+
     public function __construct() {
+        // Enable backend optimizations if available
+        if (class_exists('H3TM_Tour_Manager_Optimized')) {
+            $this->use_optimized = true;
+        }
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
         
@@ -16,6 +22,16 @@ class H3TM_Admin {
         add_action('wp_ajax_h3tm_delete_tour', array($this, 'handle_delete_tour'));
         add_action('wp_ajax_h3tm_rename_tour', array($this, 'handle_rename_tour'));
         // add_action('wp_ajax_h3tm_update_tours_analytics', array($this, 'handle_update_tours_analytics')); // Disabled with analytics settings
+    }
+
+    /**
+     * Get tour manager instance (optimized if available)
+     */
+    private function get_tour_manager() {
+        if ($this->use_optimized && class_exists('H3TM_Tour_Manager_Optimized')) {
+            return new H3TM_Tour_Manager_Optimized();
+        }
+        return new H3TM_Tour_Manager();
     }
     
     /**
@@ -97,7 +113,7 @@ class H3TM_Admin {
      * Render main tours management page
      */
     public function render_main_page() {
-        $tour_manager = new H3TM_Tour_Manager();
+        $tour_manager = $this->get_tour_manager();
         $tours = $tour_manager->get_all_tours();
         ?>
         <div class="wrap">
@@ -379,8 +395,8 @@ class H3TM_Admin {
         if (!isset($_FILES['tour_file']) || $_FILES['tour_file']['error'] !== UPLOAD_ERR_OK) {
             wp_send_json_error(__('File upload failed', 'h3-tour-management'));
         }
-        
-        $tour_manager = new H3TM_Tour_Manager();
+
+        $tour_manager = $this->get_tour_manager();
         $result = $tour_manager->upload_tour($tour_name, $_FILES['tour_file']);
         
         if ($result['success']) {
@@ -565,7 +581,7 @@ class H3TM_Admin {
         $this->cleanup_temp_dir($upload_temp_dir);
         
         // Process the uploaded file
-        $tour_manager = new H3TM_Tour_Manager();
+        $tour_manager = $this->get_tour_manager();
         $file_info = array(
             'name' => $file_name,
             'tmp_name' => $final_file,
@@ -610,8 +626,8 @@ class H3TM_Admin {
         }
         
         $tour_name = sanitize_text_field($_POST['tour_name']);
-        
-        $tour_manager = new H3TM_Tour_Manager();
+
+        $tour_manager = $this->get_tour_manager();
         $result = $tour_manager->delete_tour($tour_name);
         
         if ($result['success']) {
@@ -633,8 +649,8 @@ class H3TM_Admin {
         
         $old_name = sanitize_text_field($_POST['old_name']);
         $new_name = sanitize_text_field($_POST['new_name']);
-        
-        $tour_manager = new H3TM_Tour_Manager();
+
+        $tour_manager = $this->get_tour_manager();
         $result = $tour_manager->rename_tour($old_name, $new_name);
         
         if ($result['success']) {
@@ -817,8 +833,8 @@ class H3TM_Admin {
         if (!current_user_can('manage_options')) {
             wp_die('Unauthorized');
         }
-        
-        $tour_manager = new H3TM_Tour_Manager();
+
+        $tour_manager = $this->get_tour_manager();
         $tours = $tour_manager->get_all_tours();
         $updated = 0;
         $failed = 0;

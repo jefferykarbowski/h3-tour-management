@@ -81,3 +81,587 @@
 #h3tm-analytics-result-[id] {
     font-weight: 600;
 }
+
+/* Upload Progress Bar Gradient Enhancement */
+/* Container styles - enhance WordPress admin integration */
+#upload-progress-wrapper {
+    margin-top: 10px;
+    max-width: 100%;
+    position: relative;
+}
+
+#upload-progress {
+    width: 100%;
+    height: 20px;
+    background: #f0f0f0;
+    border: 1px solid #ccd0d4; /* WordPress admin border color */
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+    position: relative;
+}
+
+/* Main gradient progress bar */
+#upload-progress-bar {
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s ease-in-out;
+    position: relative;
+    overflow: hidden;
+
+    /* Red to Green Gradient - Primary Implementation */
+    background: linear-gradient(90deg,
+        #c1272d 0%,     /* Start: WordPress red */
+        #d73527 15%,    /* Deep red */
+        #e67e22 35%,    /* Orange transition */
+        #f1c40f 60%,    /* Yellow middle */
+        #27ae60 85%,    /* Green transition */
+        #2ecc71 100%    /* End: Success green */
+    );
+
+    /* Fallback for older browsers */
+    background: -webkit-linear-gradient(left,
+        #c1272d 0%, #d73527 15%, #e67e22 35%,
+        #f1c40f 60%, #27ae60 85%, #2ecc71 100%);
+    background: -moz-linear-gradient(left,
+        #c1272d 0%, #d73527 15%, #e67e22 35%,
+        #f1c40f 60%, #27ae60 85%, #2ecc71 100%);
+    background: -o-linear-gradient(left,
+        #c1272d 0%, #d73527 15%, #e67e22 35%,
+        #f1c40f 60%, #27ae60 85%, #2ecc71 100%);
+
+    /* IE10+ fallback */
+    background: -ms-linear-gradient(left,
+        #c1272d 0%, #d73527 15%, #e67e22 35%,
+        #f1c40f 60%, #27ae60 85%, #2ecc71 100%);
+}
+
+/* Enhanced visual effects */
+#upload-progress-bar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg,
+        rgba(255,255,255,0.3) 0%,
+        rgba(255,255,255,0.1) 50%,
+        rgba(255,255,255,0.3) 100%);
+    animation: shimmer 2s infinite;
+    border-radius: inherit;
+}
+
+/* Shimmer animation for modern browsers */
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* Progress text styling */
+#upload-progress-text {
+    text-align: center;
+    margin-top: 5px;
+    font-size: 12px;
+    color: #666;
+    font-weight: 500;
+}
+
+/* Responsive design considerations */
+@media screen and (max-width: 782px) {
+    #upload-progress {
+        height: 24px; /* Slightly taller on mobile */
+    }
+
+    #upload-progress-text {
+        font-size: 14px;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    #upload-progress {
+        border: 2px solid #000;
+    }
+
+    #upload-progress-bar {
+        background: linear-gradient(90deg,
+            #8B0000 0%,     /* Dark red */
+            #FF4500 25%,    /* Orange red */
+            #FFD700 50%,    /* Gold */
+            #228B22 75%,    /* Forest green */
+            #006400 100%    /* Dark green */
+        );
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    #upload-progress-bar {
+        transition: none;
+    }
+
+    #upload-progress-bar::before {
+        animation: none;
+    }
+}
+
+/* IE11 specific fallback */
+.ie11 #upload-progress-bar {
+    background: #c1272d; /* Fallback to solid red */
+    filter: progid:DXImageTransform.Microsoft.gradient(
+        startColorstr='#c1272d',
+        endColorstr='#2ecc71',
+        GradientType=1
+    );
+}
+
+/* ============================================================================
+   TOUR RENAME UX ENHANCEMENT - Professional Modal Dialog & Progress System
+   ============================================================================ */
+
+/* Modal Overlay & Container */
+.h3tm-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    backdrop-filter: blur(2px);
+}
+
+.h3tm-modal-overlay.h3tm-modal-show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.h3tm-modal-container {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow: hidden;
+    transform: translateY(-30px) scale(0.95);
+    transition: transform 0.3s ease;
+}
+
+.h3tm-modal-show .h3tm-modal-container {
+    transform: translateY(0) scale(1);
+}
+
+/* Modal Header */
+.h3tm-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid #ddd;
+    background: #f9f9f9;
+}
+
+.h3tm-modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.h3tm-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    color: #666;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.h3tm-modal-close:hover {
+    background: #e0e0e0;
+    color: #333;
+}
+
+.h3tm-modal-close:focus {
+    outline: 2px solid #2271b1;
+    outline-offset: 2px;
+}
+
+/* Modal Body */
+.h3tm-modal-body {
+    padding: 24px;
+}
+
+.h3tm-modal-body p {
+    margin: 0 0 20px;
+    color: #3c434a;
+    line-height: 1.5;
+}
+
+/* Form Fields */
+.h3tm-form-field {
+    margin-bottom: 20px;
+}
+
+.h3tm-form-field label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #1d2327;
+    font-size: 14px;
+}
+
+.h3tm-form-field input[type="text"] {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    background: #fff;
+}
+
+.h3tm-form-field input[type="text"]:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.1);
+    outline: none;
+}
+
+.h3tm-form-field input.h3tm-field-error-input {
+    border-color: #d63638;
+    box-shadow: 0 0 0 3px rgba(214, 54, 56, 0.1);
+}
+
+/* Field Error Messages */
+.h3tm-field-error {
+    display: none;
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #fcf0f1;
+    border: 1px solid #f0b2b5;
+    border-radius: 4px;
+    color: #d63638;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* Field Hints */
+.h3tm-field-hint {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #646970;
+    line-height: 1.4;
+}
+
+/* Modal Footer */
+.h3tm-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px 20px;
+    border-top: 1px solid #ddd;
+    background: #f9f9f9;
+}
+
+.h3tm-modal-footer .button {
+    margin: 0;
+    padding: 8px 20px;
+    font-size: 14px;
+    line-height: 1.4;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.h3tm-modal-footer .button-primary {
+    background: #2271b1;
+    border-color: #2271b1;
+    color: #fff;
+}
+
+.h3tm-modal-footer .button-primary:hover {
+    background: #135e96;
+    border-color: #135e96;
+}
+
+.h3tm-modal-footer .button-primary:focus {
+    box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.3);
+}
+
+.h3tm-modal-footer .button-secondary {
+    background: #f6f7f7;
+    border-color: #dcdcde;
+    color: #3c434a;
+}
+
+.h3tm-modal-footer .button-secondary:hover {
+    background: #f0f0f1;
+    border-color: #c3c4c7;
+}
+
+/* Progress Overlay System */
+.h3tm-progress-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    z-index: 100001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    backdrop-filter: blur(3px);
+}
+
+.h3tm-progress-overlay.h3tm-show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.h3tm-progress-container {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+    padding: 40px;
+    text-align: center;
+    max-width: 400px;
+    transform: translateY(-20px) scale(0.95);
+    transition: transform 0.3s ease;
+}
+
+.h3tm-show .h3tm-progress-container {
+    transform: translateY(0) scale(1);
+}
+
+/* Advanced Spinner Animation */
+.h3tm-spinner {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 24px;
+    border: 4px solid #f3f4f6;
+    border-top: 4px solid #2271b1;
+    border-radius: 50%;
+    animation: h3tm-spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+    position: relative;
+}
+
+.h3tm-spinner::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: -4px;
+    border: 2px solid transparent;
+    border-top: 2px solid rgba(34, 113, 177, 0.3);
+    border-radius: 50%;
+    animation: h3tm-spin-reverse 2s linear infinite;
+}
+
+@keyframes h3tm-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes h3tm-spin-reverse {
+    0% { transform: rotate(360deg); }
+    100% { transform: rotate(0deg); }
+}
+
+.h3tm-progress-message {
+    margin: 0 0 12px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1d2327;
+    line-height: 1.3;
+}
+
+.h3tm-progress-details {
+    margin: 0;
+    font-size: 14px;
+    color: #646970;
+    line-height: 1.4;
+}
+
+/* Enhanced Notice System */
+.h3tm-notice {
+    margin: 16px 0;
+    animation: h3tm-notice-slide-in 0.3s ease-out;
+}
+
+@keyframes h3tm-notice-slide-in {
+    from {
+        transform: translateY(-10px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Row Update Visual Feedback */
+.h3tm-row-updated {
+    background-color: #e7f5e7;
+    transition: background-color 0.3s ease;
+}
+
+.h3tm-row-updated td {
+    position: relative;
+    overflow: hidden;
+}
+
+.h3tm-row-updated td::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(34, 113, 177, 0.1), transparent);
+    animation: h3tm-row-highlight 1s ease-out;
+}
+
+@keyframes h3tm-row-highlight {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* Responsive Design for Mobile */
+@media screen and (max-width: 782px) {
+    .h3tm-modal-container {
+        width: 95%;
+        margin: 20px;
+    }
+
+    .h3tm-modal-header,
+    .h3tm-modal-body,
+    .h3tm-modal-footer {
+        padding: 16px;
+    }
+
+    .h3tm-modal-footer {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .h3tm-modal-footer .button {
+        width: 100%;
+    }
+
+    .h3tm-progress-container {
+        margin: 20px;
+        padding: 30px 20px;
+    }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+    .h3tm-modal-container {
+        border: 2px solid #000;
+    }
+
+    .h3tm-modal-header,
+    .h3tm-modal-footer {
+        border-color: #000;
+    }
+
+    .h3tm-form-field input[type="text"] {
+        border: 2px solid #000;
+    }
+
+    .h3tm-form-field input[type="text"]:focus {
+        border-color: #0000ff;
+        box-shadow: 0 0 0 3px rgba(0, 0, 255, 0.3);
+    }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+    .h3tm-modal-overlay,
+    .h3tm-modal-container,
+    .h3tm-progress-overlay,
+    .h3tm-progress-container {
+        transition: none;
+    }
+
+    .h3tm-spinner {
+        animation: none;
+        border-top-color: #2271b1;
+    }
+
+    .h3tm-spinner::after {
+        animation: none;
+    }
+
+    @keyframes h3tm-notice-slide-in,
+    @keyframes h3tm-row-highlight {
+        from, to {
+            transform: none;
+            opacity: 1;
+            left: 0;
+        }
+    }
+}
+
+/* Focus Management */
+.h3tm-modal-overlay[aria-hidden="true"] {
+    visibility: hidden;
+}
+
+/* Enhanced Button States */
+.rename-tour:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Loading State for Rename Button */
+.rename-tour.h3tm-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.rename-tour.h3tm-loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin: -8px 0 0 -8px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: h3tm-spin 0.8s linear infinite;
+}
+
+/* WordPress Admin Integration Improvements */
+.wp-list-table .h3tm-notice {
+    margin: 10px 0;
+}
+
+/* Print Styles */
+@media print {
+    .h3tm-modal-overlay,
+    .h3tm-progress-overlay {
+        display: none !important;
+    }
+}
