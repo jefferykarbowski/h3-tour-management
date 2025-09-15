@@ -101,39 +101,20 @@
     position: relative;
 }
 
-/* Main gradient progress bar */
+/* Main gradient progress bar - Progressive Fill */
 #upload-progress-bar {
     height: 100%;
     width: 0%;
-    transition: width 0.3s ease-in-out;
+    transition: width 0.3s ease-in-out, background 0.2s ease-in-out;
     position: relative;
     overflow: hidden;
+    background: #c1272d; /* Start with solid red, will be updated by JavaScript */
+}
 
-    /* Red to Green Gradient - Primary Implementation */
-    background: linear-gradient(90deg,
-        #c1272d 0%,     /* Start: WordPress red */
-        #d73527 15%,    /* Deep red */
-        #e67e22 35%,    /* Orange transition */
-        #f1c40f 60%,    /* Yellow middle */
-        #27ae60 85%,    /* Green transition */
-        #2ecc71 100%    /* End: Success green */
-    );
-
-    /* Fallback for older browsers */
-    background: -webkit-linear-gradient(left,
-        #c1272d 0%, #d73527 15%, #e67e22 35%,
-        #f1c40f 60%, #27ae60 85%, #2ecc71 100%);
-    background: -moz-linear-gradient(left,
-        #c1272d 0%, #d73527 15%, #e67e22 35%,
-        #f1c40f 60%, #27ae60 85%, #2ecc71 100%);
-    background: -o-linear-gradient(left,
-        #c1272d 0%, #d73527 15%, #e67e22 35%,
-        #f1c40f 60%, #27ae60 85%, #2ecc71 100%);
-
-    /* IE10+ fallback */
-    background: -ms-linear-gradient(left,
-        #c1272d 0%, #d73527 15%, #e67e22 35%,
-        #f1c40f 60%, #27ae60 85%, #2ecc71 100%);
+/* Fallback for older browsers - use solid color progression */
+.ie11 #upload-progress-bar {
+    background: #c1272d; /* Fallback to solid red progression */
+    transition: width 0.3s ease-in-out; /* Remove background transition for IE11 */
 }
 
 /* Enhanced visual effects */
@@ -158,13 +139,21 @@
     100% { transform: translateX(100%); }
 }
 
-/* Progress text styling */
+/* Progress text styling with time remaining support */
 #upload-progress-text {
     text-align: center;
     margin-top: 5px;
     font-size: 12px;
     color: #666;
     font-weight: 500;
+    line-height: 1.4;
+    min-height: 18px; /* Prevent layout shift when time remaining appears */
+}
+
+/* Enhanced progress text styling */
+#upload-progress-text .time-remaining {
+    color: #2271b1;
+    font-weight: 600;
 }
 
 /* Responsive design considerations */

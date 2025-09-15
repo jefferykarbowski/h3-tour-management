@@ -48,6 +48,10 @@ jQuery(document).ready(function($) {
         var chunks = Math.ceil(file.size / chunkSize);
         var currentChunk = 0;
         var uniqueId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+        // Time tracking for remaining time calculation
+        var startTime = Date.now();
+        var lastProgressTime = startTime;
         
         $spinner.addClass('is-active');
         $result.hide();
@@ -93,14 +97,38 @@ jQuery(document).ready(function($) {
                     if (response.success) {
                         currentChunk++;
                         var progress = Math.round((currentChunk / chunks) * 100);
-                        
+                        var currentTime = Date.now();
+
+                        // Update progress bar width and progressive gradient
                         $('#upload-progress-bar').css('width', progress + '%');
-                        $progressText.text(progress + '%');
-                        
-                        // Show free space if available
-                        if (response.data.free_space) {
-                            $progressText.text(progress + '% (Free space: ' + response.data.free_space + ')');
+                        updateProgressiveGradient(progress);
+
+                        // Calculate time remaining
+                        var timeElapsed = (currentTime - startTime) / 1000; // seconds
+                        var timeRemaining = '';
+
+                        if (progress > 5 && timeElapsed > 1) { // Only show after 5% and 1 second
+                            var estimatedTotal = (timeElapsed / progress) * 100;
+                            var remaining = Math.max(0, estimatedTotal - timeElapsed);
+
+                            if (remaining > 60) {
+                                var minutes = Math.ceil(remaining / 60);
+                                timeRemaining = ' • ~' + minutes + 'm remaining';
+                            } else if (remaining > 10) {
+                                timeRemaining = ' • ~' + Math.ceil(remaining) + 's remaining';
+                            } else if (remaining > 0) {
+                                timeRemaining = ' • finishing up...';
+                            }
                         }
+
+                        // Update progress text with percentage and time remaining
+                        if (timeRemaining) {
+                            $progressText.html(progress + '%<span class="time-remaining">' + timeRemaining + '</span>');
+                        } else {
+                            $progressText.text(progress + '%');
+                        }
+
+                        lastProgressTime = currentTime;
                         
                         if (currentChunk < chunks) {
                             // Small delay between chunks to prevent overload
@@ -213,7 +241,101 @@ jQuery(document).ready(function($) {
         // Start upload
         uploadChunk(0);
     });
-    
+
+    /**
+     * Update progress bar with progressive gradient based on percentage
+     */
+    function updateProgressiveGradient(progress) {
+        var $progressBar = $('#upload-progress-bar');
+
+        // Don't update gradient in IE11
+        if (document.documentElement.className.indexOf('ie11') !== -1) {
+            return;
+        }
+
+        // Calculate gradient based on progress
+        var gradient = '';
+
+        if (progress <= 0) {
+            gradient = '#c1272d'; // Pure red at start
+        } else if (progress >= 100) {
+            gradient = 'linear-gradient(90deg, #c1272d 0%, #d73527 15%, #e67e22 35%, #f1c40f 60%, #27ae60 85%, #2ecc71 100%)';
+        } else {
+            // Progressive gradient - only show colors up to current progress
+            var colors = [
+                {percent: 0, color: '#c1272d'},   // WordPress red
+                {percent: 15, color: '#d73527'},  // Deep red
+                {percent: 35, color: '#e67e22'},  // Orange
+                {percent: 60, color: '#f1c40f'},  // Yellow
+                {percent: 85, color: '#27ae60'},  // Green transition
+                {percent: 100, color: '#2ecc71'} // Success green
+            ];
+
+            var stops = [];
+            var lastColor = '#c1272d';
+
+            for (var i = 0; i < colors.length; i++) {
+                if (colors[i].percent <= progress) {
+                    // This color should be included
+                    var adjustedPercent = (colors[i].percent / progress) * 100;
+                    stops.push(colors[i].color + ' ' + Math.round(adjustedPercent) + '%');
+                    lastColor = colors[i].color;
+                } else {
+                    // Map the remaining progress to this color range
+                    var prevColor = i > 0 ? colors[i-1] : colors[0];
+                    var progressInRange = (progress - prevColor.percent) / (colors[i].percent - prevColor.percent);
+                    var interpolatedColor = interpolateColor(prevColor.color, colors[i].color, progressInRange);
+                    stops.push(interpolatedColor + ' 100%');
+                    break;
+                }
+            }
+
+            if (stops.length > 1) {
+                gradient = 'linear-gradient(90deg, ' + stops.join(', ') + ')';
+            } else {
+                gradient = lastColor;
+            }
+        }
+
+        $progressBar.css('background', gradient);
+    }
+
+    /**
+     * Interpolate between two hex colors
+     */
+    function interpolateColor(color1, color2, factor) {
+        if (factor <= 0) return color1;
+        if (factor >= 1) return color2;
+
+        var c1 = hexToRgb(color1);
+        var c2 = hexToRgb(color2);
+
+        var r = Math.round(c1.r + (c2.r - c1.r) * factor);
+        var g = Math.round(c1.g + (c2.g - c1.g) * factor);
+        var b = Math.round(c1.b + (c2.b - c1.b) * factor);
+
+        return rgbToHex(r, g, b);
+    }
+
+    /**
+     * Convert hex color to RGB object
+     */
+    function hexToRgb(hex) {
+        var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : null;
+    }
+
+    /**
+     * Convert RGB values to hex color
+     */
+    function rgbToHex(r, g, b) {
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+
     // Handle tour deletion
     $('.delete-tour').on('click', function() {
         var tourName = $(this).data('tour');
