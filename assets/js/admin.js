@@ -197,7 +197,10 @@ jQuery(document).ready(function($) {
         
         function processUploadedFile() {
             $progressText.text('Processing uploaded file...');
-            
+
+            var processStartTime = Date.now();
+            var maxWaitTime = 90000; // 90 seconds max wait for Pantheon
+
             $.ajax({
                 url: h3tm_ajax.ajax_url,
                 type: 'POST',
@@ -208,34 +211,78 @@ jQuery(document).ready(function($) {
                     unique_id: uniqueId,
                     file_name: file.name
                 },
+                timeout: maxWaitTime,
                 success: function(response) {
-                    if (response.success) {
+                    if (response && response.success) {
+                        // Success - show message and refresh
                         $result.removeClass('notice-error').addClass('notice-success');
-                        $result.html('<p>' + response.data + '</p>');
+                        $result.html('<p>' + (response.data || response.message || 'Tour uploaded successfully!') + '</p>');
                         $form[0].reset();
                         $('#upload-progress-wrapper').hide();
-                        
-                        // Reload page after 2 seconds to show new tour
-                        setTimeout(function() {
-                            location.reload();
-                        }, 2000);
+                        $result.show();
+
+                        // Show countdown and reload
+                        showSuccessAndReload('Tour uploaded successfully! Refreshing page...');
                     } else {
+                        // Error response
+                        handleProcessError(response);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Process upload error:', status, error, xhr);
+
+                    if (status === 'timeout') {
+                        // On timeout, assume success since tour appears after manual refresh
+                        showTimeoutSuccessMessage();
+                    } else {
+                        // Other errors
                         $result.removeClass('notice-success').addClass('notice-error');
-                        $result.html('<p>' + response.data + '</p>');
+                        $result.html('<p>An error occurred while processing the tour. Error: ' + status + '</p>');
+                        $result.show();
                         $('#upload-progress-wrapper').hide();
                     }
-                    $result.show();
-                },
-                error: function() {
-                    $result.removeClass('notice-success').addClass('notice-error');
-                    $result.html('<p>An error occurred while processing the tour.</p>');
-                    $result.show();
-                    $('#upload-progress-wrapper').hide();
                 },
                 complete: function() {
                     $spinner.removeClass('is-active');
                 }
             });
+        }
+
+        function handleProcessError(response) {
+            $result.removeClass('notice-success').addClass('notice-error');
+
+            var errorMessage = 'Upload processing failed.';
+            if (response && response.data) {
+                if (typeof response.data === 'string') {
+                    errorMessage = response.data;
+                } else if (response.data.message) {
+                    errorMessage = response.data.message;
+                }
+            }
+
+            $result.html('<p>' + errorMessage + '</p>');
+            $('#upload-progress-wrapper').hide();
+            $result.show();
+        }
+
+        function showSuccessAndReload(message) {
+            var countdown = 3;
+            var countdownInterval = setInterval(function() {
+                $progressText.text(message + ' (' + countdown + 's)');
+                countdown--;
+
+                if (countdown < 0) {
+                    clearInterval(countdownInterval);
+                    location.reload();
+                }
+            }, 1000);
+        }
+
+        function showTimeoutSuccessMessage() {
+            $result.removeClass('notice-error').addClass('notice-warning');
+            $result.html('<p><strong>Upload Status:</strong> The upload process timed out, but the tour may have been uploaded successfully. <button type="button" class="button button-secondary" onclick="location.reload();">Refresh Page to Check</button></p>');
+            $('#upload-progress-wrapper').hide();
+            $result.show();
         }
         
         // Start upload
