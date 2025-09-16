@@ -184,34 +184,23 @@ class H3TM_Analytics {
     }
     
     /**
-     * Generate analytics email body
+     * Generate analytics email body with updated metrics
      */
     private function generate_analytics_email($tour, $tour_title) {
-        // Get analytics data
+        // Get analytics data with new vs returning user breakdown
         $weekAgo = date('Y-m-d', strtotime('-7 days'));
-        $weekStats = $this->get_report($tour_title, $weekAgo);
-        $weekData = $this->report_results($weekStats);
-        
+        $weekStats = $this->get_enhanced_report($tour_title, $weekAgo);
+
         $monthAgo = date('Y-m-d', strtotime('-30 days'));
-        $monthStats = $this->get_report($tour_title, $monthAgo);
-        $monthData = $this->report_results($monthStats);
-        
+        $monthStats = $this->get_enhanced_report($tour_title, $monthAgo);
+
         $ninetyDaysAgo = date('Y-m-d', strtotime('-90 days'));
-        $ninetyDayStats = $this->get_report($tour_title, $ninetyDaysAgo);
-        $ninetyDayData = $this->report_results($ninetyDayStats);
-        
+        $ninetyDayStats = $this->get_enhanced_report($tour_title, $ninetyDaysAgo);
+
         $threeYearsAgo = date('Y-m-d', strtotime('-3 years'));
-        $allTimeStats = $this->get_report($tour_title, $threeYearsAgo);
-        $allTimeData = $this->report_results($allTimeStats);
+        $allTimeStats = $this->get_enhanced_report($tour_title, $threeYearsAgo);
         
-        $oneThousandDaysAgo = date('Y-m-d', strtotime('-999 days'));
-        $countries = $this->get_countries($tour_title, $oneThousandDaysAgo);
-        $countryTable = $this->country_results($countries);
-        
-        $usersResponse = $this->get_new_vs_returning_users($tour_title, $oneThousandDaysAgo);
-        $usersChart = $this->new_vs_returning_users_chart($usersResponse);
-        
-        // Build email HTML
+        // Build clean email HTML - removed thumbnail, pie chart, and country table
         $body = '<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -235,76 +224,51 @@ class H3TM_Analytics {
             <td align="center" style="padding: 12px 15px;font-family: Arial, sans-serif;">
                 <table role="presentation" style="width: 602px;border-collapse: collapse;border: 1px solid #cccccc;border-spacing: 0;text-align: left;font-family: Arial, sans-serif;">
                     <tr>
-                        <td align="center" style="padding: 40px 0 30px 0;background: #000000;font-family: Arial, sans-serif;">
-                            <img src="' . site_url('/' . H3TM_TOUR_DIR . '/' . rawurlencode($tour) . '/thumbnail.png') . '" alt="' . esc_attr($tour) . '" width="300" >
+                        <td style="padding: 40px 30px 30px 30px;font-family: Arial, sans-serif;">
+                            <h1 style="font-size:28px;margin:0 0 30px 0;font-family:Arial,sans-serif;color:#153643;text-align:center;">' . esc_html($tour_title) . '</h1>
+                            <table class="styled-table" style="font-family: Arial, sans-serif;border-collapse: collapse;margin: 25px 0;font-size: 16px;min-width: 500px;box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);width: 100%;color: #000;text-align: left;background-color: #f3f3f3;">
+                                <thead>
+                                    <tr style="background-color: #000;color: #ffffff;">
+                                        <th style="padding: 15px;font-size: 16px;font-weight: bold;">Period</th>
+                                        <th style="padding: 15px;font-size: 16px;font-weight: bold;">Total Tour Views</th>
+                                        <th style="padding: 15px;font-size: 16px;font-weight: bold;">New Users</th>
+                                        <th style="padding: 15px;font-size: 16px;font-weight: bold;">Repeat Users</th>
+                                        <th style="padding: 15px;font-size: 16px;font-weight: bold;">Avg Time on Tour</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="border-bottom: 1px solid #dddddd;">
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">Last 7 Days</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $weekStats['sessions'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $weekStats['new_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $weekStats['returning_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $this->format_duration($weekStats['avg_time']) . '</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid #dddddd;">
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">Last Month</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $monthStats['sessions'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $monthStats['new_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $monthStats['returning_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $this->format_duration($monthStats['avg_time']) . '</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid #dddddd;">
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">Last 90 Days</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $ninetyDayStats['sessions'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $ninetyDayStats['new_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $ninetyDayStats['returning_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $this->format_duration($ninetyDayStats['avg_time']) . '</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">All Time</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $allTimeStats['sessions'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $allTimeStats['new_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $allTimeStats['returning_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $this->format_duration($allTimeStats['avg_time']) . '</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </td>
                     </tr>
-                    <tr>
-                        <td style="padding: 36px 30px 42px 30px;font-family: Arial, sans-serif;">
-                            <table role="presentation" style="width: 100%;border-collapse: collapse;border: 0;border-spacing: 0;font-family: Arial, sans-serif;">
-                                <tr>
-                                    <td style="padding: 0 0 36px 0;color: #153643;font-family: Arial, sans-serif;">
-                                        <h1 style="font-size:24px;margin:0 0 20px 0;font-family:Arial,sans-serif;">' . esc_html($tour_title) . '</h1>
-                                        <table class="styled-table" style="font-family: sans-serif;border-collapse: collapse;margin: 25px 0;font-size: 0.9em;min-width: 400px;box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);width: 100%;color: #000;text-align: left;background-color: #f3f3f3;">
-                                            <thead>
-                                                <tr style="background-color: #000;color: #ffffff;">
-                                                    <th style="padding: 12px 15px;"></th>
-                                                    <th style="padding: 12px 15px;">Total Photos Viewed</th>
-                                                    <th style="padding: 12px 15px;">Total Tour Views</th>
-                                                    <th style="padding: 12px 15px;">Total Visitors</th>
-                                                    <th style="padding: 12px 15px;">Images Per Visitor</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr style="border-bottom: 1px solid #dddddd;">
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">Last 7 Days</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[0] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[1] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[2] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[3] . '</td>
-                                                </tr>
-                                                <tr style="border-bottom: 1px solid #dddddd;">
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">Last Month</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[0] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[1] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[2] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[3] . '</td>
-                                                </tr>
-                                                <tr style="border-bottom: 1px solid #dddddd;">
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">Last 90 Days</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[0] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[1] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[2] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[3] . '</td>
-                                                </tr>
-                                                <tr style="border-bottom: 1px solid #dddddd;">
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">All Time</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[0] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[1] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[2] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[3] . '</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 12px 15px;font-family: Arial, sans-serif;">
-                                        <table role="presentation" style="width: 100%;border-collapse: collapse;border: 0;border-spacing: 0;font-family: Arial, sans-serif;">
-                                            <tr>
-                                                <td style="width: 260px;padding: 12px 15px;vertical-align: top;color: #153643;font-family: Arial, sans-serif;">
-                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">New vs Returning Visitors</p>
-                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">' . $usersChart . '</p>
-                                                </td>
-                                                <td style="width: 20px;padding: 12px 15px;font-size: 0;line-height: 0;font-family: Arial, sans-serif;">&nbsp;</td>
-                                                <td style="width: 260px;padding: 12px 15px;vertical-align: top;color: #153643;font-family: Arial, sans-serif;">
-                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">Visitors by Country</p>
-                                                    ' . $countryTable . '
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
                             </table>
                         </td>
                     </tr>
@@ -340,7 +304,74 @@ class H3TM_Analytics {
         
         return $body;
     }
-    
+
+    /**
+     * Get enhanced analytics report with new vs returning user breakdown
+     */
+    private function get_enhanced_report($page_title, $start_date) {
+        // Get basic metrics
+        $basic_report = $this->get_report($page_title, $start_date);
+        $basic_data = $this->report_results($basic_report);
+
+        // Get new vs returning users
+        $users_report = $this->get_new_vs_returning_users($page_title, $start_date);
+        $users_data = $this->extract_user_breakdown($users_report);
+
+        return array(
+            'sessions' => $basic_data[1], // Total Tour Views (sessions)
+            'new_users' => $users_data['new'],
+            'returning_users' => $users_data['returning'],
+            'avg_time' => $basic_data[3] // Average session duration
+        );
+    }
+
+    /**
+     * Extract new vs returning user counts from analytics response
+     */
+    private function extract_user_breakdown($response) {
+        $newUsers = 0;
+        $returningUsers = 0;
+
+        $rows = $response->getRows();
+        if (!empty($rows)) {
+            foreach ($rows as $row) {
+                $dimensionValues = $row->getDimensionValues();
+                $metricValues = $row->getMetricValues();
+
+                $userType = $dimensionValues[0]->getValue();
+                $count = $metricValues[0]->getValue();
+
+                if ($userType === 'new') {
+                    $newUsers = $count;
+                } elseif ($userType === 'returning') {
+                    $returningUsers = $count;
+                }
+            }
+        }
+
+        return array(
+            'new' => $newUsers,
+            'returning' => $returningUsers
+        );
+    }
+
+    /**
+     * Format duration in seconds to human readable format
+     */
+    private function format_duration($seconds) {
+        if ($seconds < 60) {
+            return round($seconds) . 's';
+        } elseif ($seconds < 3600) {
+            $minutes = floor($seconds / 60);
+            $secs = round($seconds % 60);
+            return $minutes . 'm ' . $secs . 's';
+        } else {
+            $hours = floor($seconds / 3600);
+            $minutes = floor(($seconds % 3600) / 60);
+            return $hours . 'h ' . $minutes . 'm';
+        }
+    }
+
     /**
      * Generate consolidated analytics email for multiple tours
      */
@@ -369,107 +400,64 @@ class H3TM_Analytics {
             <td align="center" style="padding: 12px 15px;font-family: Arial, sans-serif;">
                 <table role="presentation" style="width: 602px;border-collapse: collapse;border: 1px solid #cccccc;border-spacing: 0;text-align: left;font-family: Arial, sans-serif;">';
         
-        // Add a section for each tour
+        // Add a section for each tour with updated metrics
         foreach ($tours as $tour) {
             $tour_title = trim($tour_manager->get_tour_title($tour));
-            
-            // Get analytics data for this tour
-            $weekAgo = date('Y-m-d', strtotime('-7 days'));
-            $weekStats = $this->get_report($tour_title, $weekAgo);
-            $weekData = $this->report_results($weekStats);
-            
-            $monthAgo = date('Y-m-d', strtotime('-30 days'));
-            $monthStats = $this->get_report($tour_title, $monthAgo);
-            $monthData = $this->report_results($monthStats);
-            
-            $ninetyDaysAgo = date('Y-m-d', strtotime('-90 days'));
-            $ninetyDayStats = $this->get_report($tour_title, $ninetyDaysAgo);
-            $ninetyDayData = $this->report_results($ninetyDayStats);
-            
-            $threeYearsAgo = date('Y-m-d', strtotime('-3 years'));
-            $allTimeStats = $this->get_report($tour_title, $threeYearsAgo);
-            $allTimeData = $this->report_results($allTimeStats);
-            
-            $oneThousandDaysAgo = date('Y-m-d', strtotime('-999 days'));
-            $countries = $this->get_countries($tour_title, $oneThousandDaysAgo);
-            $countryTable = $this->country_results($countries);
-            
-            $usersResponse = $this->get_new_vs_returning_users($tour_title, $oneThousandDaysAgo);
-            $usersChart = $this->new_vs_returning_users_chart($usersResponse);
-            
-            // Add tour section
+
+            // Get enhanced analytics data for this tour
+            $weekStats = $this->get_enhanced_report($tour_title, date('Y-m-d', strtotime('-7 days')));
+            $monthStats = $this->get_enhanced_report($tour_title, date('Y-m-d', strtotime('-30 days')));
+            $ninetyDayStats = $this->get_enhanced_report($tour_title, date('Y-m-d', strtotime('-90 days')));
+            $allTimeStats = $this->get_enhanced_report($tour_title, date('Y-m-d', strtotime('-3 years')));
+
+            // Add clean tour section without thumbnail, pie chart, or country table
             $body .= '
                     <tr>
-                        <td align="center" style="padding: 40px 0 30px 0;background: #000000;font-family: Arial, sans-serif;">
-                            <img src="' . site_url('/' . H3TM_TOUR_DIR . '/' . rawurlencode($tour) . '/thumbnail.png') . '" alt="' . esc_attr($tour) . '" width="300" >
+                        <td style="padding: 40px 30px 30px 30px;font-family: Arial, sans-serif;">
+                            <h1 style="font-size:28px;margin:0 0 30px 0;font-family:Arial,sans-serif;color:#153643;text-align:center;">' . esc_html($tour_title) . '</h1>
+                            <table class="styled-table" style="font-family: Arial, sans-serif;border-collapse: collapse;margin: 25px 0;font-size: 16px;min-width: 500px;box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);width: 100%;color: #000;text-align: left;background-color: #f3f3f3;">
+                                <thead>
+                                    <tr style="background-color: #000;color: #ffffff;">
+                                        <th style="padding: 15px;font-size: 16px;font-weight: bold;">Period</th>
+                                        <th style="padding: 15px;font-size: 16px;font-weight: bold;">Total Tour Views</th>
+                                        <th style="padding: 15px;font-size: 16px;font-weight: bold;">New Users</th>
+                                        <th style="padding: 15px;font-size: 16px;font-weight: bold;">Repeat Users</th>
+                                        <th style="padding: 15px;font-size: 16px;font-weight: bold;">Avg Time on Tour</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="border-bottom: 1px solid #dddddd;">
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">Last 7 Days</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $weekStats['sessions'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $weekStats['new_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $weekStats['returning_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $this->format_duration($weekStats['avg_time']) . '</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid #dddddd;">
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">Last Month</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $monthStats['sessions'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $monthStats['new_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $monthStats['returning_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $this->format_duration($monthStats['avg_time']) . '</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid #dddddd;">
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">Last 90 Days</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $ninetyDayStats['sessions'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $ninetyDayStats['new_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $ninetyDayStats['returning_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $this->format_duration($ninetyDayStats['avg_time']) . '</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">All Time</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $allTimeStats['sessions'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $allTimeStats['new_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $allTimeStats['returning_users'] . '</td>
+                                        <td style="font-family: Arial, sans-serif;padding: 15px;font-size: 16px;">' . $this->format_duration($allTimeStats['avg_time']) . '</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 36px 30px 42px 30px;font-family: Arial, sans-serif;">
-                            <table role="presentation" style="width: 100%;border-collapse: collapse;border: 0;border-spacing: 0;font-family: Arial, sans-serif;">
-                                <tr>
-                                    <td style="padding: 0 0 36px 0;color: #153643;font-family: Arial, sans-serif;">
-                                        <h1 style="font-size:24px;margin:0 0 20px 0;font-family:Arial,sans-serif;">' . esc_html($tour_title) . '</h1>
-                                        <table class="styled-table" style="font-family: sans-serif;border-collapse: collapse;margin: 25px 0;font-size: 0.9em;min-width: 400px;box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);width: 100%;color: #000;text-align: left;background-color: #f3f3f3;">
-                                            <thead>
-                                                <tr style="background-color: #000;color: #ffffff;">
-                                                    <th style="padding: 12px 15px;"></th>
-                                                    <th style="padding: 12px 15px;">Total Photos Viewed</th>
-                                                    <th style="padding: 12px 15px;">Total Tour Views</th>
-                                                    <th style="padding: 12px 15px;">Total Visitors</th>
-                                                    <th style="padding: 12px 15px;">Images Per Visitor</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr style="border-bottom: 1px solid #dddddd;">
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">Last 7 Days</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[0] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[1] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[2] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $weekData[3] . '</td>
-                                                </tr>
-                                                <tr style="border-bottom: 1px solid #dddddd;">
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">Last Month</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[0] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[1] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[2] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $monthData[3] . '</td>
-                                                </tr>
-                                                <tr style="border-bottom: 1px solid #dddddd;">
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">Last 90 Days</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[0] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[1] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[2] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $ninetyDayData[3] . '</td>
-                                                </tr>
-                                                <tr style="border-bottom: 1px solid #dddddd;">
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">All Time</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[0] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[1] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[2] . '</td>
-                                                    <td style="font-family: Arial, sans-serif;padding: 12px 15px;">' . $allTimeData[3] . '</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 12px 15px;font-family: Arial, sans-serif;">
-                                        <table role="presentation" style="width: 100%;border-collapse: collapse;border: 0;border-spacing: 0;font-family: Arial, sans-serif;">
-                                            <tr>
-                                                <td style="width: 260px;padding: 12px 15px;vertical-align: top;color: #153643;font-family: Arial, sans-serif;">
-                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">New vs Returning Visitors</p>
-                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">' . $usersChart . '</p>
-                                                </td>
-                                                <td style="width: 20px;padding: 12px 15px;font-size: 0;line-height: 0;font-family: Arial, sans-serif;">&nbsp;</td>
-                                                <td style="width: 260px;padding: 12px 15px;vertical-align: top;color: #153643;font-family: Arial, sans-serif;">
-                                                    <p style="margin:0 0 25px 0;font-size:16px;line-height:24px;font-family:Arial,sans-serif;">Visitors by Country</p>
-                                                    ' . $countryTable . '
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
+                    </tr>';
                             </table>
                         </td>
                     </tr>';
