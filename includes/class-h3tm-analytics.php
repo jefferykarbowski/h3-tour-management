@@ -458,9 +458,6 @@ class H3TM_Analytics {
                             </table>
                         </td>
                     </tr>';
-                            </table>
-                        </td>
-                    </tr>';
         }
         
         // Add footer
