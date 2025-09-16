@@ -183,6 +183,9 @@ class H3TM_Admin {
                                             <button class="button rename-tour" data-tour="<?php echo esc_attr($tour); ?>">
                                                 <?php _e('Rename', 'h3-tour-management'); ?>
                                             </button>
+                                            <button class="button button-primary overwrite-tour" data-tour="<?php echo esc_attr($tour); ?>">
+                                                <?php _e('Overwrite', 'h3-tour-management'); ?>
+                                            </button>
                                             <button class="button delete-tour" data-tour="<?php echo esc_attr($tour); ?>">
                                                 <?php _e('Delete', 'h3-tour-management'); ?>
                                             </button>

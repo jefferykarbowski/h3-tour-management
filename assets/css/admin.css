@@ -60,6 +60,27 @@
     margin-left: 5px;
 }
 
+/* Overwrite button styling */
+.overwrite-tour {
+    background: #d63638 !important;
+    border-color: #d63638 !important;
+    color: #fff !important;
+}
+
+.overwrite-tour:hover {
+    background: #c62d30 !important;
+    border-color: #c62d30 !important;
+}
+
+.overwrite-tour:focus {
+    box-shadow: 0 0 0 3px rgba(214, 54, 56, 0.3) !important;
+}
+
+.overwrite-tour:disabled {
+    opacity: 0.6 !important;
+    cursor: not-allowed !important;
+}
+
 /* Upload form */
 #h3tm-upload-form .form-table th {
     width: 150px;

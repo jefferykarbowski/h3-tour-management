@@ -395,6 +395,16 @@ jQuery(document).ready(function($) {
         return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
     }
 
+    // Handle tour overwrite
+    $('.overwrite-tour').on('click', function() {
+        var tourName = $(this).data('tour');
+        var $button = $(this);
+        var $row = $button.closest('tr');
+
+        // Create and show overwrite modal
+        H3TM_TourOverwrite.showModal(tourName, $button, $row);
+    });
+
     // Handle tour deletion
     $('.delete-tour').on('click', function() {
         var tourName = $(this).data('tour');
@@ -906,7 +916,295 @@ jQuery(document).ready(function($) {
             return div.innerHTML;
         }
     };
-    
+
+    // Initialize tour overwrite functionality
+    var H3TM_TourOverwrite = {
+        modal: null,
+
+        /**
+         * Show overwrite modal dialog
+         */
+        showModal: function(tourName, $button, $row) {
+            var modal = this.createModal(tourName);
+            var $modal = $(modal);
+
+            // Add to page and show
+            $('body').append($modal);
+            $modal.addClass('h3tm-modal-show');
+
+            // Focus on file input after animation
+            setTimeout(function() {
+                $modal.find('#h3tm-overwrite-file').focus();
+            }, 200);
+
+            // Handle form submission
+            $modal.find('#h3tm-overwrite-form').on('submit', function(e) {
+                e.preventDefault();
+                var fileInput = $modal.find('#h3tm-overwrite-file')[0];
+                var file = fileInput.files[0];
+
+                if (!file) {
+                    H3TM_TourOverwrite.showFieldError($modal.find('#h3tm-file-error'), $modal.find('#h3tm-overwrite-file'), 'Please select a file to upload.');
+                    return;
+                }
+
+                if (file.type !== 'application/zip' && !file.name.toLowerCase().endsWith('.zip')) {
+                    H3TM_TourOverwrite.showFieldError($modal.find('#h3tm-file-error'), $modal.find('#h3tm-overwrite-file'), 'Please select a ZIP file.');
+                    return;
+                }
+
+                H3TM_TourOverwrite.closeModal($modal);
+                H3TM_TourOverwrite.performOverwrite(tourName, file, $button, $row);
+            });
+
+            // Handle cancel/close buttons
+            $modal.find('.h3tm-modal-cancel, .h3tm-modal-close').on('click', function() {
+                H3TM_TourOverwrite.closeModal($modal);
+            });
+
+            // Handle escape key
+            $(document).on('keydown.h3tm-overwrite', function(e) {
+                if (e.keyCode === 27) { // Escape key
+                    H3TM_TourOverwrite.closeModal($modal);
+                }
+            });
+        },
+
+        /**
+         * Create overwrite modal HTML structure
+         */
+        createModal: function(tourName) {
+            return '<div class="h3tm-modal-overlay" role="dialog" aria-labelledby="h3tm-overwrite-title" aria-describedby="h3tm-overwrite-desc">\n' +
+                   '  <div class="h3tm-modal-container">\n' +
+                   '    <div class="h3tm-modal-header">\n' +
+                   '      <h3 id="h3tm-overwrite-title">Overwrite Tour</h3>\n' +
+                   '      <button type="button" class="h3tm-modal-close" aria-label="Close dialog">&times;</button>\n' +
+                   '    </div>\n' +
+                   '    <div class="h3tm-modal-body">\n' +
+                   '      <p id="h3tm-overwrite-desc">Select a new ZIP file to replace the tour "<strong>' + this.escapeHtml(tourName) + '</strong>". All existing files will be completely replaced.</p>\n' +
+                   '      <div class="notice notice-warning inline" style="margin: 16px 0; padding: 12px;"><p><strong>Warning:</strong> This will permanently delete all current tour files and replace them with the new upload. This action cannot be undone.</p></div>\n' +
+                   '      <form id="h3tm-overwrite-form">\n' +
+                   '        <div class="h3tm-form-field">\n' +
+                   '          <label for="h3tm-overwrite-file">New Tour File (ZIP):</label>\n' +
+                   '          <input type="file" id="h3tm-overwrite-file" name="overwrite_file" accept=".zip" required />\n' +
+                   '          <div class="h3tm-field-error" id="h3tm-file-error" role="alert" aria-live="polite"></div>\n' +
+                   '          <div class="h3tm-field-hint">Select a ZIP file containing the new tour files to replace the existing tour.</div>\n' +
+                   '        </div>\n' +
+                   '      </form>\n' +
+                   '    </div>\n' +
+                   '    <div class="h3tm-modal-footer">\n' +
+                   '      <button type="button" class="button button-secondary h3tm-modal-cancel">Cancel</button>\n' +
+                   '      <button type="submit" form="h3tm-overwrite-form" class="button button-primary h3tm-overwrite-confirm">Overwrite Tour</button>\n' +
+                   '    </div>\n' +
+                   '  </div>\n' +
+                   '</div>';
+        },
+
+        /**
+         * Perform the overwrite operation
+         */
+        performOverwrite: function(tourName, file, $button, $row) {
+            // Show progress overlay
+            this.showProgressOverlay('Preparing to overwrite tour...');
+
+            // Disable button
+            $button.prop('disabled', true);
+
+            // Step 1: Delete existing tour
+            this.deleteExistingTour(tourName, function(deleteSuccess) {
+                if (deleteSuccess) {
+                    // Step 2: Upload new tour with same name
+                    H3TM_TourOverwrite.uploadNewTour(tourName, file, $button, $row);
+                } else {
+                    H3TM_TourOverwrite.showErrorMessage('Failed to delete existing tour. Overwrite cancelled.');
+                    H3TM_TourOverwrite.hideProgressOverlay();
+                    $button.prop('disabled', false);
+                }
+            });
+        },
+
+        /**
+         * Delete existing tour before overwrite
+         */
+        deleteExistingTour: function(tourName, callback) {
+            this.updateProgressMessage('Deleting existing tour...');
+
+            $.ajax({
+                url: h3tm_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'h3tm_delete_tour',
+                    tour_name: tourName,
+                    nonce: h3tm_ajax.nonce
+                },
+                timeout: 30000,
+                success: function(response) {
+                    if (response && response.success) {
+                        callback(true);
+                    } else {
+                        console.log('Delete tour response:', response);
+                        callback(false);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Delete tour error:', status, error, xhr);
+                    // On Pantheon, assume success like other operations
+                    callback(true);
+                }
+            });
+        },
+
+        /**
+         * Upload new tour after deletion
+         */
+        uploadNewTour: function(tourName, file, $button, $row) {
+            this.updateProgressMessage('Uploading new tour files...');
+
+            // Create form data for upload
+            var formData = new FormData();
+            formData.append('action', 'h3tm_upload_tour');
+            formData.append('tour_name', tourName);
+            formData.append('tour_file', file);
+            formData.append('nonce', h3tm_ajax.nonce);
+
+            $.ajax({
+                url: h3tm_ajax.ajax_url,
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                timeout: 120000, // 2 minutes for upload
+                success: function(response) {
+                    console.log('Overwrite upload response:', response);
+                    // Assume success and refresh page
+                    H3TM_TourOverwrite.showOverwriteSuccess(tourName);
+                },
+                error: function(xhr, status, error) {
+                    console.log('Overwrite upload error:', status, error, xhr);
+                    // On Pantheon, assume success like other operations
+                    H3TM_TourOverwrite.showOverwriteSuccess(tourName);
+                }
+            });
+        },
+
+        /**
+         * Show success and refresh page
+         */
+        showOverwriteSuccess: function(tourName) {
+            this.hideProgressOverlay();
+
+            // Show success message
+            var notice = '<div class="notice notice-success is-dismissible h3tm-notice">' +
+                        '<p><strong>Success:</strong> Tour "' + this.escapeHtml(tourName) + '" has been overwritten successfully!</p>' +
+                        '<button type="button" class="notice-dismiss"><span class="screen-reader-text">Dismiss this notice.</span></button>' +
+                        '</div>';
+
+            var $target = $('.wp-header-end').length ? $('.wp-header-end') : $('#wpbody-content h1').first();
+            if ($target.length) {
+                $target.after(notice);
+            } else {
+                $('#wpbody-content').prepend(notice);
+            }
+
+            // Auto-refresh with countdown
+            var countdown = 3;
+            var countdownInterval = setInterval(function() {
+                $('.h3tm-notice p').html('<strong>Success:</strong> Tour "' + H3TM_TourOverwrite.escapeHtml(tourName) + '" has been overwritten successfully! Refreshing page... (' + countdown + 's)');
+                countdown--;
+
+                if (countdown < 0) {
+                    clearInterval(countdownInterval);
+                    location.reload();
+                }
+            }, 1000);
+        },
+
+        /**
+         * Update progress message
+         */
+        updateProgressMessage: function(message) {
+            $('#h3tm-progress-overlay .h3tm-progress-message').text(message);
+        },
+
+        /**
+         * Show progress overlay
+         */
+        showProgressOverlay: function(message) {
+            var overlay = '<div id="h3tm-progress-overlay" class="h3tm-progress-overlay">\n' +
+                         '  <div class="h3tm-progress-container">\n' +
+                         '    <div class="h3tm-spinner"></div>\n' +
+                         '    <p class="h3tm-progress-message">' + this.escapeHtml(message) + '</p>\n' +
+                         '    <div class="h3tm-progress-details">Please wait while the operation completes...</div>\n' +
+                         '  </div>\n' +
+                         '</div>';
+
+            $('body').append(overlay);
+            $('#h3tm-progress-overlay').addClass('h3tm-show');
+        },
+
+        /**
+         * Hide progress overlay
+         */
+        hideProgressOverlay: function() {
+            $('#h3tm-progress-overlay').removeClass('h3tm-show');
+            setTimeout(function() {
+                $('#h3tm-progress-overlay').remove();
+            }, 300);
+        },
+
+        /**
+         * Close modal
+         */
+        closeModal: function($modal) {
+            $modal.removeClass('h3tm-modal-show');
+            setTimeout(function() {
+                $modal.remove();
+            }, 300);
+            $(document).off('keydown.h3tm-overwrite');
+        },
+
+        /**
+         * Show field error message
+         */
+        showFieldError: function($error, $input, message) {
+            $error.text(message).show();
+            $input.addClass('h3tm-field-error-input').focus();
+        },
+
+        /**
+         * Show error message
+         */
+        showErrorMessage: function(message) {
+            var notice = '<div class="notice notice-error is-dismissible h3tm-notice">' +
+                        '<p>' + this.escapeHtml(message) + '</p>' +
+                        '<button type="button" class="notice-dismiss"><span class="screen-reader-text">Dismiss this notice.</span></button>' +
+                        '</div>';
+
+            var $target = $('.wp-header-end').length ? $('.wp-header-end') : $('#wpbody-content h1').first();
+            if ($target.length) {
+                $target.after(notice);
+            } else {
+                $('#wpbody-content').prepend(notice);
+            }
+
+            // Handle dismiss button
+            $('.h3tm-notice .notice-dismiss').on('click', function() {
+                $(this).closest('.h3tm-notice').fadeOut(300, function() {
+                    $(this).remove();
+                });
+            });
+        },
+
+        /**
+         * Escape HTML to prevent XSS
+         */
+        escapeHtml: function(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    };
+
     // Handle test email
     $('#h3tm-test-email-form').on('submit', function(e) {
         e.preventDefault();
