@@ -181,59 +181,160 @@ class H3TM_Tour_Manager {
      */
     private function extract_zip_streaming($zip, $extract_to) {
         $is_pantheon = defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0;
-        $memory_limit = $is_pantheon ? 200000000 : 400000000; // 200MB for Pantheon, 400MB for others
 
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            // Check memory usage before each file
-            if (memory_get_usage(true) > $memory_limit) {
-                error_log('H3TM Upload Error: Memory limit approaching during ZIP extraction at file ' . $i . '/' . $zip->numFiles);
-                return false;
-            }
+        // Increase memory limits for large files
+        $original_memory = ini_get('memory_limit');
+        $original_time = ini_get('max_execution_time');
 
-            $filename = $zip->getNameIndex($i);
-            if ($filename === false) continue;
+        @ini_set('memory_limit', '1024M');
+        @ini_set('max_execution_time', 300); // 5 minutes
 
-            // Skip hidden/system files and directories
-            if (strpos($filename, '__MACOSX') !== false ||
-                strpos($filename, '.DS_Store') !== false ||
-                substr($filename, -1) === '/') {
-                continue;
-            }
+        $memory_limit = $is_pantheon ? 300000000 : 800000000; // Higher limits for large files
+        $extracted_count = 0;
+        $total_files = $zip->numFiles;
 
-            // Get file content
-            $content = $zip->getFromIndex($i);
-            if ($content === false) {
-                error_log('H3TM Upload Warning: Could not extract file: ' . $filename);
-                continue;
-            }
-
-            // Prepare target path
-            $target_path = $extract_to . '/' . $filename;
-            $target_dir = dirname($target_path);
-
-            // Create directory if needed
-            if (!file_exists($target_dir)) {
-                if (!wp_mkdir_p($target_dir)) {
-                    error_log('H3TM Upload Error: Failed to create directory: ' . $target_dir);
+        try {
+            for ($i = 0; $i < $total_files; $i++) {
+                // More aggressive memory checking for large files
+                $current_memory = memory_get_usage(true);
+                if ($current_memory > $memory_limit) {
+                    error_log('H3TM Upload Error: Memory limit exceeded (' . round($current_memory/1024/1024) . 'MB) at file ' . $i . '/' . $total_files);
                     return false;
                 }
-            }
 
-            // Write file content
-            if (file_put_contents($target_path, $content) === false) {
-                error_log('H3TM Upload Error: Failed to write file: ' . $target_path);
-                return false;
-            }
+                $filename = $zip->getNameIndex($i);
+                if ($filename === false) continue;
 
-            // Clear content from memory
-            unset($content);
+                // Skip hidden/system files and directories
+                if (strpos($filename, '__MACOSX') !== false ||
+                    strpos($filename, '.DS_Store') !== false ||
+                    strpos($filename, '.Spotlight-V100') !== false ||
+                    strpos($filename, '.Trashes') !== false ||
+                    substr($filename, -1) === '/') {
+                    continue;
+                }
 
-            // Pantheon-specific: force garbage collection for large files
-            if ($is_pantheon && ($i % 10 === 0)) {
-                if (function_exists('gc_collect_cycles')) {
-                    gc_collect_cycles();
+                // Get file info before extracting
+                $stat = $zip->statIndex($i);
+                if ($stat === false) {
+                    continue;
+                }
+
+                // Skip very large individual files that might cause memory issues
+                if ($stat['size'] > 100000000) { // 100MB per file limit
+                    error_log('H3TM Upload Warning: Skipping large file: ' . $filename . ' (' . round($stat['size']/1024/1024) . 'MB)');
+                    continue;
+                }
+
+                // Extract file using stream for large files
+                if ($stat['size'] > 10000000) { // 10MB+, use stream
+                    if (!$this->extract_large_file_streaming($zip, $i, $extract_to . '/' . $filename)) {
+                        error_log('H3TM Upload Error: Failed to extract large file: ' . $filename);
+                        continue;
+                    }
+                } else {
+                    // Small files - extract normally
+                    $content = $zip->getFromIndex($i);
+                    if ($content === false) {
+                        error_log('H3TM Upload Warning: Could not extract file: ' . $filename);
+                        continue;
+                    }
+
+                    // Prepare target path
+                    $target_path = $extract_to . '/' . $filename;
+                    $target_dir = dirname($target_path);
+
+                    // Create directory if needed
+                    if (!file_exists($target_dir)) {
+                        if (!wp_mkdir_p($target_dir)) {
+                            error_log('H3TM Upload Error: Failed to create directory: ' . $target_dir);
+                            unset($content);
+                            return false;
+                        }
+                    }
+
+                    // Write file content
+                    if (file_put_contents($target_path, $content) === false) {
+                        error_log('H3TM Upload Error: Failed to write file: ' . $target_path);
+                        unset($content);
+                        return false;
+                    }
+
+                    // Clear content from memory immediately
+                    unset($content);
+                }
+
+                $extracted_count++;
+
+                // More frequent garbage collection for large files
+                if ($extracted_count % 5 === 0) {
+                    if (function_exists('gc_collect_cycles')) {
+                        gc_collect_cycles();
+                    }
+
+                    // Log progress for very large archives
+                    if ($total_files > 1000) {
+                        error_log('H3TM Upload Progress: Extracted ' . $extracted_count . '/' . $total_files . ' files');
+                    }
                 }
             }
+
+            return true;
+
+        } finally {
+            // Restore original settings
+            @ini_set('memory_limit', $original_memory);
+            @ini_set('max_execution_time', $original_time);
+        }
+    }
+
+    /**
+     * Extract large files using streaming to avoid memory issues
+     */
+    private function extract_large_file_streaming($zip, $index, $target_path) {
+        $target_dir = dirname($target_path);
+
+        // Create directory if needed
+        if (!file_exists($target_dir)) {
+            if (!wp_mkdir_p($target_dir)) {
+                return false;
+            }
+        }
+
+        // Use stream for large files
+        $stream = $zip->getStream($zip->getNameIndex($index));
+        if ($stream === false) {
+            return false;
+        }
+
+        $target_file = fopen($target_path, 'wb');
+        if ($target_file === false) {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+            return false;
+        }
+
+        // Stream the file in chunks
+        $chunk_size = 8192; // 8KB chunks
+        while (!feof($stream)) {
+            $chunk = fread($stream, $chunk_size);
+            if ($chunk === false) {
+                break;
+            }
+
+            if (fwrite($target_file, $chunk) === false) {
+                fclose($target_file);
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+                return false;
+            }
+        }
+
+        fclose($target_file);
+        if (is_resource($stream)) {
+            fclose($stream);
         }
 
         return true;

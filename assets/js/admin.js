@@ -223,12 +223,24 @@ jQuery(document).ready(function($) {
                     } else if (!response || response === '' || response === null) {
                         // Empty/null response on Pantheon often means success but process terminated
                         showUploadSuccess({data: 'Tour upload completed successfully!'});
-                    } else if (response.data && response.data.message && response.data.message.indexOf('successfully') !== -1) {
-                        // Success message in data
+                    } else if (response.data && typeof response.data === 'object' && response.data.message && response.data.message.indexOf('successfully') !== -1) {
+                        // Success message in data object
+                        showUploadSuccess(response);
+                    } else if (response.data && typeof response.data === 'string' && response.data.indexOf('successfully') !== -1) {
+                        // Success message in data string
                         showUploadSuccess(response);
                     } else {
-                        // Only show error if there's a clear error indication
-                        if (response.data && (response.data.indexOf('failed') !== -1 || response.data.indexOf('error') !== -1)) {
+                        // Check for error indicators
+                        var hasError = false;
+                        if (response.data) {
+                            if (typeof response.data === 'string') {
+                                hasError = response.data.indexOf('failed') !== -1 || response.data.indexOf('error') !== -1;
+                            } else if (typeof response.data === 'object' && response.data.message) {
+                                hasError = response.data.message.indexOf('failed') !== -1 || response.data.message.indexOf('error') !== -1;
+                            }
+                        }
+
+                        if (hasError) {
                             handleProcessError(response);
                         } else {
                             // Unclear response - assume success on Pantheon
