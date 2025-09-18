@@ -13,7 +13,22 @@
       "mcp__playwright__browser_navigate",
       "Read(//c/Users/Jeff/Local Sites/h3vt/app/public/**)",
       "WebFetch(domain:docs.pantheon.io)",
-      "mcp__zen__thinkdeep"
+      "mcp__zen__thinkdeep",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(sed:*)",
+      "Bash(cat:*)",
+      "mcp__serena__list_memories",
+      "mcp__serena__activate_project",
+      "mcp__serena__check_onboarding_performed",
+      "mcp__serena__onboarding",
+      "mcp__serena__list_dir",
+      "mcp__serena__find_file",
+      "mcp__serena__search_for_pattern",
+      "mcp__morphllm-fast-apply__edit_file",
+      "mcp__serena__write_memory",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(find:*)"
     ],
     "deny": []
   }
