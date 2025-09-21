@@ -5,6 +5,18 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.6] - 2025-09-21
+
+### Added
+- Support for new nested tour zip structure: TOURNAME.zip/TOURNAME/Web.zip/Web/ → tour files
+- Enhanced tour extraction logic to detect and handle Web.zip nested archives
+- Automatic detection and extraction of nested zip files within tour packages
+- Fallback support for existing tour structures to maintain backward compatibility
+
+### Fixed
+- Tour software packaging changes now properly handled during upload process
+- Nested zip extraction uses same memory-efficient streaming as main extraction
+
 ## [1.0.8] - 2025-01-18
 
 ### Changed

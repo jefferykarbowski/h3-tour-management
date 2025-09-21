@@ -858,51 +858,109 @@ DirectoryIndex index.php index.html index.htm
     
     /**
      * Fix tour directory structure by moving files from subdirectory to root
+     * Now handles new nested structure: TOURNAME.zip/TOURNAME/Web.zip/Web/ -> tour files
      */
     private function fix_tour_directory_structure($tour_path) {
         // Get all items in the tour directory
         $items = scandir($tour_path);
         $directories = array();
+        $files = array();
         $has_index_at_root = false;
-        
+
         // Check current structure
         foreach ($items as $item) {
             if ($item == '.' || $item == '..') {
                 continue;
             }
-            
+
             $item_path = $tour_path . '/' . $item;
-            
+
             // Check if index file exists at root
             if ($item === 'index.html' || $item === 'index.htm') {
                 $has_index_at_root = true;
             }
-            
-            // Collect directories
+
+            // Collect directories and files
             if (is_dir($item_path)) {
                 $directories[] = $item;
+            } else {
+                $files[] = $item;
             }
         }
-        
+
         // If index already at root, nothing to do
         if ($has_index_at_root) {
             return true;
         }
-        
-        // If there's exactly one directory, check if it contains the tour files
+
+        // NEW: Check for nested zip structure (TOURNAME/Web.zip/Web/)
+        if (count($directories) === 1 && count($files) === 0) {
+            $subdir = $tour_path . '/' . $directories[0];
+            $web_zip_path = $subdir . '/Web.zip';
+
+            // Check if this is the new nested structure with Web.zip
+            if (file_exists($web_zip_path)) {
+                error_log('H3TM: Detected new nested zip structure with Web.zip at: ' . $web_zip_path);
+
+                // Extract Web.zip to a temporary location
+                $temp_extract_path = $subdir . '/temp_web_extract';
+                if (!wp_mkdir_p($temp_extract_path)) {
+                    error_log('H3TM: Failed to create temp extraction directory: ' . $temp_extract_path);
+                    return false;
+                }
+
+                // Extract the Web.zip file
+                $zip = new ZipArchive();
+                if ($zip->open($web_zip_path) === TRUE) {
+                    // Use streaming extraction for the nested zip too
+                    if ($this->extract_zip_streaming($zip, $temp_extract_path)) {
+                        $zip->close();
+
+                        // Check if Web/ directory was created and contains tour files
+                        $web_dir = $temp_extract_path . '/Web';
+                        if (is_dir($web_dir) &&
+                            (file_exists($web_dir . '/index.html') || file_exists($web_dir . '/index.htm'))) {
+
+                            error_log('H3TM: Found tour files in Web/ directory, moving to root');
+
+                            // Move contents from Web/ directory to tour root
+                            $this->move_directory_contents($web_dir, $tour_path);
+
+                            // Clean up temporary extraction and original subdirectory
+                            $this->delete_directory($temp_extract_path);
+                            $this->delete_directory($subdir);
+
+                            return true;
+                        } else {
+                            error_log('H3TM: No tour files found in extracted Web/ directory');
+                        }
+                    } else {
+                        $zip->close();
+                        error_log('H3TM: Failed to extract Web.zip file');
+                    }
+
+                    // Clean up on failure
+                    $this->delete_directory($temp_extract_path);
+                } else {
+                    error_log('H3TM: Failed to open Web.zip file: ' . $web_zip_path);
+                }
+            }
+        }
+
+        // EXISTING: If there's exactly one directory, check if it contains the tour files
         if (count($directories) === 1) {
             $subdir = $tour_path . '/' . $directories[0];
-            
+
             // Check if this subdirectory contains index.html/index.htm
             if (file_exists($subdir . '/index.html') || file_exists($subdir . '/index.htm')) {
                 // Move all files from subdirectory to parent
                 $this->move_directory_contents($subdir, $tour_path);
-                
+
                 // Remove the now-empty subdirectory
                 rmdir($subdir);
             }
         }
-        
+
         return true;
     }
     
