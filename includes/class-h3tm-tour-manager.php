@@ -143,12 +143,24 @@ class H3TM_Tour_Manager {
             }
             
             // Check if files are in a subdirectory and move them up
-            $this->fix_tour_directory_structure($tour_path);
-            
+            $structure_fixed = $this->fix_tour_directory_structure($tour_path);
+            error_log('H3TM: Structure fix result: ' . ($structure_fixed ? 'SUCCESS' : 'FAILED'));
+
+            // List what's actually in the tour directory after structure fix
+            if (is_dir($tour_path)) {
+                $final_contents = scandir($tour_path);
+                error_log('H3TM: Final tour directory contents: ' . implode(', ', array_filter($final_contents, function($item) {
+                    return $item !== '.' && $item !== '..';
+                })));
+            }
+
             // Verify index file exists at top level
-            $index_exists = file_exists($tour_path . '/index.html') || 
+            $index_exists = file_exists($tour_path . '/index.html') ||
                            file_exists($tour_path . '/index.htm');
-            
+
+            error_log('H3TM: Index file check - HTML: ' . (file_exists($tour_path . '/index.html') ? 'EXISTS' : 'NOT FOUND') .
+                     ', HTM: ' . (file_exists($tour_path . '/index.htm') ? 'EXISTS' : 'NOT FOUND'));
+
             if (!$index_exists) {
                 $this->delete_directory($tour_path);
                 $result['message'] = __('Invalid tour structure: No index.html found at root level.', 'h3-tour-management');
@@ -895,13 +907,17 @@ DirectoryIndex index.php index.html index.htm
 
         // NEW: Check for nested zip structure (TOURNAME/Web.zip/Web/)
         // Look for any directory that contains Web.zip, regardless of other files
+        error_log('H3TM: Checking for nested structure - found ' . count($directories) . ' directories: ' . implode(', ', $directories));
+
         foreach ($directories as $directory) {
             $subdir = $tour_path . '/' . $directory;
             $web_zip_path = $subdir . '/Web.zip';
 
+            error_log('H3TM: Checking directory "' . $directory . '" for Web.zip at: ' . $web_zip_path);
+
             // Check if this directory contains Web.zip (new nested structure)
             if (file_exists($web_zip_path)) {
-                error_log('H3TM: Detected new nested zip structure with Web.zip at: ' . $web_zip_path);
+                error_log('H3TM: ✓ Detected new nested zip structure with Web.zip at: ' . $web_zip_path);
 
                 // Extract Web.zip to a temporary location
                 $temp_extract_path = $subdir . '/temp_web_extract';
@@ -924,8 +940,21 @@ DirectoryIndex index.php index.html index.htm
 
                             error_log('H3TM: Found tour files in Web/ directory, moving to root');
 
+                            // List Web/ directory contents before moving
+                            $web_contents = scandir($web_dir);
+                            error_log('H3TM: Web/ directory contents before move: ' . implode(', ', array_filter($web_contents, function($item) {
+                                return $item !== '.' && $item !== '..';
+                            })));
+
                             // Move contents from Web/ directory to tour root
-                            $this->move_directory_contents($web_dir, $tour_path);
+                            $move_result = $this->move_directory_contents($web_dir, $tour_path);
+                            error_log('H3TM: Move operation completed');
+
+                            // List tour root contents after moving
+                            $root_contents = scandir($tour_path);
+                            error_log('H3TM: Tour root contents after move: ' . implode(', ', array_filter($root_contents, function($item) {
+                                return $item !== '.' && $item !== '..';
+                            })));
 
                             // Clean up temporary extraction and original subdirectory
                             $this->delete_directory($temp_extract_path);
