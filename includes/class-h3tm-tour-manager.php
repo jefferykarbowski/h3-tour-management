@@ -894,11 +894,12 @@ DirectoryIndex index.php index.html index.htm
         }
 
         // NEW: Check for nested zip structure (TOURNAME/Web.zip/Web/)
-        if (count($directories) === 1 && count($files) === 0) {
-            $subdir = $tour_path . '/' . $directories[0];
+        // Look for any directory that contains Web.zip, regardless of other files
+        foreach ($directories as $directory) {
+            $subdir = $tour_path . '/' . $directory;
             $web_zip_path = $subdir . '/Web.zip';
 
-            // Check if this is the new nested structure with Web.zip
+            // Check if this directory contains Web.zip (new nested structure)
             if (file_exists($web_zip_path)) {
                 error_log('H3TM: Detected new nested zip structure with Web.zip at: ' . $web_zip_path);
 
@@ -944,6 +945,9 @@ DirectoryIndex index.php index.html index.htm
                 } else {
                     error_log('H3TM: Failed to open Web.zip file: ' . $web_zip_path);
                 }
+
+                // Found and processed Web.zip, exit loop
+                break;
             }
         }
 

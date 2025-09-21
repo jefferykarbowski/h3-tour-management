@@ -5,6 +5,13 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.7] - 2025-09-21
+
+### Fixed
+- Fixed nested zip detection logic that was too restrictive (count files === 0)
+- Now properly detects Web.zip in any directory regardless of other files present
+- Resolves issue where hidden files (e.g., .DS_Store) prevented nested extraction
+
 ## [1.4.6] - 2025-09-21
 
 ### Added
