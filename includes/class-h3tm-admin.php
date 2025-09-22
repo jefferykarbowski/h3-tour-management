@@ -559,33 +559,65 @@ class H3TM_Admin {
         
         // Combine chunks
         $final_file = $upload_dir['basedir'] . '/h3-tours/' . $file_name;
+        error_log('H3TM Chunk Combine: Target file: ' . $final_file);
+
         if (!file_exists(dirname($final_file))) {
-            wp_mkdir_p(dirname($final_file));
+            if (!wp_mkdir_p(dirname($final_file))) {
+                error_log('H3TM Chunk Combine Error: Failed to create directory: ' . dirname($final_file));
+                wp_send_json_error(__('Failed to create output directory', 'h3-tour-management'));
+            }
         }
-        
-        $output = fopen($final_file, 'wb');
-        if (!$output) {
-            wp_send_json_error(__('Failed to create output file', 'h3-tour-management'));
-        }
-        
-        // Get all chunk files
+
+        // Get all chunk files first
         $chunks = glob($upload_temp_dir . '/chunk_*');
         natsort($chunks);
-        
+        error_log('H3TM Chunk Combine: Found ' . count($chunks) . ' chunk files in: ' . $upload_temp_dir);
+
+        if (empty($chunks)) {
+            error_log('H3TM Chunk Combine Error: No chunk files found in: ' . $upload_temp_dir);
+            wp_send_json_error(__('No chunk files found for combination', 'h3-tour-management'));
+        }
+
+        $output = fopen($final_file, 'wb');
+        if (!$output) {
+            error_log('H3TM Chunk Combine Error: Failed to open output file for writing: ' . $final_file);
+            wp_send_json_error(__('Failed to create output file', 'h3-tour-management'));
+        }
+
+        $total_written = 0;
+        $chunk_count = 0;
+
         foreach ($chunks as $chunk_file) {
             $chunk_data = file_get_contents($chunk_file);
             if ($chunk_data === false) {
+                error_log('H3TM Chunk Combine Error: Failed to read chunk: ' . $chunk_file);
                 fclose($output);
                 unlink($final_file);
                 $this->cleanup_temp_dir($upload_temp_dir);
                 wp_send_json_error(__('Failed to read chunk', 'h3-tour-management'));
             }
-            
-            fwrite($output, $chunk_data);
+
+            $bytes_written = fwrite($output, $chunk_data);
+            if ($bytes_written === false) {
+                error_log('H3TM Chunk Combine Error: Failed to write chunk data: ' . $chunk_file);
+                fclose($output);
+                unlink($final_file);
+                $this->cleanup_temp_dir($upload_temp_dir);
+                wp_send_json_error(__('Failed to write chunk data', 'h3-tour-management'));
+            }
+
+            $total_written += $bytes_written;
+            $chunk_count++;
             unlink($chunk_file);
+
+            // Log progress every 50 chunks for large files
+            if ($chunk_count % 50 === 0) {
+                error_log('H3TM Chunk Combine Progress: ' . $chunk_count . ' chunks combined, ' . round($total_written/1024/1024) . 'MB written');
+            }
         }
-        
+
         fclose($output);
+        error_log('H3TM Chunk Combine Complete: ' . $chunk_count . ' chunks combined, final size: ' . round($total_written/1024/1024) . 'MB');
         
         // Clean up temp directory
         $this->cleanup_temp_dir($upload_temp_dir);

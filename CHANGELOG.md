@@ -5,6 +5,18 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.14] - 2025-09-21
+
+### Added
+- **Enhanced Chunk Debugging**: Detailed logging for chunk combination process
+- Progress tracking for large file chunk assembly (every 50 chunks)
+- Better error reporting for chunk read/write operations
+- Comprehensive logging of file creation and directory operations
+
+### Fixed
+- Improved error handling in chunk combination process for large files
+- Better diagnosis capabilities for files that fail at the combination stage
+
 ## [1.4.13] - 2025-09-21
 
 ### Added
