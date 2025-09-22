@@ -233,12 +233,12 @@ class H3TM_Tour_Manager {
                 }
 
                 // Skip very large individual files that might cause memory issues
-                // Exception: Allow Web.zip files up to 500MB for nested tour structures
+                // Exception: Allow Web.zip files up to 1GB for nested tour structures
                 $is_web_zip = (basename($filename) === 'Web.zip');
-                $size_limit = $is_web_zip ? 500000000 : 100000000; // 500MB for Web.zip, 100MB for others
+                $size_limit = $is_web_zip ? 1073741824 : 100000000; // 1GB for Web.zip, 100MB for others
 
                 if ($stat['size'] > $size_limit) {
-                    error_log('H3TM Upload Warning: Skipping large file: ' . $filename . ' (' . round($stat['size']/1024/1024) . 'MB) - exceeds ' . ($is_web_zip ? '500MB' : '100MB') . ' limit');
+                    error_log('H3TM Upload Warning: Skipping large file: ' . $filename . ' (' . round($stat['size']/1024/1024) . 'MB) - exceeds ' . ($is_web_zip ? '1GB' : '100MB') . ' limit');
                     continue;
                 }
 
