@@ -5,6 +5,16 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.8] - 2025-09-21
+
+### Added
+- Enhanced debugging for nested zip extraction process
+- Detailed logging to track directory contents and file movement
+- Better error reporting for troubleshooting extraction issues
+
+### Fixed
+- Improved nested zip extraction diagnostics and error tracking
+
 ## [1.4.7] - 2025-09-21
 
 ### Fixed
