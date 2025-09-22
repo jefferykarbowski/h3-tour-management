@@ -199,7 +199,14 @@ jQuery(document).ready(function($) {
             $progressText.text('Processing uploaded file...');
 
             var processStartTime = Date.now();
-            var maxWaitTime = 90000; // 90 seconds max wait for Pantheon
+            var maxWaitTime = 180000; // 3 minutes max wait for large files
+
+            console.log('=== H3TM DEBUG: Starting file processing ===');
+            console.log('Tour name:', tourName);
+            console.log('File name:', file.name);
+            console.log('File size:', formatFileSize(file.size));
+            console.log('Unique ID:', uniqueId);
+            console.log('Total chunks uploaded:', chunks);
 
             $.ajax({
                 url: h3tm_ajax.ajax_url,
@@ -213,47 +220,64 @@ jQuery(document).ready(function($) {
                 },
                 timeout: maxWaitTime,
                 success: function(response) {
-                    // On Pantheon, assume success unless there's a clear error
-                    // Since tours appear after refresh, treat any response as potential success
-                    console.log('Process upload response:', response);
+                    console.log('=== H3TM DEBUG: Process upload response ===');
+                    console.log('Response type:', typeof response);
+                    console.log('Response content:', response);
+
+                    if (response && response.data) {
+                        console.log('Response data type:', typeof response.data);
+                        console.log('Response data:', response.data);
+
+                        if (response.data.debug) {
+                            console.log('=== DEBUG INFO ===');
+                            console.log('Debug data:', response.data.debug);
+                        }
+                    }
 
                     // Success cases
                     if (response && response.success) {
-                        showUploadSuccess(response);
+                        console.log('=== SUCCESS: Upload completed successfully ===');
+                        showUploadSuccessNoRefresh(response);
                     } else if (!response || response === '' || response === null) {
-                        // Empty/null response on Pantheon often means success but process terminated
-                        showUploadSuccess({data: 'Tour upload completed successfully!'});
+                        console.log('=== EMPTY RESPONSE: Treating as success ===');
+                        showUploadSuccessNoRefresh({data: 'Tour upload completed successfully!'});
                     } else if (response.data && typeof response.data === 'object' && response.data.message && response.data.message.indexOf('successfully') !== -1) {
-                        // Success message in data object
-                        showUploadSuccess(response);
+                        console.log('=== SUCCESS MESSAGE FOUND ===');
+                        showUploadSuccessNoRefresh(response);
                     } else if (response.data && typeof response.data === 'string' && response.data.indexOf('successfully') !== -1) {
-                        // Success message in data string
-                        showUploadSuccess(response);
+                        console.log('=== SUCCESS STRING FOUND ===');
+                        showUploadSuccessNoRefresh(response);
                     } else {
                         // Check for error indicators
                         var hasError = false;
                         if (response.data) {
                             if (typeof response.data === 'string') {
-                                hasError = response.data.indexOf('failed') !== -1 || response.data.indexOf('error') !== -1;
+                                hasError = response.data.indexOf('failed') !== -1 || response.data.indexOf('error') !== -1 || response.data.indexOf('Invalid') !== -1;
                             } else if (typeof response.data === 'object' && response.data.message) {
-                                hasError = response.data.message.indexOf('failed') !== -1 || response.data.message.indexOf('error') !== -1;
+                                hasError = response.data.message.indexOf('failed') !== -1 || response.data.message.indexOf('error') !== -1 || response.data.message.indexOf('Invalid') !== -1;
                             }
                         }
 
                         if (hasError) {
-                            handleProcessError(response);
+                            console.log('=== ERROR DETECTED ===');
+                            console.log('Error details:', response);
+                            handleProcessErrorNoRefresh(response);
                         } else {
-                            // Unclear response - assume success on Pantheon
-                            showUploadSuccess({data: 'Tour upload may have completed successfully. Refreshing to verify...'});
+                            console.log('=== UNCLEAR RESPONSE: Treating as success ===');
+                            showUploadSuccessNoRefresh({data: 'Tour upload may have completed successfully.'});
                         }
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.log('Process upload error:', status, error, xhr);
+                    console.log('=== H3TM DEBUG: Process upload AJAX error ===');
+                    console.log('Status:', status);
+                    console.log('Error:', error);
+                    console.log('XHR Response Text:', xhr.responseText);
+                    console.log('XHR Status:', xhr.status);
+                    console.log('XHR Ready State:', xhr.readyState);
 
-                    // PANTHEON FIX: Since operations actually succeed, always assume success
-                    // The user confirmed tours appear after refresh, so treat ALL errors as success
-                    showUploadSuccess({data: 'Upload processing completed. Refreshing to show results...'});
+                    // Show error without refresh for debugging
+                    handleProcessErrorNoRefresh({data: {message: 'AJAX Error: ' + status + ' - ' + error + ' (Check console for details)'}});
                 },
                 complete: function() {
                     $spinner.removeClass('is-active');
@@ -300,6 +324,36 @@ jQuery(document).ready(function($) {
 
             // Show countdown and reload
             showSuccessAndReload('Tour uploaded successfully! Refreshing page...');
+        }
+
+        function showUploadSuccessNoRefresh(response) {
+            console.log('=== H3TM DEBUG: Showing success (no refresh) ===');
+            $result.removeClass('notice-error').addClass('notice-success');
+            var message = response.data || response.message || 'Tour uploaded successfully!';
+            $result.html('<p>' + message + '</p><p><button type="button" class="button button-secondary" onclick="location.reload();">Refresh Page</button></p>');
+            $form[0].reset();
+            $('#upload-progress-wrapper').hide();
+            $result.show();
+        }
+
+        function handleProcessErrorNoRefresh(response) {
+            console.log('=== H3TM DEBUG: Showing error (no refresh) ===');
+            $result.removeClass('notice-success').addClass('notice-error');
+
+            var errorMessage = 'Upload processing failed.';
+            if (response && response.data) {
+                if (typeof response.data === 'string') {
+                    errorMessage = response.data;
+                } else if (response.data.message) {
+                    errorMessage = response.data.message;
+                } else if (typeof response.data === 'object') {
+                    errorMessage = JSON.stringify(response.data);
+                }
+            }
+
+            $result.html('<p>' + errorMessage + '</p><p><button type="button" class="button button-secondary" onclick="location.reload();">Refresh Page</button></p>');
+            $('#upload-progress-wrapper').hide();
+            $result.show();
         }
 
         function showTimeoutSuccessMessage() {

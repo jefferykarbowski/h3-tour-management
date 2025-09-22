@@ -5,6 +5,18 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.13] - 2025-09-21
+
+### Added
+- **Debug Mode**: Enhanced JavaScript console debugging for upload process
+- Detailed logging of file processing steps and responses
+- Better error tracking and diagnosis capabilities
+- Disabled automatic page refresh to preserve debug information
+
+### Fixed
+- Extended AJAX timeout to 3 minutes for large file processing
+- Added comprehensive error logging for troubleshooting Pantheon issues
+
 ## [1.4.12] - 2025-09-21
 
 ### Fixed
