@@ -5,6 +5,14 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.11] - 2025-09-21
+
+### Fixed
+- **Complete Fix**: Increased file size limits for Web/ directory contents to 500MB
+- Resolves issue with large video files (e.g., 155MB MP4s) being skipped during extraction
+- Now supports: Web.zip (1GB), Web/ content files (500MB), other files (100MB)
+- Ensures complete extraction of high-resolution tour media including videos
+
 ## [1.4.10] - 2025-09-21
 
 ### Fixed
