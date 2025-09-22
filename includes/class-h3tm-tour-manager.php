@@ -199,7 +199,7 @@ class H3TM_Tour_Manager {
         $original_time = ini_get('max_execution_time');
 
         @ini_set('memory_limit', '1024M');
-        @ini_set('max_execution_time', 300); // 5 minutes
+        @ini_set('max_execution_time', 900); // 15 minutes for large files
 
         $memory_limit = $is_pantheon ? 300000000 : 800000000; // Higher limits for large files
         $extracted_count = 0;
@@ -428,7 +428,7 @@ class H3TM_Tour_Manager {
         try {
             // Set longer execution time for large tours
             if (function_exists('set_time_limit')) {
-                set_time_limit(300); // 5 minutes
+                set_time_limit(900); // 15 minutes for large tours
             }
             
             // Method 1: Fast copy-and-delete approach (same as upload process)

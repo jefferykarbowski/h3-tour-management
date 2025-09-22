@@ -5,6 +5,15 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.12] - 2025-09-21
+
+### Fixed
+- **Timeout Fix**: Increased execution timeouts for large file processing
+- General uploads: 5 minutes → 15 minutes (900 seconds)
+- Pantheon uploads: 1 minute → 10 minutes (600 seconds)
+- Large tour operations: 5 minutes → 15 minutes (900 seconds)
+- Resolves timeout issues with large tours like Cedar Park (315MB)
+
 ## [1.4.11] - 2025-09-21
 
 ### Fixed

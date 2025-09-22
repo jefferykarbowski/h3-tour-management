@@ -33,7 +33,10 @@
       "Bash(npm run lint)",
       "Bash(npm run test:*)",
       "Bash(unzip:*)",
-      "Read(//c/Users/Jeff/Local Sites/h3vt/**)"
+      "Read(//c/Users/Jeff/Local Sites/h3vt/**)",
+      "Read(//c/Users/Jeff/Downloads/Jeffery (1)/**)",
+      "Read(//c/Users/Jeff/Downloads/Jeffery (1)/temp_test/**)",
+      "Bash(sort:*)"
     ],
     "deny": []
   }

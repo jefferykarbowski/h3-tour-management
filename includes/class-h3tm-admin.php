@@ -411,8 +411,8 @@ class H3TM_Admin {
      */
     public function handle_upload_chunk() {
         // Increase limits for large uploads
-        @ini_set('max_execution_time', 600);
-        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', 900); // 15 minutes for large uploads
+        @ini_set('memory_limit', '1024M');
         
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
         
@@ -529,9 +529,9 @@ class H3TM_Admin {
             // Register shutdown function to catch fatal errors
             register_shutdown_function(array($this, 'handle_pantheon_shutdown'));
 
-            // Set conservative limits for Pantheon
-            @ini_set('max_execution_time', 60);
-            @ini_set('memory_limit', '256M');
+            // Set more generous limits for Pantheon large file uploads
+            @ini_set('max_execution_time', 600); // 10 minutes for Pantheon
+            @ini_set('memory_limit', '512M');
         }
 
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
@@ -728,8 +728,8 @@ class H3TM_Admin {
      */
     public function handle_rename_tour() {
         // Increase limits for large tour operations (like upload handler)
-        @ini_set('max_execution_time', 600);
-        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', 900); // 15 minutes for large operations
+        @ini_set('memory_limit', '1024M');
 
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
 
