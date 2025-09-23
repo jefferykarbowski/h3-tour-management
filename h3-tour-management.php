@@ -64,30 +64,6 @@ if (!function_exists('wp_new_user_notification')) {
 require plugin_dir_path( __FILE__ ) . 'plugin-update-checker/plugin-update-checker.php';
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
-// Configuration
-$api_url = 'https://trailblazecreative.com/wp-json/tbgk/v1/github-key';
-$access_token = 'qX2Nfw1hDSJ9wRK0feXwOQeUJwEMGhHj';
-
-// Make the request
-$request_url = $api_url . '?access_token=' . urlencode($access_token);
-$response = wp_remote_get($request_url);
-
-// Process the response
-if (is_wp_error($response)) {
-    echo 'Error: ' . $response->get_error_message();
-} else {
-    $body = wp_remote_retrieve_body($response);
-    $data = json_decode($body, true);
-
-    if (isset($data['github_key'])) {
-        $github_key = $data['github_key'];
-        update_option('github_auth_key', (string)$github_key);
-    } else {
-        // Handle case where key is not found
-        echo 'Error: GitHub key not found in response';
-    }
-}
-
 // Read the plugin file to extract the Plugin URI
 $plugin_data = get_file_data(__FILE__, array('PluginURI' => 'Plugin URI'));
 $plugin_uri = $plugin_data['PluginURI'];
@@ -96,15 +72,12 @@ $plugin_uri = $plugin_data['PluginURI'];
 $plugin_slug = basename(parse_url($plugin_uri, PHP_URL_PATH));
 
 // Use the extracted slug in the myUpdateChecker configuration
-if (get_option('github_auth_key')) {
-    $github_auth_key = get_option('github_auth_key');
-    $myUpdateChecker = PucFactory::buildUpdateChecker(
-        $plugin_uri,
-        __FILE__,
-        $plugin_slug
-    );
 
-    $myUpdateChecker->getVcsApi()->enableReleaseAssets();
-    $myUpdateChecker->setAuthentication($github_auth_key);
-    $myUpdateChecker->setBranch('main');
-}
+$myUpdateChecker = PucFactory::buildUpdateChecker(
+    $plugin_uri,
+    __FILE__,
+    $plugin_slug
+);
+
+$myUpdateChecker->getVcsApi()->enableReleaseAssets();
+$myUpdateChecker->setBranch('main');
