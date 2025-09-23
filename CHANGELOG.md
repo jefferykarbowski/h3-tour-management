@@ -5,6 +5,19 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.15] - 2025-09-21
+
+### Added
+- **Disk Space Management**: Pre-flight disk space checking before chunk combination
+- Automatic cleanup of old temporary files (>1 hour old) to free space
+- Clear error messages showing space requirements vs available space
+- Better space utilization with 10% safety buffer
+
+### Fixed
+- **Critical Fix**: Resolves "Failed to write chunk data" errors for large files
+- Addresses Cedar Park (300MB) upload failures due to insufficient disk space
+- Automatic space recovery through cleanup of abandoned temp files
+
 ## [1.4.14] - 2025-09-21
 
 ### Added

@@ -578,6 +578,42 @@ class H3TM_Admin {
             wp_send_json_error(__('No chunk files found for combination', 'h3-tour-management'));
         }
 
+        // Calculate total size needed and check disk space
+        $total_chunk_size = 0;
+        foreach ($chunks as $chunk_file) {
+            if (file_exists($chunk_file)) {
+                $total_chunk_size += filesize($chunk_file);
+            }
+        }
+
+        $free_space = disk_free_space(dirname($final_file));
+        error_log('H3TM Disk Space Check: Need ' . round($total_chunk_size/1024/1024) . 'MB, Available: ' .
+                 ($free_space !== false ? round($free_space/1024/1024) . 'MB' : 'unknown'));
+
+        if ($free_space !== false && $free_space < ($total_chunk_size * 1.1)) { // 10% buffer
+            error_log('H3TM Chunk Combine Error: Insufficient disk space. Need: ' . round($total_chunk_size/1024/1024) . 'MB, Available: ' . round($free_space/1024/1024) . 'MB');
+
+            // Clean up old temp directories to free space
+            $this->cleanup_old_temp_files();
+
+            // Check space again after cleanup
+            $free_space_after = disk_free_space(dirname($final_file));
+            if ($free_space_after !== false && $free_space_after < ($total_chunk_size * 1.1)) {
+                wp_send_json_error(array(
+                    'message' => sprintf(__('Insufficient disk space. Need %dMB, only %dMB available.', 'h3-tour-management'),
+                                       round($total_chunk_size/1024/1024),
+                                       round($free_space_after/1024/1024)),
+                    'debug' => array(
+                        'required_mb' => round($total_chunk_size/1024/1024),
+                        'available_mb' => round($free_space_after/1024/1024),
+                        'chunks_found' => count($chunks)
+                    )
+                ));
+            } else {
+                error_log('H3TM: Cleanup freed space, retrying combination');
+            }
+        }
+
         $output = fopen($final_file, 'wb');
         if (!$output) {
             error_log('H3TM Chunk Combine Error: Failed to open output file for writing: ' . $final_file);
@@ -731,6 +767,54 @@ class H3TM_Admin {
             }
             rmdir($dir);
         }
+    }
+
+    /**
+     * Clean up old temporary files to free disk space
+     */
+    private function cleanup_old_temp_files() {
+        $upload_dir = wp_upload_dir();
+        $temp_base_dir = $upload_dir['basedir'] . '/h3-tours-temp';
+
+        if (!is_dir($temp_base_dir)) {
+            return;
+        }
+
+        $temp_dirs = glob($temp_base_dir . '/*', GLOB_ONLYDIR);
+        $cleaned_count = 0;
+        $freed_space = 0;
+
+        foreach ($temp_dirs as $temp_dir) {
+            $dir_age = time() - filemtime($temp_dir);
+            // Clean up directories older than 1 hour (3600 seconds)
+            if ($dir_age > 3600) {
+                $dir_size = $this->get_directory_size($temp_dir);
+                if ($this->cleanup_temp_dir($temp_dir)) {
+                    $freed_space += $dir_size;
+                    $cleaned_count++;
+                }
+            }
+        }
+
+        if ($cleaned_count > 0) {
+            error_log('H3TM Cleanup: Removed ' . $cleaned_count . ' old temp directories, freed ' . round($freed_space/1024/1024) . 'MB');
+        }
+    }
+
+    /**
+     * Get directory size in bytes
+     */
+    private function get_directory_size($dir) {
+        $size = 0;
+        if (is_dir($dir)) {
+            $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS));
+            foreach ($files as $file) {
+                if ($file->isFile()) {
+                    $size += $file->getSize();
+                }
+            }
+        }
+        return $size;
     }
     
     /**
