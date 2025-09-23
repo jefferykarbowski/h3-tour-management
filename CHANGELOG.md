@@ -5,6 +5,15 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.16] - 2025-09-21
+
+### Fixed
+- **Pantheon Fix**: Disabled unreliable disk_free_space() check on Pantheon
+- Enhanced chunk write error detection (partial writes, write failures)
+- Better memory management with immediate chunk cleanup and garbage collection
+- More detailed error logging for chunk combination process
+- Resolves false "Insufficient disk space" errors on Pantheon Live
+
 ## [1.4.15] - 2025-09-21
 
 ### Added

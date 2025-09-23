@@ -586,32 +586,42 @@ class H3TM_Admin {
             }
         }
 
-        $free_space = disk_free_space(dirname($final_file));
-        error_log('H3TM Disk Space Check: Need ' . round($total_chunk_size/1024/1024) . 'MB, Available: ' .
-                 ($free_space !== false ? round($free_space/1024/1024) . 'MB' : 'unknown'));
+        // Skip disk space check on Pantheon (disk_free_space unreliable)
+        $is_pantheon = (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0);
 
-        if ($free_space !== false && $free_space < ($total_chunk_size * 1.1)) { // 10% buffer
-            error_log('H3TM Chunk Combine Error: Insufficient disk space. Need: ' . round($total_chunk_size/1024/1024) . 'MB, Available: ' . round($free_space/1024/1024) . 'MB');
+        if (!$is_pantheon) {
+            $free_space = disk_free_space(dirname($final_file));
+            error_log('H3TM Disk Space Check: Need ' . round($total_chunk_size/1024/1024) . 'MB, Available: ' .
+                     ($free_space !== false ? round($free_space/1024/1024) . 'MB' : 'unknown'));
 
-            // Clean up old temp directories to free space
-            $this->cleanup_old_temp_files();
+            if ($free_space !== false && $free_space < ($total_chunk_size * 1.1)) { // 10% buffer
+                error_log('H3TM Chunk Combine Error: Insufficient disk space. Need: ' . round($total_chunk_size/1024/1024) . 'MB, Available: ' . round($free_space/1024/1024) . 'MB');
 
-            // Check space again after cleanup
-            $free_space_after = disk_free_space(dirname($final_file));
-            if ($free_space_after !== false && $free_space_after < ($total_chunk_size * 1.1)) {
-                wp_send_json_error(array(
-                    'message' => sprintf(__('Insufficient disk space. Need %dMB, only %dMB available.', 'h3-tour-management'),
-                                       round($total_chunk_size/1024/1024),
-                                       round($free_space_after/1024/1024)),
-                    'debug' => array(
-                        'required_mb' => round($total_chunk_size/1024/1024),
-                        'available_mb' => round($free_space_after/1024/1024),
-                        'chunks_found' => count($chunks)
-                    )
-                ));
-            } else {
-                error_log('H3TM: Cleanup freed space, retrying combination');
+                // Clean up old temp directories to free space
+                $this->cleanup_old_temp_files();
+
+                // Check space again after cleanup
+                $free_space_after = disk_free_space(dirname($final_file));
+                if ($free_space_after !== false && $free_space_after < ($total_chunk_size * 1.1)) {
+                    wp_send_json_error(array(
+                        'message' => sprintf(__('Insufficient disk space. Need %dMB, only %dMB available.', 'h3-tour-management'),
+                                           round($total_chunk_size/1024/1024),
+                                           round($free_space_after/1024/1024)),
+                        'debug' => array(
+                            'required_mb' => round($total_chunk_size/1024/1024),
+                            'available_mb' => round($free_space_after/1024/1024),
+                            'chunks_found' => count($chunks)
+                        )
+                    ));
+                } else {
+                    error_log('H3TM: Cleanup freed space, retrying combination');
+                }
             }
+        } else {
+            // On Pantheon, just clean up old files and proceed
+            error_log('H3TM Pantheon: Skipping disk space check (unreliable), cleaning up old temp files');
+            $this->cleanup_old_temp_files();
+            error_log('H3TM Pantheon: Proceeding with chunk combination for ' . round($total_chunk_size/1024/1024) . 'MB file (' . count($chunks) . ' chunks)');
         }
 
         $output = fopen($final_file, 'wb');
@@ -628,27 +638,44 @@ class H3TM_Admin {
             if ($chunk_data === false) {
                 error_log('H3TM Chunk Combine Error: Failed to read chunk: ' . $chunk_file);
                 fclose($output);
-                unlink($final_file);
+                if (file_exists($final_file)) unlink($final_file);
                 $this->cleanup_temp_dir($upload_temp_dir);
                 wp_send_json_error(__('Failed to read chunk', 'h3-tour-management'));
             }
 
+            $chunk_size = strlen($chunk_data);
             $bytes_written = fwrite($output, $chunk_data);
+
+            // More detailed write error checking
             if ($bytes_written === false) {
-                error_log('H3TM Chunk Combine Error: Failed to write chunk data: ' . $chunk_file);
+                error_log('H3TM Chunk Combine Error: fwrite() returned FALSE for chunk: ' . $chunk_file);
                 fclose($output);
-                unlink($final_file);
+                if (file_exists($final_file)) unlink($final_file);
                 $this->cleanup_temp_dir($upload_temp_dir);
-                wp_send_json_error(__('Failed to write chunk data', 'h3-tour-management'));
+                wp_send_json_error(__('Failed to write chunk data - write operation failed', 'h3-tour-management'));
+            } else if ($bytes_written !== $chunk_size) {
+                error_log('H3TM Chunk Combine Error: Partial write for chunk: ' . $chunk_file . ' (wrote ' . $bytes_written . ' of ' . $chunk_size . ' bytes)');
+                fclose($output);
+                if (file_exists($final_file)) unlink($final_file);
+                $this->cleanup_temp_dir($upload_temp_dir);
+                wp_send_json_error(__('Failed to write chunk data - partial write detected', 'h3-tour-management'));
             }
 
             $total_written += $bytes_written;
             $chunk_count++;
+
+            // Clear chunk from memory immediately
+            unset($chunk_data);
             unlink($chunk_file);
 
             // Log progress every 50 chunks for large files
             if ($chunk_count % 50 === 0) {
                 error_log('H3TM Chunk Combine Progress: ' . $chunk_count . ' chunks combined, ' . round($total_written/1024/1024) . 'MB written');
+
+                // Force garbage collection for large files
+                if (function_exists('gc_collect_cycles')) {
+                    gc_collect_cycles();
+                }
             }
         }
 
