@@ -3,7 +3,7 @@
  * Plugin Name: H3 Tour Management
  * Plugin URI: https://github.com/jefferykarbowski/h3-tour-management
  * Description: Comprehensive 3D Tour Management system with analytics, email notifications, and user management
- * Version: 1.4.17
+ * Version: 1.4.18
  * Author: H3 Photography
  * Author URI: https://h3vt.com/
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('H3TM_VERSION', '1.4.17');
+define('H3TM_VERSION', '1.4.18');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -72,7 +72,6 @@ $plugin_uri = $plugin_data['PluginURI'];
 $plugin_slug = basename(parse_url($plugin_uri, PHP_URL_PATH));
 
 // Use the extracted slug in the myUpdateChecker configuration
-
 $myUpdateChecker = PucFactory::buildUpdateChecker(
     $plugin_uri,
     __FILE__,
