@@ -67,8 +67,6 @@ if (file_exists($puc_file)) {
     require $puc_file;
 
     if (class_exists('YahnisElsts\PluginUpdateChecker\v5\PucFactory')) {
-        use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
-
         // Read the plugin file to extract the Plugin URI
         $plugin_data = get_file_data(__FILE__, array('PluginURI' => 'Plugin URI'));
         $plugin_uri = $plugin_data['PluginURI'];
@@ -77,7 +75,7 @@ if (file_exists($puc_file)) {
         $plugin_slug = basename(parse_url($plugin_uri, PHP_URL_PATH));
 
         // Use the extracted slug in the myUpdateChecker configuration
-        $myUpdateChecker = PucFactory::buildUpdateChecker(
+        $myUpdateChecker = YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
             $plugin_uri,
             __FILE__,
             $plugin_slug
