@@ -3,7 +3,7 @@
  * Plugin Name: H3 Tour Management
  * Plugin URI: https://github.com/jefferykarbowski/h3-tour-management
  * Description: Comprehensive 3D Tour Management system with analytics, email notifications, and user management
- * Version: 1.4.20
+ * Version: 1.4.21
  * Author: H3 Photography
  * Author URI: https://h3vt.com/
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('H3TM_VERSION', '1.4.20');
+define('H3TM_VERSION', '1.4.21');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -61,27 +61,23 @@ if (!function_exists('wp_new_user_notification')) {
 }
 
 
-// Include plugin update checker if available
-$puc_file = plugin_dir_path(__FILE__) . 'plugin-update-checker/plugin-update-checker.php';
-if (file_exists($puc_file)) {
-    require $puc_file;
 
-    if (class_exists('YahnisElsts\PluginUpdateChecker\v5\PucFactory')) {
-        // Read the plugin file to extract the Plugin URI
-        $plugin_data = get_file_data(__FILE__, array('PluginURI' => 'Plugin URI'));
-        $plugin_uri = $plugin_data['PluginURI'];
+require 'plugin-update-checker/plugin-update-checker.php';
+use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
-        // Parse the Plugin URI to get the slug
-        $plugin_slug = basename(parse_url($plugin_uri, PHP_URL_PATH));
+// Read the plugin file to extract the Plugin URI
+$plugin_data = get_file_data(__FILE__, array('PluginURI' => 'Plugin URI'));
+$plugin_uri = $plugin_data['PluginURI'];
 
-        // Use the extracted slug in the myUpdateChecker configuration
-        $myUpdateChecker = YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
-            $plugin_uri,
-            __FILE__,
-            $plugin_slug
-        );
+// Parse the Plugin URI to get the slug
+$plugin_slug = basename(parse_url($plugin_uri, PHP_URL_PATH));
 
-        $myUpdateChecker->getVcsApi()->enableReleaseAssets();
-        $myUpdateChecker->setBranch('main');
-    }
-}
+$myUpdateChecker = PucFactory::buildUpdateChecker(
+	$plugin_uri,
+	__FILE__,
+	$plugin_slug
+);
+
+//Set the branch that contains the stable release.
+$myUpdateChecker->setBranch('main');
+
