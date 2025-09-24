@@ -5,6 +5,16 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.20] - 2025-09-21
+
+### Added
+- **Plugin Update Metadata**: Updated plugin.json with proper H3 Tour Management data
+- Complete plugin information for update checker system
+- Proper version tracking and changelog integration
+
+### Fixed
+- Plugin update checker configuration and metadata
+
 ## [1.4.19] - 2025-09-21
 
 ### Fixed
