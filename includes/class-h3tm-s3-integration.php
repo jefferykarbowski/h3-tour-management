@@ -59,7 +59,7 @@ class H3TM_S3_Integration {
     /**
      * Get S3 configuration with robust fallback mechanism
      */
-    private function get_s3_config() {
+    public function get_s3_config() {
         if ($this->config_cache !== null) {
             return $this->config_cache;
         }
