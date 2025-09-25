@@ -116,7 +116,7 @@ class H3TM_Admin {
         // Get S3 configuration
         $s3_integration = new H3TM_S3_Simple();
         $s3_config = $s3_integration->get_s3_config();
-        $s3_enabled = get_option('h3tm_s3_enabled', '0') === '1';
+        $s3_enabled = true; // Always enabled in S3-only system
 
         // Debug S3 configuration
         error_log('H3TM S3 Config Debug: configured=' . ($s3_config['configured'] ? 'true' : 'false') .
@@ -644,7 +644,6 @@ class H3TM_Admin {
             }
 
             update_option('h3tm_s3_threshold', intval($_POST['s3_threshold']));
-            update_option('h3tm_s3_enabled', isset($_POST['s3_enabled']) ? '1' : '0');
 
             echo '<div class="notice notice-success"><p>' . __('S3 settings saved.', 'h3-tour-management') . '</p></div>';
         }
@@ -655,7 +654,7 @@ class H3TM_Admin {
         $aws_access_key = defined('AWS_ACCESS_KEY_ID') ? '***configured***' : get_option('h3tm_aws_access_key', '');
         $aws_secret_key = defined('AWS_SECRET_ACCESS_KEY') ? '***configured***' : get_option('h3tm_aws_secret_key', '');
         $s3_threshold = get_option('h3tm_s3_threshold', 100);
-        $s3_enabled = get_option('h3tm_s3_enabled', '0');
+        // S3 is always enabled in S3-only system
 
         // Check S3 configuration
         $s3_integration = new H3TM_S3_Simple();
@@ -686,28 +685,12 @@ class H3TM_Admin {
             <?php endif; ?>
 
             <form method="post" action="">
+                <div class="notice notice-info">
+                    <p><strong><?php _e('S3-Only System:', 'h3-tour-management'); ?></strong>
+                    <?php _e('All tour uploads now use AWS S3 directly. Traditional server uploads have been removed for better performance and reliability.', 'h3-tour-management'); ?></p>
+                </div>
+
                 <table class="form-table">
-                    <tr>
-                        <th scope="row">
-                            <label for="s3_enabled"><?php _e('Enable S3 Uploads', 'h3-tour-management'); ?></label>
-                        </th>
-                        <td>
-                            <label>
-                                <input type="checkbox" id="s3_enabled" name="s3_enabled" value="1" <?php checked($s3_enabled, '1'); ?> />
-                                <?php _e('Use S3 for large file uploads', 'h3-tour-management'); ?>
-                            </label>
-                            <p class="description"><?php _e('When enabled, files larger than the threshold will upload directly to S3.', 'h3-tour-management'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">
-                            <label for="s3_threshold"><?php _e('S3 Threshold (MB)', 'h3-tour-management'); ?></label>
-                        </th>
-                        <td>
-                            <input type="number" id="s3_threshold" name="s3_threshold" value="<?php echo esc_attr($s3_threshold); ?>" min="50" max="1000" />
-                            <p class="description"><?php _e('Files larger than this size will use S3 direct upload.', 'h3-tour-management'); ?></p>
-                        </td>
-                    </tr>
                     <tr>
                         <th scope="row">
                             <label for="s3_bucket"><?php _e('S3 Bucket Name', 'h3-tour-management'); ?></label>
@@ -781,15 +764,16 @@ define('H3_S3_REGION', 'us-east-1');
 define('AWS_ACCESS_KEY_ID', 'your-access-key');
 define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
                     </li>
-                    <li><?php _e('Test the connection and enable S3 uploads', 'h3-tour-management'); ?></li>
+                    <li><?php _e('Test the connection to verify setup', 'h3-tour-management'); ?></li>
                 </ol>
 
-                <h3><?php _e('Benefits of S3 Upload', 'h3-tour-management'); ?></h3>
+                <h3><?php _e('S3-Only System Benefits', 'h3-tour-management'); ?></h3>
                 <ul>
-                    <li>✅ <?php _e('Supports files up to 1GB+', 'h3-tour-management'); ?></li>
-                    <li>✅ <?php _e('Eliminates server disk space limitations', 'h3-tour-management'); ?></li>
+                    <li>✅ <?php _e('Supports unlimited file sizes', 'h3-tour-management'); ?></li>
+                    <li>✅ <?php _e('Eliminates all server limitations', 'h3-tour-management'); ?></li>
                     <li>✅ <?php _e('Faster uploads with direct browser-to-S3', 'h3-tour-management'); ?></li>
-                    <li>✅ <?php _e('No server disk space limitations', 'h3-tour-management'); ?></li>
+                    <li>✅ <?php _e('Professional cloud infrastructure', 'h3-tour-management'); ?></li>
+                    <li>✅ <?php _e('No more upload failures due to server constraints', 'h3-tour-management'); ?></li>
                 </ul>
             </div>
         </div>
