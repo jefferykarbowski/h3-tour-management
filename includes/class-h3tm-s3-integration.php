@@ -108,7 +108,16 @@ class H3TM_S3_Integration {
                  ', access_key=' . ($config['access_key'] ? 'SET' : 'MISSING') .
                  ', secret_key=' . ($config['secret_key'] ? 'SET' : 'MISSING'));
 
-        return $config;
+        // Return in expected format for admin class compatibility
+        $compatible_config = array(
+            'configured' => !empty($config['bucket_name']) && !empty($config['access_key']) && !empty($config['secret_key']),
+            'bucket' => $config['bucket_name'],
+            'region' => $config['region'],
+            'threshold_mb' => get_option('h3tm_s3_threshold', 100)
+        );
+
+        $this->config_cache = $compatible_config;
+        return $compatible_config;
     }
 
     /**
