@@ -25,24 +25,234 @@ jQuery(document).ready(function($) {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
     
-    // Handle tour upload with chunking
+    // S3 Upload Configuration - use WordPress configured threshold
+    var S3_UPLOAD_THRESHOLD = (h3tm_ajax.s3_threshold_mb || 100) * 1024 * 1024; // Configurable threshold for S3 upload
+    var AWS_SDK_LOADED = false;
+    var S3_CONFIGURED = h3tm_ajax.s3_configured || false;
+
+    // Dynamically load AWS SDK if needed
+    function loadAWSSDK(callback) {
+        if (AWS_SDK_LOADED || window.AWS) {
+            AWS_SDK_LOADED = true;
+            callback();
+            return;
+        }
+
+        var script = document.createElement('script');
+        script.src = 'https://sdk.amazonaws.com/js/aws-sdk-2.1544.0.min.js';
+        script.onload = function() {
+            AWS_SDK_LOADED = true;
+            callback();
+        };
+        script.onerror = function() {
+            console.error('Failed to load AWS SDK');
+            callback(new Error('Failed to load AWS SDK'));
+        };
+        document.head.appendChild(script);
+    }
+
+    // Handle tour upload with smart routing (S3 vs chunked)
     $('#h3tm-upload-form').on('submit', function(e) {
         e.preventDefault();
-        
+
         var $form = $(this);
         var $spinner = $form.find('.spinner');
         var $result = $('#upload-result');
         var $progressBar = $('#upload-progress');
         var $progressText = $('#upload-progress-text');
-        
+
         var tourName = $('#tour_name').val();
         var file = $('#tour_file')[0].files[0];
-        
+
         if (!file) {
             alert('Please select a file to upload');
             return;
         }
-        
+
+        // Smart upload method selection
+        if (file.size > S3_UPLOAD_THRESHOLD && S3_CONFIGURED) {
+            console.log('Large file detected (' + formatFileSize(file.size) + '), attempting S3 direct upload...');
+            attemptS3Upload(file, tourName, $form, $spinner, $result, $progressBar, $progressText);
+        } else if (file.size > S3_UPLOAD_THRESHOLD && !S3_CONFIGURED) {
+            console.log('Large file detected (' + formatFileSize(file.size) + ') but S3 not configured, using chunked upload...');
+            showStatusMessage('Large file detected but S3 not configured. Using chunked upload.', 'fallback');
+            startChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText);
+        } else {
+            console.log('Standard file size (' + formatFileSize(file.size) + '), using chunked upload...');
+            startChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText);
+        }
+    });
+
+    // Attempt S3 direct upload with fallback to chunked
+    function attemptS3Upload(file, tourName, $form, $spinner, $result, $progressBar, $progressText) {
+        $spinner.addClass('is-active');
+        $result.hide();
+
+        // Show progress bar
+        showProgressBar($progressBar, $progressText);
+        $progressText.text('Preparing S3 upload...');
+
+        // Get presigned URL from WordPress
+        $.ajax({
+            url: h3tm_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'h3tm_get_s3_presigned_url',
+                nonce: h3tm_ajax.nonce,
+                tour_name: tourName,
+                file_name: file.name,
+                file_size: file.size,
+                file_type: file.type
+            },
+            success: function(response) {
+                if (response.success && response.data.upload_url) {
+                    console.log('Got S3 presigned URL, starting direct upload...');
+                    performS3DirectUpload(file, response.data, tourName, $form, $spinner, $result, $progressBar, $progressText);
+                } else {
+                    console.log('S3 upload not available, falling back to chunked upload:', response.data);
+                    fallbackToChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.log('S3 presigned URL request failed, falling back to chunked upload:', error);
+                fallbackToChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText);
+            }
+        });
+    }
+
+    // Perform direct S3 upload
+    function performS3DirectUpload(file, s3Data, tourName, $form, $spinner, $result, $progressBar, $progressText) {
+        loadAWSSDK(function(error) {
+            if (error) {
+                console.log('AWS SDK loading failed, falling back to chunked upload:', error);
+                fallbackToChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText);
+                return;
+            }
+
+            try {
+                // Configure AWS
+                AWS.config.update({
+                    region: s3Data.region
+                });
+
+                var s3 = new AWS.S3({
+                    credentials: new AWS.Credentials({
+                        accessKeyId: s3Data.access_key,
+                        secretAccessKey: s3Data.secret_key
+                    })
+                });
+
+                var uploadParams = {
+                    Bucket: s3Data.bucket,
+                    Key: s3Data.key,
+                    Body: file,
+                    ContentType: file.type || 'application/zip'
+                };
+
+                $progressText.text('Uploading to S3...');
+
+                var upload = s3.upload(uploadParams);
+                var startTime = Date.now();
+
+                // Track upload progress
+                upload.on('httpUploadProgress', function(progress) {
+                    var percentage = Math.round((progress.loaded / progress.total) * 100);
+                    var currentTime = Date.now();
+
+                    // Update progress bar
+                    $('#upload-progress-bar').css('width', percentage + '%');
+                    updateProgressiveGradient(percentage);
+
+                    // Calculate time remaining
+                    var timeRemaining = '';
+                    if (percentage > 5) {
+                        var timeElapsed = (currentTime - startTime) / 1000;
+                        var estimatedTotal = (timeElapsed / percentage) * 100;
+                        var remaining = Math.max(0, estimatedTotal - timeElapsed);
+
+                        if (remaining > 60) {
+                            timeRemaining = ' • ~' + Math.ceil(remaining / 60) + 'm remaining';
+                        } else if (remaining > 10) {
+                            timeRemaining = ' • ~' + Math.ceil(remaining) + 's remaining';
+                        } else if (remaining > 0) {
+                            timeRemaining = ' • finishing up...';
+                        }
+                    }
+
+                    var statusText = percentage + '%';
+                    if (timeRemaining) {
+                        statusText += '<span class="time-remaining">' + timeRemaining + '</span>';
+                    }
+                    statusText += ' <span class="upload-method">(S3 Direct)</span>';
+                    $progressText.html(statusText);
+                });
+
+                // Handle upload completion
+                upload.send(function(err, data) {
+                    if (err) {
+                        console.error('S3 upload failed:', err);
+                        // Fall back to chunked upload on S3 failure
+                        $progressText.text('S3 upload failed, switching to chunked upload...');
+                        setTimeout(function() {
+                            fallbackToChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText);
+                        }, 1000);
+                    } else {
+                        console.log('S3 upload successful:', data);
+                        $progressText.text('Processing S3 uploaded file...');
+
+                        // Notify WordPress that S3 upload completed
+                        notifyS3UploadComplete(s3Data.upload_id, tourName, $form, $spinner, $result, $progressBar, $progressText);
+                    }
+                });
+
+            } catch (err) {
+                console.error('S3 upload setup failed:', err);
+                fallbackToChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText);
+            }
+        });
+    }
+
+    // Notify WordPress that S3 upload completed
+    function notifyS3UploadComplete(uploadId, tourName, $form, $spinner, $result, $progressBar, $progressText) {
+        $.ajax({
+            url: h3tm_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'h3tm_process_s3_upload',
+                nonce: h3tm_ajax.nonce,
+                upload_id: uploadId,
+                tour_name: tourName
+            },
+            timeout: 300000, // 5 minutes for processing
+            success: function(response) {
+                console.log('S3 upload processing response:', response);
+
+                if (response && response.success) {
+                    showUploadSuccessNoRefresh(response);
+                } else if (!response || response === '' || response === null) {
+                    showUploadSuccessNoRefresh({data: 'Tour upload completed successfully!'});
+                } else {
+                    handleProcessErrorNoRefresh(response);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.log('S3 upload processing error:', status, error);
+                handleProcessErrorNoRefresh({data: {message: 'S3 upload processing error: ' + status + ' - ' + error}});
+            },
+            complete: function() {
+                $spinner.removeClass('is-active');
+            }
+        });
+    }
+
+    // Fallback to chunked upload
+    function fallbackToChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText) {
+        console.log('Starting chunked upload fallback...');
+        startChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText);
+    }
+
+    // Start chunked upload (extracted from original logic)
+    function startChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText) {
         // Chunk size: 1MB
         var chunkSize = 1024 * 1024;
         var chunks = Math.ceil(file.size / chunkSize);
@@ -52,23 +262,12 @@ jQuery(document).ready(function($) {
         // Time tracking for remaining time calculation
         var startTime = Date.now();
         var lastProgressTime = startTime;
-        
+
         $spinner.addClass('is-active');
         $result.hide();
-        
-        // Show progress bar - now uses CSS classes for gradient styling
-        if ($progressBar.length === 0) {
-            $form.after('<div id="upload-progress-wrapper" style="display: none;">' +
-                '<div id="upload-progress">' +
-                '<div id="upload-progress-bar"></div>' +
-                '</div>' +
-                '<div id="upload-progress-text">0%</div>' +
-                '</div>');
-            $progressBar = $('#upload-progress');
-            $progressText = $('#upload-progress-text');
-        }
-        
-        $('#upload-progress-wrapper').show();
+
+        // Show progress bar
+        showProgressBar($progressBar, $progressText);
         
         function uploadChunk(start, retryCount) {
             retryCount = retryCount || 0;
@@ -122,11 +321,12 @@ jQuery(document).ready(function($) {
                         }
 
                         // Update progress text with percentage and time remaining
+                        var statusText = progress + '%';
                         if (timeRemaining) {
-                            $progressText.html(progress + '%<span class="time-remaining">' + timeRemaining + '</span>');
-                        } else {
-                            $progressText.text(progress + '%');
+                            statusText += '<span class="time-remaining">' + timeRemaining + '</span>';
                         }
+                        statusText += ' <span class="upload-method">(Chunked)</span>';
+                        $progressText.html(statusText);
 
                         lastProgressTime = currentTime;
                         
@@ -328,16 +528,19 @@ jQuery(document).ready(function($) {
 
         function showUploadSuccessNoRefresh(response) {
             console.log('=== H3TM DEBUG: Showing success (no refresh) ===');
+            clearStatusMessage(); // Clear any status messages
             $result.removeClass('notice-error').addClass('notice-success');
             var message = response.data || response.message || 'Tour uploaded successfully!';
             $result.html('<p>' + message + '</p><p><button type="button" class="button button-secondary" onclick="location.reload();">Refresh Page</button></p>');
             $form[0].reset();
             $('#upload-progress-wrapper').hide();
+            $('.h3tm-upload-method-info, .h3tm-large-file-notice').remove(); // Clean up UI elements
             $result.show();
         }
 
         function handleProcessErrorNoRefresh(response) {
             console.log('=== H3TM DEBUG: Showing error (no refresh) ===');
+            clearStatusMessage(); // Clear any status messages
             $result.removeClass('notice-success').addClass('notice-error');
 
             var errorMessage = 'Upload processing failed.';
@@ -365,7 +568,23 @@ jQuery(document).ready(function($) {
         
         // Start upload
         uploadChunk(0);
-    });
+    }
+
+    // Show progress bar (shared function)
+    function showProgressBar($progressBar, $progressText) {
+        if ($progressBar.length === 0) {
+            $('#h3tm-upload-form').after('<div id="upload-progress-wrapper" style="display: none;">' +
+                '<div id="upload-progress">' +
+                '<div id="upload-progress-bar"></div>' +
+                '</div>' +
+                '<div id="upload-progress-text">0%</div>' +
+                '</div>');
+            $progressBar = $('#upload-progress');
+            $progressText = $('#upload-progress-text');
+        }
+
+        $('#upload-progress-wrapper').show();
+    }
 
     /**
      * Update progress bar with progressive gradient based on percentage

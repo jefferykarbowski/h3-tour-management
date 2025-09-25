@@ -157,6 +157,60 @@
     font-weight: 600;
 }
 
+/* Upload method indicator styling */
+#upload-progress-text .upload-method {
+    color: #135e96;
+    font-weight: 500;
+    font-size: 11px;
+    opacity: 0.8;
+    margin-left: 4px;
+}
+
+/* S3 Direct Upload specific styling */
+#upload-progress-text .upload-method:contains("S3") {
+    color: #d63384;
+    font-weight: 600;
+}
+
+/* Upload status messages */
+.h3tm-upload-status {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.h3tm-upload-status.preparing {
+    background: #e3f2fd;
+    border-left: 4px solid #2196f3;
+    color: #1565c0;
+}
+
+.h3tm-upload-status.s3-upload {
+    background: #fce4ec;
+    border-left: 4px solid #e91e63;
+    color: #c2185b;
+}
+
+.h3tm-upload-status.chunked-upload {
+    background: #f3e5f5;
+    border-left: 4px solid #9c27b0;
+    color: #7b1fa2;
+}
+
+.h3tm-upload-status.processing {
+    background: #fff3e0;
+    border-left: 4px solid #ff9800;
+    color: #ef6c00;
+}
+
+.h3tm-upload-status.fallback {
+    background: #fff8e1;
+    border-left: 4px solid #ffc107;
+    color: #f57f17;
+}
+
 /* Responsive design considerations */
 @media screen and (max-width: 782px) {
     #upload-progress {
@@ -206,7 +260,49 @@
     );
 }
 
+/* File info enhancements */
+#file-info {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 10px;
+    margin-top: 8px;
+}
 
+#file-info strong {
+    color: #495057;
+}
 
+/* Large file warning */
+.h3tm-large-file-notice {
+    background: #e8f4fd;
+    border: 1px solid #bee5eb;
+    border-radius: 4px;
+    padding: 12px;
+    margin-top: 10px;
+    font-size: 13px;
+    line-height: 1.4;
+}
 
+.h3tm-large-file-notice .dashicons {
+    color: #0073aa;
+    margin-right: 5px;
+}
 
+/* Upload method selection info */
+.h3tm-upload-method-info {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #666;
+    font-style: italic;
+}
+
+.h3tm-upload-method-info.s3-selected {
+    color: #d63384;
+    font-weight: 500;
+}
+
+.h3tm-upload-method-info.chunked-selected {
+    color: #7b1fa2;
+    font-weight: 500;
+}

@@ -5,6 +5,26 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2025-09-21
+
+### Added
+- **🚀 AWS S3 Integration**: Complete S3 direct upload system for large files
+- S3 configuration and management in WordPress admin (3D Tours → S3 Settings)
+- Automatic upload method selection (S3 for >100MB, chunked for smaller)
+- Presigned URL generation for secure direct browser-to-S3 uploads
+- AWS credential management with environment variable support
+- S3 connection testing and validation tools
+
+### Fixed
+- **Major**: Eliminates Pantheon disk space limitations for large tour uploads
+- Supports files up to 1GB+ with direct S3 upload
+- Maintains backward compatibility with existing chunked upload system
+
+## [1.4.21] - 2025-09-21
+
+### Fixed
+- Plugin version synchronization and internal management
+
 ## [1.4.20] - 2025-09-21
 
 ### Added

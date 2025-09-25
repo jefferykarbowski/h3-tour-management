@@ -38,7 +38,8 @@
       "Read(//c/Users/Jeff/Downloads/Jeffery (1)/temp_test/**)",
       "Bash(sort:*)",
       "Bash(git checkout:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(chmod:*)"
     ],
     "deny": []
   }

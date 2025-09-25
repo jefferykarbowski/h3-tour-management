@@ -1,0 +1,20 @@
+{
+  "AlarmName": "H3-S3-HighErrorRate",
+  "ComparisonOperator": "GreaterThanThreshold",
+  "EvaluationPeriods": 2,
+  "MetricName": "4xxErrors",
+  "Namespace": "AWS/S3",
+  "Period": 300,
+  "Statistic": "Sum",
+  "Threshold": 10.0,
+  "ActionsEnabled": true,
+  "AlarmDescription": "High error rate on H3 S3 bucket",
+  "Dimensions": [
+    {
+      "Name": "BucketName",
+      "Value": "h3-tour-files-h3vt"
+    }
+  ],
+  "Unit": "Count",
+  "TreatMissingData": "notBreaching"
+}

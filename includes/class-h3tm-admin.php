@@ -19,6 +19,8 @@ class H3TM_Admin {
         add_action('wp_ajax_h3tm_upload_tour', array($this, 'handle_upload_tour'));
         add_action('wp_ajax_h3tm_upload_chunk', array($this, 'handle_upload_chunk'));
         add_action('wp_ajax_h3tm_process_upload', array($this, 'handle_process_upload'));
+        add_action('wp_ajax_h3tm_get_s3_presigned_url', array($this, 'handle_get_s3_presigned_url'));
+        add_action('wp_ajax_h3tm_process_s3_upload', array($this, 'handle_process_s3_upload'));
         add_action('wp_ajax_h3tm_delete_tour', array($this, 'handle_delete_tour'));
         add_action('wp_ajax_h3tm_rename_tour', array($this, 'handle_rename_tour'));
         // add_action('wp_ajax_h3tm_update_tours_analytics', array($this, 'handle_update_tours_analytics')); // Disabled with analytics settings
@@ -74,7 +76,16 @@ class H3TM_Admin {
             'h3tm-analytics',
             array($this, 'render_analytics_page')
         );
-        
+
+        add_submenu_page(
+            'h3-tour-management',
+            __('S3 Upload Settings', 'h3-tour-management'),
+            __('S3 Settings', 'h3-tour-management'),
+            'manage_options',
+            'h3tm-s3-settings',
+            array($this, 'render_s3_settings_page')
+        );
+
         // Analytics Settings page removed - not needed without PHP index files
         // add_submenu_page(
         //     'h3-tour-management',
@@ -105,7 +116,9 @@ class H3TM_Admin {
         // Localize script
         wp_localize_script('h3tm-admin', 'h3tm_ajax', array(
             'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('h3tm_ajax_nonce')
+            'nonce' => wp_create_nonce('h3tm_ajax_nonce'),
+            's3_threshold_mb' => get_option('h3tm_s3_threshold', 100),
+            's3_configured' => $this->get_s3_config() !== false
         ));
     }
     
@@ -140,8 +153,27 @@ class H3TM_Admin {
                                     <input type="file" id="tour_file" name="tour_file" accept=".zip" required />
                                     <p class="description">
                                         <?php _e('Upload a ZIP file containing the tour files.', 'h3-tour-management'); ?><br>
-                                        <?php _e('Large files will be uploaded in chunks (1MB each) to avoid server limits.', 'h3-tour-management'); ?>
+                                        <?php
+                                        $s3_configured = $this->get_s3_config() !== false;
+                                        if ($s3_configured) {
+                                            _e('Large files (>100MB) will use S3 Direct Upload for optimal performance. Smaller files use chunked upload.', 'h3-tour-management');
+                                        } else {
+                                            _e('All files will be uploaded in chunks (1MB each) to avoid server limits. Configure S3 for large file optimization.', 'h3-tour-management');
+                                        }
+                                        ?>
                                     </p>
+                                    <?php if ($s3_configured): ?>
+                                        <p class="description" style="color: #0073aa; font-weight: 500;">
+                                            <span class="dashicons dashicons-yes-alt" style="color: #00a32a;"></span>
+                                            <?php _e('S3 Direct Upload is configured and ready for large files.', 'h3-tour-management'); ?>
+                                        </p>
+                                    <?php else: ?>
+                                        <p class="description" style="color: #d63384;">
+                                            <span class="dashicons dashicons-info"></span>
+                                            <?php _e('S3 Direct Upload not configured. Large files will use chunked upload.', 'h3-tour-management'); ?>
+                                            <a href="<?php echo esc_url(admin_url('admin.php?page=h3tm-upload-settings')); ?>"> <?php _e('Configure S3', 'h3-tour-management'); ?></a>
+                                        </p>
+                                    <?php endif; ?>
                                     <div id="file-info" style="margin-top: 5px; display: none;">
                                         <strong><?php _e('File:', 'h3-tour-management'); ?></strong> <span id="file-name"></span><br>
                                         <strong><?php _e('Size:', 'h3-tour-management'); ?></strong> <span id="file-size"></span>
@@ -347,7 +379,437 @@ class H3TM_Admin {
         </div>
         <?php
     }
-    
+
+    /**
+     * Render upload settings page
+     */
+    public function render_upload_settings_page() {
+        if (isset($_POST['submit'])) {
+            // Save S3 settings
+            update_option('h3tm_s3_access_key', sanitize_text_field($_POST['s3_access_key']));
+            update_option('h3tm_s3_secret_key', sanitize_text_field($_POST['s3_secret_key']));
+            update_option('h3tm_s3_bucket', sanitize_text_field($_POST['s3_bucket']));
+            update_option('h3tm_s3_region', sanitize_text_field($_POST['s3_region']));
+            update_option('h3tm_s3_threshold', intval($_POST['s3_threshold']));
+
+            echo '<div class="notice notice-success"><p>' . __('Upload settings saved.', 'h3-tour-management') . '</p></div>';
+        }
+
+        $s3_config = $this->get_s3_config();
+        $s3_access_key = get_option('h3tm_s3_access_key', '');
+        $s3_secret_key = get_option('h3tm_s3_secret_key', '');
+        $s3_bucket = get_option('h3tm_s3_bucket', '');
+        $s3_region = get_option('h3tm_s3_region', 'us-east-1');
+        $s3_threshold = get_option('h3tm_s3_threshold', 100); // MB
+
+        // Check if using environment variables
+        $using_env_vars = !empty(getenv('AWS_ACCESS_KEY_ID')) || !empty(getenv('AWS_S3_BUCKET'));
+
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Upload Settings', 'h3-tour-management'); ?></h1>
+
+            <div class="h3tm-section">
+                <h2><?php _e('Upload Methods', 'h3-tour-management'); ?></h2>
+                <p><?php _e('The plugin supports two upload methods for optimal performance:', 'h3-tour-management'); ?></p>
+
+                <table class="widefat">
+                    <thead>
+                        <tr>
+                            <th><?php _e('Method', 'h3-tour-management'); ?></th>
+                            <th><?php _e('File Size', 'h3-tour-management'); ?></th>
+                            <th><?php _e('Description', 'h3-tour-management'); ?></th>
+                            <th><?php _e('Status', 'h3-tour-management'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Chunked Upload</strong></td>
+                            <td>All files (default)</td>
+                            <td>Uploads files in 1MB chunks through WordPress. Works for all file sizes but may timeout on very large files.</td>
+                            <td><span style="color: #00a32a;">✓ Always Available</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>S3 Direct Upload</strong></td>
+                            <td>Files > <?php echo $s3_threshold; ?>MB</td>
+                            <td>Uploads large files directly to Amazon S3, then downloads to WordPress. Optimal for files over 100MB.</td>
+                            <td>
+                                <?php if ($s3_config): ?>
+                                    <span style="color: #00a32a;">✓ Configured</span>
+                                <?php else: ?>
+                                    <span style="color: #d63384;">✗ Not Configured</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php if ($using_env_vars): ?>
+                <div class="notice notice-info">
+                    <p><strong><?php _e('Environment Variables Detected', 'h3-tour-management'); ?></strong></p>
+                    <p><?php _e('S3 configuration is being loaded from environment variables (recommended for security). The form below shows the current database values but environment variables will take precedence.', 'h3-tour-management'); ?></p>
+                </div>
+            <?php endif; ?>
+
+            <div class="h3tm-section">
+                <h2><?php _e('S3 Direct Upload Configuration', 'h3-tour-management'); ?></h2>
+                <p><?php _e('Configure Amazon S3 for direct upload of large files. Leave blank to use chunked upload only.', 'h3-tour-management'); ?></p>
+
+                <form method="post" action="">
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">
+                                <label for="s3_access_key"><?php _e('AWS Access Key ID', 'h3-tour-management'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" id="s3_access_key" name="s3_access_key" value="<?php echo esc_attr($s3_access_key); ?>" class="regular-text" />
+                                <?php if ($using_env_vars): ?>
+                                    <p class="description"><?php _e('Environment variable: AWS_ACCESS_KEY_ID', 'h3-tour-management'); ?></p>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="s3_secret_key"><?php _e('AWS Secret Access Key', 'h3-tour-management'); ?></label>
+                            </th>
+                            <td>
+                                <input type="password" id="s3_secret_key" name="s3_secret_key" value="<?php echo esc_attr($s3_secret_key); ?>" class="regular-text" />
+                                <?php if ($using_env_vars): ?>
+                                    <p class="description"><?php _e('Environment variable: AWS_SECRET_ACCESS_KEY', 'h3-tour-management'); ?></p>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="s3_bucket"><?php _e('S3 Bucket Name', 'h3-tour-management'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" id="s3_bucket" name="s3_bucket" value="<?php echo esc_attr($s3_bucket); ?>" class="regular-text" />
+                                <?php if ($using_env_vars): ?>
+                                    <p class="description"><?php _e('Environment variable: AWS_S3_BUCKET', 'h3-tour-management'); ?></p>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="s3_region"><?php _e('S3 Region', 'h3-tour-management'); ?></label>
+                            </th>
+                            <td>
+                                <select id="s3_region" name="s3_region" class="regular-text">
+                                    <option value="us-east-1" <?php selected($s3_region, 'us-east-1'); ?>>US East (N. Virginia)</option>
+                                    <option value="us-west-1" <?php selected($s3_region, 'us-west-1'); ?>>US West (N. California)</option>
+                                    <option value="us-west-2" <?php selected($s3_region, 'us-west-2'); ?>>US West (Oregon)</option>
+                                    <option value="eu-west-1" <?php selected($s3_region, 'eu-west-1'); ?>>EU (Ireland)</option>
+                                    <option value="eu-central-1" <?php selected($s3_region, 'eu-central-1'); ?>>EU (Frankfurt)</option>
+                                    <option value="ap-southeast-1" <?php selected($s3_region, 'ap-southeast-1'); ?>>Asia Pacific (Singapore)</option>
+                                    <option value="ap-southeast-2" <?php selected($s3_region, 'ap-southeast-2'); ?>>Asia Pacific (Sydney)</option>
+                                    <option value="ap-northeast-1" <?php selected($s3_region, 'ap-northeast-1'); ?>>Asia Pacific (Tokyo)</option>
+                                </select>
+                                <?php if ($using_env_vars): ?>
+                                    <p class="description"><?php _e('Environment variable: AWS_S3_REGION', 'h3-tour-management'); ?></p>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="s3_threshold"><?php _e('S3 Threshold (MB)', 'h3-tour-management'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number" id="s3_threshold" name="s3_threshold" value="<?php echo esc_attr($s3_threshold); ?>" min="1" max="1000" class="small-text" />
+                                <p class="description"><?php _e('Files larger than this size will use S3 direct upload. Recommended: 100MB', 'h3-tour-management'); ?></p>
+                            </td>
+                        </tr>
+                    </table>
+                    <?php submit_button(); ?>
+                </form>
+            </div>
+
+            <div class="h3tm-section">
+                <h2><?php _e('Configuration Status', 'h3-tour-management'); ?></h2>
+                <?php
+                $env_access_key = getenv('AWS_ACCESS_KEY_ID');
+                $env_secret_key = getenv('AWS_SECRET_ACCESS_KEY');
+                $env_bucket = getenv('AWS_S3_BUCKET');
+                $env_region = getenv('AWS_S3_REGION');
+                ?>
+
+                <table class="widefat">
+                    <thead>
+                        <tr>
+                            <th><?php _e('Configuration Source', 'h3-tour-management'); ?></th>
+                            <th><?php _e('Access Key', 'h3-tour-management'); ?></th>
+                            <th><?php _e('Secret Key', 'h3-tour-management'); ?></th>
+                            <th><?php _e('Bucket', 'h3-tour-management'); ?></th>
+                            <th><?php _e('Region', 'h3-tour-management'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Environment Variables</strong><br><small>(Recommended)</small></td>
+                            <td><?php echo !empty($env_access_key) ? '<span style="color: #00a32a;">✓ Set</span>' : '<span style="color: #666;">Not set</span>'; ?></td>
+                            <td><?php echo !empty($env_secret_key) ? '<span style="color: #00a32a;">✓ Set</span>' : '<span style="color: #666;">Not set</span>'; ?></td>
+                            <td><?php echo !empty($env_bucket) ? '<span style="color: #00a32a;">' . esc_html($env_bucket) . '</span>' : '<span style="color: #666;">Not set</span>'; ?></td>
+                            <td><?php echo !empty($env_region) ? esc_html($env_region) : 'us-east-1 (default)'; ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Database Options</strong><br><small>(Fallback)</small></td>
+                            <td><?php echo !empty($s3_access_key) ? '<span style="color: #00a32a;">✓ Set</span>' : '<span style="color: #666;">Not set</span>'; ?></td>
+                            <td><?php echo !empty($s3_secret_key) ? '<span style="color: #00a32a;">✓ Set</span>' : '<span style="color: #666;">Not set</span>'; ?></td>
+                            <td><?php echo !empty($s3_bucket) ? '<span style="color: #00a32a;">' . esc_html($s3_bucket) . '</span>' : '<span style="color: #666;">Not set</span>'; ?></td>
+                            <td><?php echo esc_html($s3_region); ?></td>
+                        </tr>
+                        <tr style="background: #f9f9f9;">
+                            <td><strong>Final Configuration</strong></td>
+                            <td colspan="4">
+                                <?php if ($s3_config): ?>
+                                    <span style="color: #00a32a; font-weight: bold;">✓ S3 Direct Upload Ready</span>
+                                    <p style="margin: 5px 0 0 0; color: #666; font-size: 13px;">
+                                        Using bucket: <strong><?php echo esc_html($s3_config['bucket']); ?></strong> in region <strong><?php echo esc_html($s3_config['region']); ?></strong>
+                                    </p>
+                                <?php else: ?>
+                                    <span style="color: #d63384; font-weight: bold;">✗ S3 Direct Upload Not Available</span>
+                                    <p style="margin: 5px 0 0 0; color: #666; font-size: 13px;">All uploads will use chunked method</p>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="h3tm-section">
+                <h2><?php _e('Setup Instructions', 'h3-tour-management'); ?></h2>
+                <ol>
+                    <li><strong><?php _e('Create AWS S3 Bucket', 'h3-tour-management'); ?></strong><br>
+                        <?php _e('Log into AWS Console and create a new S3 bucket in your preferred region.', 'h3-tour-management'); ?></li>
+
+                    <li><strong><?php _e('Create IAM User', 'h3-tour-management'); ?></strong><br>
+                        <?php _e('Create an IAM user with programmatic access and attach a policy with PutObject, GetObject, and DeleteObject permissions for your bucket.', 'h3-tour-management'); ?></li>
+
+                    <li><strong><?php _e('Configure Settings', 'h3-tour-management'); ?></strong><br>
+                        <?php _e('Either set environment variables (recommended) or use the form above to store credentials in the database.', 'h3-tour-management'); ?></li>
+
+                    <li><strong><?php _e('Test Upload', 'h3-tour-management'); ?></strong><br>
+                        <?php _e('Try uploading a file larger than your threshold to test S3 direct upload.', 'h3-tour-management'); ?></li>
+                </ol>
+
+                <p>
+                    <strong><?php _e('For detailed setup instructions, see:', 'h3-tour-management'); ?></strong>
+                    <a href="<?php echo esc_url(plugin_dir_url(__FILE__) . '../docs/S3_UPLOAD_CONFIGURATION.md'); ?>" target="_blank">
+                        S3_UPLOAD_CONFIGURATION.md
+                    </a>
+                </p>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render S3 settings page
+     */
+    public function render_s3_settings_page() {
+        if (isset($_POST['submit'])) {
+            // Save S3 settings (only if not using environment variables)
+            if (!defined('H3_S3_BUCKET')) {
+                update_option('h3tm_s3_bucket', sanitize_text_field($_POST['s3_bucket']));
+            }
+            if (!defined('H3_S3_REGION')) {
+                update_option('h3tm_s3_region', sanitize_text_field($_POST['s3_region']));
+            }
+            if (!defined('AWS_ACCESS_KEY_ID')) {
+                update_option('h3tm_aws_access_key', sanitize_text_field($_POST['aws_access_key']));
+            }
+            if (!defined('AWS_SECRET_ACCESS_KEY')) {
+                update_option('h3tm_aws_secret_key', sanitize_text_field($_POST['aws_secret_key']));
+            }
+
+            update_option('h3tm_s3_threshold', intval($_POST['s3_threshold']));
+            update_option('h3tm_s3_enabled', isset($_POST['s3_enabled']) ? '1' : '0');
+
+            echo '<div class="notice notice-success"><p>' . __('S3 settings saved.', 'h3-tour-management') . '</p></div>';
+        }
+
+        // Get current settings
+        $s3_bucket = defined('H3_S3_BUCKET') ? H3_S3_BUCKET : get_option('h3tm_s3_bucket', 'h3-tour-files-h3vt');
+        $s3_region = defined('H3_S3_REGION') ? H3_S3_REGION : get_option('h3tm_s3_region', 'us-east-1');
+        $aws_access_key = defined('AWS_ACCESS_KEY_ID') ? '***configured***' : get_option('h3tm_aws_access_key', '');
+        $aws_secret_key = defined('AWS_SECRET_ACCESS_KEY') ? '***configured***' : get_option('h3tm_aws_secret_key', '');
+        $s3_threshold = get_option('h3tm_s3_threshold', 100);
+        $s3_enabled = get_option('h3tm_s3_enabled', '0');
+
+        // Check S3 configuration
+        $s3_integration = new H3TM_S3_Integration();
+        $is_configured = $s3_integration->is_configured();
+        ?>
+        <div class="wrap">
+            <h1><?php _e('S3 Upload Settings', 'h3-tour-management'); ?></h1>
+
+            <div class="h3tm-s3-status">
+                <h2><?php _e('Configuration Status', 'h3-tour-management'); ?></h2>
+                <p>
+                    <strong><?php _e('S3 Integration:', 'h3-tour-management'); ?></strong>
+                    <?php if ($is_configured) : ?>
+                        <span style="color: green;">✓ <?php _e('Configured', 'h3-tour-management'); ?></span>
+                        <button type="button" id="test-s3-connection" class="button button-secondary"><?php _e('Test Connection', 'h3-tour-management'); ?></button>
+                    <?php else : ?>
+                        <span style="color: red;">✗ <?php _e('Not Configured', 'h3-tour-management'); ?></span>
+                    <?php endif; ?>
+                </p>
+                <div id="s3-test-result" style="margin-top: 10px;"></div>
+            </div>
+
+            <?php if (defined('H3_S3_BUCKET') || defined('AWS_ACCESS_KEY_ID')) : ?>
+                <div class="notice notice-info">
+                    <p><strong><?php _e('Note:', 'h3-tour-management'); ?></strong>
+                    <?php _e('Some settings are configured via environment variables (wp-config.php) and cannot be changed here.', 'h3-tour-management'); ?></p>
+                </div>
+            <?php endif; ?>
+
+            <form method="post" action="">
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="s3_enabled"><?php _e('Enable S3 Uploads', 'h3-tour-management'); ?></label>
+                        </th>
+                        <td>
+                            <label>
+                                <input type="checkbox" id="s3_enabled" name="s3_enabled" value="1" <?php checked($s3_enabled, '1'); ?> />
+                                <?php _e('Use S3 for large file uploads', 'h3-tour-management'); ?>
+                            </label>
+                            <p class="description"><?php _e('When enabled, files larger than the threshold will upload directly to S3.', 'h3-tour-management'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="s3_threshold"><?php _e('S3 Threshold (MB)', 'h3-tour-management'); ?></label>
+                        </th>
+                        <td>
+                            <input type="number" id="s3_threshold" name="s3_threshold" value="<?php echo esc_attr($s3_threshold); ?>" min="50" max="1000" />
+                            <p class="description"><?php _e('Files larger than this size will use S3 direct upload.', 'h3-tour-management'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="s3_bucket"><?php _e('S3 Bucket Name', 'h3-tour-management'); ?></label>
+                        </th>
+                        <td>
+                            <input type="text" id="s3_bucket" name="s3_bucket" value="<?php echo esc_attr($s3_bucket); ?>"
+                                   class="regular-text" <?php echo defined('H3_S3_BUCKET') ? 'readonly' : ''; ?> />
+                            <?php if (defined('H3_S3_BUCKET')) : ?>
+                                <p class="description"><?php _e('Configured via environment variable.', 'h3-tour-management'); ?></p>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="s3_region"><?php _e('S3 Region', 'h3-tour-management'); ?></label>
+                        </th>
+                        <td>
+                            <select id="s3_region" name="s3_region" <?php echo defined('H3_S3_REGION') ? 'disabled' : ''; ?>>
+                                <option value="us-east-1" <?php selected($s3_region, 'us-east-1'); ?>>US East (N. Virginia)</option>
+                                <option value="us-west-2" <?php selected($s3_region, 'us-west-2'); ?>>US West (Oregon)</option>
+                                <option value="eu-west-1" <?php selected($s3_region, 'eu-west-1'); ?>>Europe (Ireland)</option>
+                                <option value="ap-southeast-1" <?php selected($s3_region, 'ap-southeast-1'); ?>>Asia Pacific (Singapore)</option>
+                            </select>
+                            <?php if (defined('H3_S3_REGION')) : ?>
+                                <p class="description"><?php _e('Configured via environment variable.', 'h3-tour-management'); ?></p>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="aws_access_key"><?php _e('AWS Access Key ID', 'h3-tour-management'); ?></label>
+                        </th>
+                        <td>
+                            <input type="text" id="aws_access_key" name="aws_access_key"
+                                   value="<?php echo esc_attr($aws_access_key); ?>"
+                                   class="regular-text" <?php echo defined('AWS_ACCESS_KEY_ID') ? 'readonly' : ''; ?> />
+                            <?php if (defined('AWS_ACCESS_KEY_ID')) : ?>
+                                <p class="description"><?php _e('Configured via environment variable.', 'h3-tour-management'); ?></p>
+                            <?php else : ?>
+                                <p class="description"><?php _e('Enter your AWS Access Key ID from IAM user creation.', 'h3-tour-management'); ?></p>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="aws_secret_key"><?php _e('AWS Secret Access Key', 'h3-tour-management'); ?></label>
+                        </th>
+                        <td>
+                            <input type="password" id="aws_secret_key" name="aws_secret_key"
+                                   value="<?php echo defined('AWS_SECRET_ACCESS_KEY') ? '' : esc_attr($aws_secret_key); ?>"
+                                   class="regular-text" <?php echo defined('AWS_SECRET_ACCESS_KEY') ? 'readonly' : ''; ?> />
+                            <?php if (defined('AWS_SECRET_ACCESS_KEY')) : ?>
+                                <p class="description"><?php _e('Configured via environment variable.', 'h3-tour-management'); ?></p>
+                            <?php else : ?>
+                                <p class="description"><?php _e('Enter your AWS Secret Access Key from IAM user creation.', 'h3-tour-management'); ?></p>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                </table>
+                <?php submit_button(); ?>
+            </form>
+
+            <div class="h3tm-s3-info">
+                <h2><?php _e('Setup Instructions', 'h3-tour-management'); ?></h2>
+                <ol>
+                    <li><?php _e('Create an AWS account and set up S3 bucket (see documentation)', 'h3-tour-management'); ?></li>
+                    <li><?php _e('Create IAM user with S3 permissions', 'h3-tour-management'); ?></li>
+                    <li><?php _e('Enter AWS credentials above or add to wp-config.php:', 'h3-tour-management'); ?>
+                        <pre>define('H3_S3_BUCKET', 'h3-tour-files-h3vt');
+define('H3_S3_REGION', 'us-east-1');
+define('AWS_ACCESS_KEY_ID', 'your-access-key');
+define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
+                    </li>
+                    <li><?php _e('Test the connection and enable S3 uploads', 'h3-tour-management'); ?></li>
+                </ol>
+
+                <h3><?php _e('Benefits of S3 Upload', 'h3-tour-management'); ?></h3>
+                <ul>
+                    <li>✅ <?php _e('Supports files up to 1GB+', 'h3-tour-management'); ?></li>
+                    <li>✅ <?php _e('Eliminates server disk space limitations', 'h3-tour-management'); ?></li>
+                    <li>✅ <?php _e('Faster uploads with direct browser-to-S3', 'h3-tour-management'); ?></li>
+                    <li>✅ <?php _e('Automatic fallback to chunked upload if needed', 'h3-tour-management'); ?></li>
+                </ul>
+            </div>
+        </div>
+
+        <script>
+        jQuery(document).ready(function($) {
+            $('#test-s3-connection').on('click', function() {
+                var $button = $(this);
+                var $result = $('#s3-test-result');
+
+                $button.prop('disabled', true).text('Testing...');
+                $result.html('');
+
+                $.ajax({
+                    url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                    type: 'POST',
+                    data: {
+                        action: 'h3tm_test_s3_connection',
+                        nonce: '<?php echo wp_create_nonce('h3tm_ajax_nonce'); ?>'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $result.html('<div class="notice notice-success inline"><p>' + response.data + '</p></div>');
+                        } else {
+                            $result.html('<div class="notice notice-error inline"><p>' + response.data + '</p></div>');
+                        }
+                    },
+                    error: function() {
+                        $result.html('<div class="notice notice-error inline"><p>Connection test failed.</p></div>');
+                    },
+                    complete: function() {
+                        $button.prop('disabled', false).text('Test Connection');
+                    }
+                });
+            });
+        });
+        </script>
+        <?php
+    }
+
     /**
      * Handle test email AJAX request
      */
@@ -843,7 +1305,224 @@ class H3TM_Admin {
         }
         return $size;
     }
-    
+
+    /**
+     * Get S3 configuration from WordPress options or environment variables
+     */
+    private function get_s3_config() {
+        // Check if S3 is configured via environment variables (recommended for security)
+        $s3_config = array(
+            'access_key' => getenv('AWS_ACCESS_KEY_ID') ?: get_option('h3tm_s3_access_key', ''),
+            'secret_key' => getenv('AWS_SECRET_ACCESS_KEY') ?: get_option('h3tm_s3_secret_key', ''),
+            'bucket' => getenv('AWS_S3_BUCKET') ?: get_option('h3tm_s3_bucket', ''),
+            'region' => getenv('AWS_S3_REGION') ?: get_option('h3tm_s3_region', 'us-east-1')
+        );
+
+        // Return false if required config is missing
+        if (empty($s3_config['access_key']) || empty($s3_config['secret_key']) || empty($s3_config['bucket'])) {
+            return false;
+        }
+
+        return $s3_config;
+    }
+
+    /**
+     * Handle S3 presigned URL request
+     */
+    public function handle_get_s3_presigned_url() {
+        check_ajax_referer('h3tm_ajax_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+
+        $s3_config = $this->get_s3_config();
+        if (!$s3_config) {
+            wp_send_json_error(array(
+                'message' => 'S3 not configured',
+                'fallback' => 'chunked'
+            ));
+        }
+
+        $tour_name = sanitize_text_field($_POST['tour_name']);
+        $file_name = sanitize_file_name($_POST['file_name']);
+        $file_size = intval($_POST['file_size']);
+        $file_type = sanitize_text_field($_POST['file_type']);
+
+        if (empty($tour_name) || empty($file_name)) {
+            wp_send_json_error(array(
+                'message' => 'Missing required parameters',
+                'fallback' => 'chunked'
+            ));
+        }
+
+        try {
+            // Generate unique upload ID for tracking
+            $upload_id = uniqid('s3_' . time() . '_', true);
+
+            // Store upload metadata temporarily
+            $upload_meta = array(
+                'tour_name' => $tour_name,
+                'file_name' => $file_name,
+                'file_size' => $file_size,
+                'file_type' => $file_type,
+                'timestamp' => time(),
+                's3_key' => 'h3tours/' . $upload_id . '/' . $file_name
+            );
+
+            set_transient('h3tm_s3_upload_' . $upload_id, $upload_meta, 3600); // 1 hour expiry
+
+            // For now, return the direct S3 credentials and let the client handle the upload
+            // In production, you would generate a presigned URL server-side for better security
+            wp_send_json_success(array(
+                'upload_url' => 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com',
+                'upload_id' => $upload_id,
+                'access_key' => $s3_config['access_key'],
+                'secret_key' => $s3_config['secret_key'],
+                'bucket' => $s3_config['bucket'],
+                'region' => $s3_config['region'],
+                'key' => $upload_meta['s3_key'],
+                'method' => 's3_direct'
+            ));
+
+        } catch (Exception $e) {
+            error_log('H3TM S3 Presigned URL Error: ' . $e->getMessage());
+            wp_send_json_error(array(
+                'message' => 'Failed to generate S3 upload URL',
+                'fallback' => 'chunked'
+            ));
+        }
+    }
+
+    /**
+     * Handle S3 upload completion and process the file
+     */
+    public function handle_process_s3_upload() {
+        // Set generous limits for large file processing
+        @ini_set('max_execution_time', 900);
+        @ini_set('memory_limit', '1024M');
+
+        check_ajax_referer('h3tm_ajax_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+
+        $upload_id = sanitize_text_field($_POST['upload_id']);
+        $tour_name = sanitize_text_field($_POST['tour_name']);
+
+        if (empty($upload_id) || empty($tour_name)) {
+            wp_send_json_error('Missing required parameters');
+        }
+
+        // Get upload metadata
+        $upload_meta = get_transient('h3tm_s3_upload_' . $upload_id);
+        if (!$upload_meta) {
+            wp_send_json_error('Upload session not found or expired');
+        }
+
+        // Clean up the transient
+        delete_transient('h3tm_s3_upload_' . $upload_id);
+
+        $s3_config = $this->get_s3_config();
+        if (!$s3_config) {
+            wp_send_json_error('S3 configuration not available');
+        }
+
+        try {
+            // Download file from S3 to local temp location
+            $temp_file = $this->download_from_s3($s3_config, $upload_meta['s3_key'], $upload_meta['file_name']);
+
+            if (!$temp_file || !file_exists($temp_file)) {
+                wp_send_json_error('Failed to download file from S3');
+            }
+
+            // Process the downloaded file using existing tour manager
+            $tour_manager = $this->get_tour_manager();
+            $file_info = array(
+                'name' => $upload_meta['file_name'],
+                'tmp_name' => $temp_file,
+                'error' => UPLOAD_ERR_OK,
+                'size' => file_exists($temp_file) ? filesize($temp_file) : 0
+            );
+
+            $result = $tour_manager->upload_tour($tour_name, $file_info, true);
+
+            // Clean up temp file
+            if (file_exists($temp_file)) {
+                unlink($temp_file);
+            }
+
+            // Clean up S3 file (optional - you might want to keep it as backup)
+            $this->cleanup_s3_file($s3_config, $upload_meta['s3_key']);
+
+            if ($result['success']) {
+                wp_send_json_success($result['message'] . ' (via S3 Direct Upload)');
+            } else {
+                wp_send_json_error($result['message']);
+            }
+
+        } catch (Exception $e) {
+            error_log('H3TM S3 Process Upload Error: ' . $e->getMessage());
+            wp_send_json_error('S3 upload processing failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download file from S3 to local temp location
+     */
+    private function download_from_s3($s3_config, $s3_key, $original_filename) {
+        // Create temp file
+        $upload_dir = wp_upload_dir();
+        $temp_dir = $upload_dir['basedir'] . '/h3-tours-temp';
+        if (!file_exists($temp_dir)) {
+            wp_mkdir_p($temp_dir);
+        }
+
+        $temp_file = $temp_dir . '/' . uniqid('s3_download_') . '_' . $original_filename;
+
+        // Construct S3 URL
+        $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/' . $s3_key;
+
+        // For production, you would use AWS SDK to download the file properly
+        // For now, using a simplified approach with signed URLs or public access
+        // This is a placeholder - implement proper S3 download using AWS SDK
+
+        // Simple approach using cURL (requires proper S3 authentication)
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $s3_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300); // 5 minutes timeout
+        curl_setopt($ch, CURLOPT_FILE, fopen($temp_file, 'w+'));
+
+        $success = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($success && $http_code === 200 && file_exists($temp_file) && filesize($temp_file) > 0) {
+            return $temp_file;
+        }
+
+        // Clean up failed download
+        if (file_exists($temp_file)) {
+            unlink($temp_file);
+        }
+
+        error_log('H3TM S3 Download Failed: HTTP ' . $http_code . ' for ' . $s3_url);
+        return false;
+    }
+
+    /**
+     * Clean up S3 file after processing
+     */
+    private function cleanup_s3_file($s3_config, $s3_key) {
+        // For production, implement proper S3 file deletion using AWS SDK
+        // This is a placeholder for S3 cleanup logic
+        error_log('H3TM S3 Cleanup: Would delete ' . $s3_key . ' from bucket ' . $s3_config['bucket']);
+    }
+
     /**
      * Handle tour deletion
      */

@@ -1,0 +1,25 @@
+{
+    "CORSRules": [
+        {
+            "AllowedHeaders": [
+                "*"
+            ],
+            "AllowedMethods": [
+                "PUT",
+                "POST",
+                "GET"
+            ],
+            "AllowedOrigins": [
+                "https://dev-h3-tours.pantheonsite.io",
+                "https://live-h3-tours.pantheonsite.io",
+                "https://h3vt.com",
+                "https://www.h3vt.com"
+            ],
+            "ExposeHeaders": [
+                "ETag",
+                "x-amz-meta-custom-header"
+            ],
+            "MaxAgeSeconds": 3000
+        }
+    ]
+}

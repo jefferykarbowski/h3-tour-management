@@ -1,0 +1,46 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "ListBucketForTours",
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket"
+            ],
+            "Resource": "arn:aws:s3:::h3-tour-files-h3vt",
+            "Condition": {
+                "StringLike": {
+                    "s3:prefix": [
+                        "uploads/*",
+                        "temp/*",
+                        "tours/*"
+                    ]
+                }
+            }
+        },
+        {
+            "Sid": "ManageUploadFiles",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::h3-tour-files-h3vt/uploads/*",
+                "arn:aws:s3:::h3-tour-files-h3vt/temp/*"
+            ]
+        },
+        {
+            "Sid": "ManageTourFiles",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:PutObjectTagging",
+                "s3:DeleteObject"
+            ],
+            "Resource": "arn:aws:s3:::h3-tour-files-h3vt/tours/*"
+        }
+    ]
+}

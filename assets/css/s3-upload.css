@@ -1,0 +1,373 @@
+/**
+ * S3 Direct Upload Styles for H3 Tour Management
+ *
+ * Provides styling for the S3 direct upload interface with
+ * professional design and accessibility features.
+ *
+ * @package H3_Tour_Management
+ * @since 2.1.0
+ */
+
+/* Upload Container */
+.h3tm-upload-container {
+    max-width: 600px;
+    margin: 20px 0;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fff;
+}
+
+/* File Input Styling */
+.h3tm-file-input-wrapper {
+    position: relative;
+    display: inline-block;
+    margin-bottom: 15px;
+}
+
+.h3tm-file-input {
+    position: absolute;
+    left: -9999px;
+    opacity: 0;
+}
+
+.h3tm-file-input-label {
+    display: inline-block;
+    padding: 8px 16px;
+    background: #f7f7f7;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.h3tm-file-input-label:hover {
+    background: #e7e7e7;
+}
+
+.h3tm-file-input:focus + .h3tm-file-input-label {
+    outline: 2px solid #0073aa;
+    outline-offset: 2px;
+}
+
+/* Upload Button */
+.h3tm-upload-button {
+    display: inline-block;
+    padding: 10px 20px;
+    background: #0073aa;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color 0.3s ease;
+    margin-left: 10px;
+}
+
+.h3tm-upload-button:hover:not(:disabled) {
+    background: #005a87;
+}
+
+.h3tm-upload-button:disabled,
+.h3tm-upload-button.disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.h3tm-upload-button.uploading {
+    background: #dc3232;
+}
+
+.h3tm-upload-button.uploading:hover {
+    background: #a02020;
+}
+
+/* Progress Bar */
+.h3tm-progress-bar {
+    position: relative;
+    width: 100%;
+    height: 24px;
+    background: #f1f1f1;
+    border-radius: 12px;
+    margin: 15px 0;
+    overflow: hidden;
+    border: 1px solid #ddd;
+}
+
+.h3tm-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #dc3232 0%, #46b450 100%);
+    transition: width 0.3s ease;
+    border-radius: 12px;
+    position: relative;
+}
+
+.h3tm-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+    animation: shine 2s infinite;
+}
+
+@keyframes shine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.h3tm-progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+    text-shadow: 1px 1px 1px rgba(255,255,255,0.8);
+    z-index: 1;
+}
+
+/* Status Messages */
+.h3tm-upload-status {
+    margin: 10px 0;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.h3tm-upload-status.status-info {
+    background: #e5f5fa;
+    color: #0073aa;
+    border: 1px solid #b8dae4;
+}
+
+.h3tm-upload-status.status-success {
+    background: #dff0d8;
+    color: #3c763d;
+    border: 1px solid #d6e9c6;
+}
+
+.h3tm-upload-status.status-warning {
+    background: #fcf8e3;
+    color: #8a6d3b;
+    border: 1px solid #faebcc;
+}
+
+.h3tm-upload-status.status-error {
+    background: #f2dede;
+    color: #a94442;
+    border: 1px solid #ebccd1;
+}
+
+/* Upload Configuration Panel */
+.h3tm-upload-config {
+    background: #f9f9f9;
+    border: 1px solid #e5e5e5;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.h3tm-upload-config h3 {
+    margin: 0 0 10px 0;
+    font-size: 16px;
+    color: #333;
+}
+
+.h3tm-config-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+.h3tm-config-item:last-child {
+    border-bottom: none;
+}
+
+.h3tm-config-label {
+    font-weight: 600;
+    color: #555;
+}
+
+.h3tm-config-value {
+    color: #666;
+    font-family: monospace;
+}
+
+/* Security Indicators */
+.h3tm-security-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    border-radius: 3px;
+    margin-left: 5px;
+}
+
+.h3tm-security-badge.secure {
+    background: #dff0d8;
+    color: #3c763d;
+    border: 1px solid #d6e9c6;
+}
+
+.h3tm-security-badge.warning {
+    background: #fcf8e3;
+    color: #8a6d3b;
+    border: 1px solid #faebcc;
+}
+
+/* Drag and Drop Enhancement */
+.h3tm-upload-container.dragover {
+    border: 2px dashed #0073aa;
+    background: #f0f8ff;
+}
+
+.h3tm-drag-drop-area {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    background: #fafafa;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.h3tm-drag-drop-area:hover,
+.h3tm-drag-drop-area.dragover {
+    border-color: #0073aa;
+    background: #f0f8ff;
+}
+
+.h3tm-drag-drop-text {
+    font-size: 16px;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.h3tm-drag-drop-hint {
+    font-size: 12px;
+    color: #999;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .h3tm-upload-container {
+        margin: 10px 0;
+        padding: 15px;
+    }
+
+    .h3tm-file-input-label {
+        display: block;
+        text-align: center;
+        margin-bottom: 10px;
+    }
+
+    .h3tm-upload-button {
+        display: block;
+        width: 100%;
+        margin-left: 0;
+        margin-top: 10px;
+    }
+
+    .h3tm-config-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .h3tm-config-value {
+        margin-top: 5px;
+    }
+}
+
+/* Accessibility Enhancements */
+@media (prefers-reduced-motion: reduce) {
+    .h3tm-progress-fill,
+    .h3tm-upload-button,
+    .h3tm-file-input-label,
+    .h3tm-drag-drop-area {
+        transition: none;
+    }
+
+    .h3tm-progress-fill::after {
+        animation: none;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .h3tm-upload-container {
+        border: 2px solid;
+    }
+
+    .h3tm-progress-bar {
+        border: 2px solid;
+    }
+
+    .h3tm-upload-status {
+        border-width: 2px;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .h3tm-upload-container {
+        background: #1e1e1e;
+        border-color: #444;
+        color: #fff;
+    }
+
+    .h3tm-file-input-label {
+        background: #333;
+        border-color: #555;
+        color: #fff;
+    }
+
+    .h3tm-file-input-label:hover {
+        background: #444;
+    }
+
+    .h3tm-progress-bar {
+        background: #333;
+        border-color: #555;
+    }
+
+    .h3tm-progress-text {
+        color: #fff;
+        text-shadow: 1px 1px 1px rgba(0,0,0,0.8);
+    }
+
+    .h3tm-upload-config {
+        background: #2a2a2a;
+        border-color: #555;
+    }
+
+    .h3tm-drag-drop-area {
+        background: #2a2a2a;
+        border-color: #555;
+    }
+
+    .h3tm-drag-drop-area:hover,
+    .h3tm-drag-drop-area.dragover {
+        background: #003d5c;
+        border-color: #0073aa;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .h3tm-upload-container,
+    .h3tm-progress-bar,
+    .h3tm-upload-button {
+        display: none;
+    }
+}

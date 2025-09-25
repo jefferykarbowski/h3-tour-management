@@ -1,0 +1,17 @@
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+    "AllowedOrigins": [
+      "https://h3vt.com",
+      "https://www.h3vt.com",
+      "https://dev-h3vt.pantheonsite.io",
+      "https://test-h3vt.pantheonsite.io",
+      "https://live-h3vt.pantheonsite.io",
+      "http://localhost:3000",
+      "http://localhost:8080"
+    ],
+    "ExposeHeaders": ["ETag", "x-amz-request-id"],
+    "MaxAgeSeconds": 3600
+  }
+]
