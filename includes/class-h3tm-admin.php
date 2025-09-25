@@ -144,14 +144,24 @@ class H3TM_Admin {
      * Get tours from S3 instead of local directory
      */
     private function get_s3_tours() {
-        // Use the S3 tour registry to get processed tours
-        $s3_tours = H3TM_S3_Tour_Registry::get_s3_tours();
+        // Simple approach: get tours from database and recent uploads
+        $s3_tours = get_option('h3tm_s3_tours', array());
+        $recent_uploads = get_transient('h3tm_recent_uploads') ?: array();
+
+        // Manually add known S3 tours (temporary solution)
+        $known_s3_tours = array('Bee Cave', 'Onion Creek'); // Add tours you know Lambda processed
+
+        // Combine all sources
+        $all_tours = array_keys($s3_tours);
+        $all_tours = array_merge($all_tours, $recent_uploads);
+        $all_tours = array_merge($all_tours, $known_s3_tours);
 
         // Also include any existing local tours for backward compatibility
         $tour_manager = $this->get_tour_manager();
         $local_tours = $tour_manager->get_all_tours();
+        $all_tours = array_merge($all_tours, $local_tours);
 
-        return array_unique(array_merge($s3_tours, $local_tours));
+        return array_unique($all_tours);
     }
 
     /**
