@@ -20,6 +20,9 @@ class H3TM_S3_Proxy {
         // Add query vars first
         add_filter('query_vars', array($this, 'add_query_vars'));
 
+        // Debug: Log that rewrite rules are being added
+        error_log('H3TM S3 Proxy: Adding rewrite rules...');
+
         // Add multiple rewrite rules to handle different URL patterns
         add_rewrite_rule(
             '^h3panos/([^/]+)/?$',
@@ -32,6 +35,8 @@ class H3TM_S3_Proxy {
             'index.php?h3tm_tour=$matches[1]&h3tm_file=$matches[2]',
             'top'
         );
+
+        error_log('H3TM S3 Proxy: Rewrite rules added');
 
         // Force flush rewrite rules for S3 proxy
         add_action('admin_init', array($this, 'maybe_flush_rewrite_rules'));
@@ -61,14 +66,25 @@ class H3TM_S3_Proxy {
      * Handle tour file requests and proxy from S3
      */
     public function handle_tour_requests() {
+        // Debug: Always log template_redirect calls
+        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+        if (strpos($request_uri, 'h3panos') !== false) {
+            error_log('H3TM S3 Proxy: template_redirect called for URI: ' . $request_uri);
+        }
+
         $tour_name = get_query_var('h3tm_tour');
         $file_path = get_query_var('h3tm_file');
 
+        error_log('H3TM S3 Proxy: Query vars - tour_name=' . $tour_name . ', file_path=' . $file_path);
+
         if (empty($tour_name)) {
+            if (strpos($request_uri, 'h3panos') !== false) {
+                error_log('H3TM S3 Proxy: h3panos URL detected but no tour_name query var');
+            }
             return; // Not a tour request
         }
 
-        error_log('H3TM S3 Proxy: Request for tour=' . $tour_name . ', file=' . $file_path);
+        error_log('H3TM S3 Proxy: Processing tour request for=' . $tour_name . ', file=' . $file_path);
 
         // Default to index.htm if no file specified
         if (empty($file_path)) {
