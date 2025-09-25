@@ -93,9 +93,14 @@ class H3TM_S3_Simple {
             wp_send_json_error('Missing S3 configuration: ' . implode(', ', $missing));
         }
 
-        $file_name = sanitize_file_name($_POST['file_name']);
-        $file_size = intval($_POST['file_size']);
-        $tour_name = sanitize_text_field($_POST['tour_name']);
+        $file_name = isset($_POST['file_name']) ? sanitize_file_name($_POST['file_name']) : '';
+        $file_size = isset($_POST['file_size']) ? intval($_POST['file_size']) : 0;
+        $tour_name = isset($_POST['tour_name']) ? sanitize_text_field($_POST['tour_name']) : '';
+
+        if (empty($file_name) || empty($tour_name) || $file_size <= 0) {
+            error_log('H3TM S3 Simple: Missing required parameters - file_name=' . $file_name . ', tour_name=' . $tour_name . ', file_size=' . $file_size);
+            wp_send_json_error('Missing required upload parameters');
+        }
 
         // Simple presigned URL generation
         $unique_id = uniqid() . '_' . time();
