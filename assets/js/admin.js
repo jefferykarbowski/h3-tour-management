@@ -102,6 +102,15 @@ jQuery(document).ready(function($) {
         $progressText.text('Preparing S3 upload...');
 
         // Get presigned URL from WordPress
+        console.log('=== S3 Presigned URL Request ===');
+        console.log('Making AJAX request to:', h3tm_ajax.ajax_url);
+        console.log('Request data:', {
+            action: 'h3tm_get_s3_presigned_url',
+            tour_name: tourName,
+            file_name: file.name,
+            file_size: file.size
+        });
+
         $.ajax({
             url: h3tm_ajax.ajax_url,
             type: 'POST',
@@ -114,6 +123,11 @@ jQuery(document).ready(function($) {
                 file_type: file.type
             },
             success: function(response) {
+                console.log('=== S3 Presigned URL Response ===');
+                console.log('Response success:', response.success);
+                console.log('Response data:', response.data);
+                console.log('Full response:', response);
+
                 if (response.success && response.data.upload_url) {
                     console.log('Got S3 presigned URL, starting direct upload...');
                     performS3DirectUpload(file, response.data, tourName, $form, $spinner, $result, $progressBar, $progressText);
@@ -123,7 +137,11 @@ jQuery(document).ready(function($) {
                 }
             },
             error: function(xhr, status, error) {
-                console.log('S3 presigned URL request failed, falling back to chunked upload:', error);
+                console.log('=== S3 Presigned URL AJAX Error ===');
+                console.log('Status:', status);
+                console.log('Error:', error);
+                console.log('Response Text:', xhr.responseText);
+                console.log('Status Code:', xhr.status);
                 fallbackToChunkedUpload(file, tourName, $form, $spinner, $result, $progressBar, $progressText);
             }
         });
