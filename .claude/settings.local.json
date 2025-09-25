@@ -42,7 +42,9 @@
       "Bash(chmod:*)",
       "Read(//c//**)",
       "Bash(git restore:*)",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Read(//c/Users/Jeff/Downloads/Jeffery (1)/temp_bee/**)",
+      "Read(//c/Users/Jeff/Downloads/Jeffery (1)/temp_bee/Bee Cave/**)"
     ],
     "deny": []
   }

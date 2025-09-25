@@ -182,24 +182,33 @@ class H3TM_S3_Simple {
             wp_die('Unauthorized');
         }
 
-        $tour_name = sanitize_text_field($_POST['tour_name']);
-        $s3_key = sanitize_text_field($_POST['s3_key']);
-        $unique_id = sanitize_text_field($_POST['unique_id']);
-        $file_name = sanitize_file_name($_POST['file_name']);
+        $tour_name = isset($_POST['tour_name']) ? sanitize_text_field($_POST['tour_name']) : '';
+        $s3_key = isset($_POST['s3_key']) ? sanitize_text_field($_POST['s3_key']) : '';
+        $unique_id = isset($_POST['unique_id']) ? sanitize_text_field($_POST['unique_id']) : '';
+
+        // Extract file name from s3_key if not provided directly
+        $file_name = isset($_POST['file_name']) ? sanitize_file_name($_POST['file_name']) : basename($s3_key);
+
+        error_log('H3TM S3 Process: tour_name=' . $tour_name . ', s3_key=' . $s3_key . ', file_name=' . $file_name);
 
         if (empty($tour_name) || empty($s3_key)) {
             wp_send_json_error('Missing required parameters');
         }
 
         try {
+            error_log('H3TM S3 Process: Starting S3 download for key: ' . $s3_key);
+
             // Download file from S3
             $local_file_path = $this->download_from_s3($s3_key, $file_name);
 
             if (!$local_file_path) {
+                error_log('H3TM S3 Process Error: Download from S3 failed');
                 wp_send_json_error('Failed to download file from S3');
             }
 
-            // Process the downloaded file using tour manager
+            error_log('H3TM S3 Process: Downloaded to: ' . $local_file_path . ', size: ' . filesize($local_file_path));
+
+            // Process the downloaded file using existing tour manager
             $tour_manager = new H3TM_Tour_Manager();
             $file_info = array(
                 'name' => $file_name,
@@ -208,7 +217,11 @@ class H3TM_S3_Simple {
                 'size' => file_exists($local_file_path) ? filesize($local_file_path) : 0
             );
 
-            $result = $tour_manager->upload_tour($tour_name, $file_info, false);
+            error_log('H3TM S3 Process: Calling tour_manager->upload_tour with file_info: ' . json_encode($file_info));
+
+            $result = $tour_manager->upload_tour($tour_name, $file_info, true); // Use pre-uploaded flag
+
+            error_log('H3TM S3 Process: Tour manager result: ' . json_encode($result));
 
             if ($result['success']) {
                 wp_send_json_success($result['message']);
