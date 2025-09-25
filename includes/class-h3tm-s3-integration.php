@@ -161,40 +161,53 @@ class H3TM_S3_Integration {
     }
 
     /**
-     * Generate presigned URL for upload
+     * Generate presigned URL for upload using AWS Signature Version 4
      */
     private function generate_presigned_url($s3_key, $file_size) {
-        $expires = time() + 3600; // 1 hour from now
-        $method = 'PUT';
+        if (empty($this->bucket_name) || empty($this->access_key) || empty($this->secret_key)) {
+            throw new Exception('Missing required S3 configuration');
+        }
+
+        $host = $this->bucket_name . ".s3." . $this->region . ".amazonaws.com";
+        $endpoint = "https://" . $host;
+        $canonical_uri = '/' . ltrim($s3_key, '/');
+
+        // AWS Signature Version 4
+        $datetime = gmdate('Ymd\THis\Z');
+        $date = gmdate('Ymd');
+        $algorithm = 'AWS4-HMAC-SHA256';
+        $credential_scope = $date . '/' . $this->region . '/s3/aws4_request';
+        $expires = 3600; // 1 hour
+
+        // Build canonical query string for presigned URL
+        $canonical_querystring = http_build_query(array(
+            'X-Amz-Algorithm' => $algorithm,
+            'X-Amz-Credential' => $this->access_key . '/' . $credential_scope,
+            'X-Amz-Date' => $datetime,
+            'X-Amz-Expires' => $expires,
+            'X-Amz-SignedHeaders' => 'host'
+        ));
 
         // Create canonical request
-        $canonical_uri = '/' . $s3_key;
-        $canonical_querystring = '';
-        $canonical_headers = "host:" . $this->bucket_name . ".s3." . $this->region . ".amazonaws.com\n";
+        $canonical_headers = "host:" . $host . "\n";
         $signed_headers = 'host';
         $payload_hash = 'UNSIGNED-PAYLOAD';
 
-        $canonical_request = $method . "\n" . $canonical_uri . "\n" . $canonical_querystring . "\n" .
+        $canonical_request = "PUT\n" . $canonical_uri . "\n" . $canonical_querystring . "\n" .
                            $canonical_headers . "\n" . $signed_headers . "\n" . $payload_hash;
 
         // Create string to sign
-        $algorithm = 'AWS4-HMAC-SHA256';
-        $credential_scope = date('Ymd') . '/' . $this->region . '/s3/aws4_request';
-        $string_to_sign = $algorithm . "\n" . $expires . "\n" . $credential_scope . "\n" . hash('sha256', $canonical_request);
+        $string_to_sign = $algorithm . "\n" . $datetime . "\n" . $credential_scope . "\n" .
+                         hash('sha256', $canonical_request);
 
         // Calculate signature
-        $signing_key = $this->get_signing_key(date('Ymd'), $this->region, 's3');
+        $signing_key = $this->get_signing_key($date, $this->region, 's3');
         $signature = hash_hmac('sha256', $string_to_sign, $signing_key);
 
-        // Build presigned URL
-        $presigned_url = "https://" . $this->bucket_name . ".s3." . $this->region . ".amazonaws.com" . $canonical_uri;
-        $presigned_url .= "?X-Amz-Algorithm=" . $algorithm;
-        $presigned_url .= "&X-Amz-Credential=" . urlencode($this->access_key . '/' . $credential_scope);
-        $presigned_url .= "&X-Amz-Date=" . gmdate('Ymd\THis\Z');
-        $presigned_url .= "&X-Amz-Expires=" . 3600;
-        $presigned_url .= "&X-Amz-SignedHeaders=" . $signed_headers;
-        $presigned_url .= "&X-Amz-Signature=" . $signature;
+        // Build final presigned URL
+        $presigned_url = $endpoint . $canonical_uri . '?' . $canonical_querystring . '&X-Amz-Signature=' . $signature;
 
+        error_log('H3TM S3: Generated presigned URL for key: ' . $s3_key);
         return $presigned_url;
     }
 
@@ -244,19 +257,69 @@ class H3TM_S3_Integration {
     }
 
     /**
-     * Test S3 connection
+     * Test S3 connection with detailed error reporting
      */
     private function test_s3_connection() {
         try {
-            // Try to list bucket contents
+            error_log('H3TM S3 Test: Starting connection test');
+            error_log('H3TM S3 Test: Bucket=' . $this->bucket_name . ', Region=' . $this->region);
+            error_log('H3TM S3 Test: Access Key=' . substr($this->access_key, 0, 4) . '***');
+
+            // Test 1: Check if bucket exists with HEAD request
             $s3_url = "https://" . $this->bucket_name . ".s3." . $this->region . ".amazonaws.com/";
 
-            $response = wp_remote_get($s3_url, array(
-                'timeout' => 10
+            $response = wp_remote_head($s3_url, array(
+                'timeout' => 10,
+                'user-agent' => 'H3TM-WordPress-Plugin/1.5.0'
             ));
 
-            return !is_wp_error($response) && wp_remote_retrieve_response_code($response) !== 403;
+            $response_code = wp_remote_retrieve_response_code($response);
+            error_log('H3TM S3 Test: HEAD response code: ' . $response_code);
+
+            if (is_wp_error($response)) {
+                error_log('H3TM S3 Test Error: ' . $response->get_error_message());
+                return false;
+            }
+
+            // Test 2: Try to create a test presigned URL
+            try {
+                $test_key = 'test/' . time() . '.txt';
+                $test_url = $this->generate_presigned_url($test_key, 100);
+                error_log('H3TM S3 Test: Generated test presigned URL successfully');
+
+                // Test the presigned URL with a small PUT request
+                $test_response = wp_remote_request($test_url, array(
+                    'method' => 'PUT',
+                    'body' => 'test content',
+                    'timeout' => 10,
+                    'headers' => array(
+                        'Content-Type' => 'text/plain'
+                    )
+                ));
+
+                $put_response_code = wp_remote_retrieve_response_code($test_response);
+                error_log('H3TM S3 Test: PUT test response code: ' . $put_response_code);
+
+                if ($put_response_code === 200) {
+                    // Clean up test file
+                    $this->delete_s3_file($test_key);
+                    error_log('H3TM S3 Test: SUCCESS - Full upload test passed');
+                    return true;
+                } else {
+                    error_log('H3TM S3 Test: PUT test failed with code ' . $put_response_code);
+                    if (is_wp_error($test_response)) {
+                        error_log('H3TM S3 Test PUT Error: ' . $test_response->get_error_message());
+                    }
+                    return false;
+                }
+
+            } catch (Exception $e) {
+                error_log('H3TM S3 Test: Presigned URL generation failed: ' . $e->getMessage());
+                return false;
+            }
+
         } catch (Exception $e) {
+            error_log('H3TM S3 Test: General error: ' . $e->getMessage());
             return false;
         }
     }
