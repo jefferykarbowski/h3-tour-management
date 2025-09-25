@@ -245,10 +245,15 @@ jQuery(document).ready(function($) {
                 // Update progress bar
                 $('#upload-progress-bar').css('width', progress + '%');
 
-                // Update progress text
+                // Update progress text (using direct selector to ensure it works)
                 var statusText = progress + '%';
                 statusText += ' <span class="upload-method">(S3 Direct)</span>';
+
+                // Update both ways to ensure it works
                 $progressText.html(statusText);
+                $('#upload-progress-text').html(statusText);
+
+                console.log('Updated progress text to:', statusText);
 
                 // Update gradient
                 updateProgressiveGradient(progress);
