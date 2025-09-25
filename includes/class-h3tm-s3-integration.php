@@ -51,11 +51,21 @@ class H3TM_S3_Integration {
         }
 
         error_log('H3TM S3 Presigned URL: Starting generation');
-        error_log('H3TM S3 Presigned URL: is_configured=' . ($this->is_configured() ? 'true' : 'false'));
         error_log('H3TM S3 Presigned URL: bucket=' . $this->bucket_name . ', region=' . $this->region);
+        error_log('H3TM S3 Presigned URL: access_key=' . (empty($this->access_key) ? 'EMPTY' : substr($this->access_key, 0, 4) . '***'));
+        error_log('H3TM S3 Presigned URL: secret_key=' . (empty($this->secret_key) ? 'EMPTY' : 'SET'));
+        error_log('H3TM S3 Presigned URL: is_configured=' . ($this->is_configured() ? 'true' : 'false'));
+
+        // Debug individual configuration checks
+        $bucket_ok = !empty($this->bucket_name);
+        $access_ok = !empty($this->access_key);
+        $secret_ok = !empty($this->secret_key);
+        error_log('H3TM S3 Presigned URL: bucket_ok=' . ($bucket_ok ? 'true' : 'false') .
+                  ', access_ok=' . ($access_ok ? 'true' : 'false') .
+                  ', secret_ok=' . ($secret_ok ? 'true' : 'false'));
 
         if (!$this->is_configured()) {
-            error_log('H3TM S3 Presigned URL Error: S3 not configured');
+            error_log('H3TM S3 Presigned URL Error: S3 not configured - missing required settings');
             wp_send_json_error('S3 not configured. Please configure AWS settings.');
         }
 
