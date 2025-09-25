@@ -46,20 +46,12 @@ register_deactivation_hook(__FILE__, array('H3TM_Activator', 'deactivate'));
 // Initialize plugin
 add_action('plugins_loaded', 'h3tm_init');
 function h3tm_init() {
-    // Initialize bulletproof configuration system first
-    H3TM_Bulletproof_Config::getInstance();
-    H3TM_Config_Adapter::getInstance();
-
-    // Initialize AJAX handlers
-    new H3TM_Config_AJAX_Handlers();
-
     // Initialize components
     new H3TM_Admin();
     new H3TM_User_Fields();
     new H3TM_Analytics();
     new H3TM_Email();
     new H3TM_Tour_Manager();
-    // Initialize S3 Integration as singleton for consistent configuration
     new H3TM_S3_Simple();
     new H3TM_Shortcodes_V4();
 }
