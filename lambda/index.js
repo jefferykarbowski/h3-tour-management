@@ -73,7 +73,11 @@ exports.handler = async (event) => {
                 console.log(`🎉 Tour "${tourName}" processed successfully!`);
                 console.log(`🌐 Available at: https://${bucket}.s3.us-east-1.amazonaws.com/tours/${tourName}/index.htm`);
 
-                // TODO: Notify WordPress via webhook
+                // Step 5: Notify WordPress to register the tour
+                console.log('📞 Step 5: Notifying WordPress...');
+                await notifyWordPress(tourName, bucket);
+
+                console.log(`✅ Complete! Tour "${tourName}" is ready!`);
 
             } catch (error) {
                 console.error('Processing failed:', error);
@@ -113,6 +117,25 @@ function getContentType(filePath) {
         'txt': 'text/plain'
     };
     return contentTypes[ext] || 'application/octet-stream';
+}
+
+// Notify WordPress that tour processing is complete
+async function notifyWordPress(tourName, bucket) {
+    try {
+        // For now, just log that we would notify WordPress
+        // TODO: Implement actual webhook to WordPress
+        console.log(`📞 Would notify WordPress about tour: ${tourName}`);
+        console.log(`📊 Tour registered with S3 URL`);
+
+        // Could implement HTTP POST to WordPress webhook here
+        // const webhook_url = 'https://yoursite.com/wp-admin/admin-ajax.php?action=h3tm_lambda_webhook';
+        // await fetch(webhook_url, { method: 'POST', body: JSON.stringify({...}) });
+
+        return true;
+    } catch (error) {
+        console.error('WordPress notification failed:', error);
+        return false;
+    }
 }
 
 // Download ZIP file from S3

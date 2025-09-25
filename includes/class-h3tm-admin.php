@@ -144,39 +144,14 @@ class H3TM_Admin {
      * Get tours from S3 instead of local directory
      */
     private function get_s3_tours() {
-        // Try to get S3 tours from Lambda processing, fallback to local
-        $s3_tours = get_option('h3tm_s3_tours', array());
+        // Use the S3 tour registry to get processed tours
+        $s3_tours = H3TM_S3_Tour_Registry::get_s3_tours();
 
-        if (!empty($s3_tours)) {
-            return array_keys($s3_tours);
-        }
-
-        // Fallback: check S3 directly (simplified)
-        $s3_simple = new H3TM_S3_Simple();
-        $s3_config = $s3_simple->get_s3_config();
-
-        if ($s3_config['configured']) {
-            // For now, return tours that might be in S3
-            // TODO: Implement S3 API call to list tours/ directory
-            $detected_tours = array();
-
-            // Check if we have any recent uploads
-            $recent_uploads = get_transient('h3tm_recent_uploads');
-            if ($recent_uploads) {
-                $detected_tours = array_merge($detected_tours, $recent_uploads);
-            }
-
-            // Also check local directory for backward compatibility
-            $tour_manager = $this->get_tour_manager();
-            $local_tours = $tour_manager->get_all_tours();
-            $detected_tours = array_merge($detected_tours, $local_tours);
-
-            return array_unique($detected_tours);
-        }
-
-        // Ultimate fallback: local tours only
+        // Also include any existing local tours for backward compatibility
         $tour_manager = $this->get_tour_manager();
-        return $tour_manager->get_all_tours();
+        $local_tours = $tour_manager->get_all_tours();
+
+        return array_unique(array_merge($s3_tours, $local_tours));
     }
 
     /**
