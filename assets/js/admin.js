@@ -236,6 +236,25 @@ jQuery(document).ready(function($) {
         var contentType = file.type || 'application/zip';
         xhr.setRequestHeader('Content-Type', contentType);
 
+        // Add progress tracking for S3 upload
+        xhr.upload.addEventListener('progress', function(e) {
+            if (e.lengthComputable) {
+                var progress = Math.round((e.loaded / e.total) * 100);
+                console.log('S3 Upload progress:', progress + '%');
+
+                // Update progress bar
+                $('#upload-progress-bar').css('width', progress + '%');
+
+                // Update progress text
+                var statusText = progress + '%';
+                statusText += ' <span class="upload-method">(S3 Direct)</span>';
+                $progressText.html(statusText);
+
+                // Update gradient
+                updateProgressiveGradient(progress);
+            }
+        });
+
         console.log('Starting S3 upload with Content-Type:', contentType);
         xhr.send(file);
     }
