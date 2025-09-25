@@ -205,13 +205,18 @@ class H3TM_S3_Simple {
             }
 
             // Step 2: Extract ZIP locally to temporary directory
-            error_log('H3TM S3-to-S3: Step 2 - Extracting ZIP locally');
+            error_log('H3TM S3-to-S3: Step 2 - Extracting ZIP locally from: ' . $temp_zip_path);
+            error_log('H3TM S3-to-S3: ZIP file size: ' . filesize($temp_zip_path) . ' bytes');
+
             $temp_extract_dir = $this->extract_tour_temporarily($temp_zip_path, $tour_name);
 
             if (!$temp_extract_dir) {
+                error_log('H3TM S3-to-S3: ZIP extraction failed');
                 unlink($temp_zip_path);
                 wp_send_json_error('Failed to extract tour ZIP');
             }
+
+            error_log('H3TM S3-to-S3: ZIP extracted successfully to: ' . $temp_extract_dir);
 
             // Step 3: Upload extracted tour files to S3 public tours/ directory
             error_log('H3TM S3-to-S3: Step 3 - Uploading extracted tour to S3 tours/');
@@ -323,19 +328,47 @@ class H3TM_S3_Simple {
     }
 
     private function extract_tour_temporarily($zip_path, $tour_name) {
+        error_log('H3TM S3-to-S3: Starting extraction of: ' . $zip_path);
+
+        if (!file_exists($zip_path)) {
+            error_log('H3TM S3-to-S3: ZIP file does not exist: ' . $zip_path);
+            return false;
+        }
+
         $upload_dir = wp_upload_dir();
         $temp_extract_dir = $upload_dir['basedir'] . '/temp-s3-processing/' . uniqid('extract_');
 
-        if (!wp_mkdir_p($temp_extract_dir)) return false;
+        error_log('H3TM S3-to-S3: Creating extract directory: ' . $temp_extract_dir);
+
+        if (!wp_mkdir_p($temp_extract_dir)) {
+            error_log('H3TM S3-to-S3: Failed to create extract directory');
+            return false;
+        }
 
         $zip = new ZipArchive();
-        if ($zip->open($zip_path) === TRUE) {
-            $zip->extractTo($temp_extract_dir);
+        $open_result = $zip->open($zip_path);
+
+        error_log('H3TM S3-to-S3: ZipArchive open result: ' . $open_result);
+
+        if ($open_result === TRUE) {
+            error_log('H3TM S3-to-S3: ZIP opened successfully, extracting...');
+            $extract_result = $zip->extractTo($temp_extract_dir);
+            error_log('H3TM S3-to-S3: Extract result: ' . ($extract_result ? 'SUCCESS' : 'FAILED'));
             $zip->close();
-            $this->fix_s3_tour_structure($temp_extract_dir);
-            return $temp_extract_dir;
+
+            if ($extract_result) {
+                error_log('H3TM S3-to-S3: Starting structure fix...');
+                $this->fix_s3_tour_structure($temp_extract_dir);
+                error_log('H3TM S3-to-S3: Structure fix completed');
+                return $temp_extract_dir;
+            } else {
+                error_log('H3TM S3-to-S3: ZIP extraction failed');
+                return false;
+            }
+        } else {
+            error_log('H3TM S3-to-S3: Failed to open ZIP file. Error code: ' . $open_result);
+            return false;
         }
-        return false;
     }
 
     private function upload_tour_to_s3_public($temp_extract_dir, $tour_name) {
