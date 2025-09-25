@@ -28,7 +28,16 @@ jQuery(document).ready(function($) {
     // S3 Upload Configuration - use WordPress configured threshold
     var S3_UPLOAD_THRESHOLD = (h3tm_ajax.s3_threshold_mb || 100) * 1024 * 1024; // Configurable threshold for S3 upload
     var AWS_SDK_LOADED = false;
-    var S3_CONFIGURED = h3tm_ajax.s3_configured || false;
+    var S3_CONFIGURED = (h3tm_ajax.s3_configured === '1' || h3tm_ajax.s3_configured === true);
+
+    // Debug S3 configuration
+    console.log('=== H3TM S3 Config Debug ===');
+    console.log('Raw s3_configured:', h3tm_ajax.s3_configured, typeof h3tm_ajax.s3_configured);
+    console.log('Processed S3_CONFIGURED:', S3_CONFIGURED);
+    console.log('S3_UPLOAD_THRESHOLD:', S3_UPLOAD_THRESHOLD / 1024 / 1024, 'MB');
+    if (h3tm_ajax.debug_s3_check) {
+        console.log('Debug check:', h3tm_ajax.debug_s3_check);
+    }
 
     // Dynamically load AWS SDK if needed
     function loadAWSSDK(callback) {

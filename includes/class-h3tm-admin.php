@@ -172,7 +172,9 @@ class H3TM_Admin {
                                     <p class="description">
                                         <?php _e('Upload a ZIP file containing the tour files.', 'h3-tour-management'); ?><br>
                                         <?php
-                                        $s3_configured = $this->get_s3_config() !== false;
+                                        $s3_integration = new H3TM_S3_Integration();
+                                        $s3_config = $s3_integration->get_s3_config();
+                                        $s3_configured = $s3_config['configured'] && get_option('h3tm_s3_enabled', '0') === '1';
                                         if ($s3_configured) {
                                             _e('Large files (>100MB) will use S3 Direct Upload for optimal performance. Smaller files use chunked upload.', 'h3-tour-management');
                                         } else {
