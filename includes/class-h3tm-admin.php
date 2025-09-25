@@ -658,8 +658,8 @@ class H3TM_Admin {
         $s3_enabled = get_option('h3tm_s3_enabled', '0');
 
         // Check S3 configuration
-        $s3_integration = new H3TM_S3_Integration();
-        $is_configured = $s3_integration->is_configured();
+        $s3_integration = new H3TM_S3_Simple();
+        $is_configured = $s3_integration->get_s3_config()['configured'];
         ?>
         <div class="wrap">
             <h1><?php _e('S3 Upload Settings', 'h3-tour-management'); ?></h1>
