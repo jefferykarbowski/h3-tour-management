@@ -17,24 +17,43 @@ class H3TM_S3_Proxy {
      * Add rewrite rules for h3panos tours
      */
     public function add_rewrite_rules() {
-        // Match /h3panos/TourName/anything
+        // Add query vars first
+        add_filter('query_vars', array($this, 'add_query_vars'));
+
+        // Add multiple rewrite rules to handle different URL patterns
         add_rewrite_rule(
-            '^h3panos/([^/]+)/(.*)$',
+            '^h3panos/([^/]+)/?$',
+            'index.php?h3tm_tour=$matches[1]&h3tm_file=index.htm',
+            'top'
+        );
+
+        add_rewrite_rule(
+            '^h3panos/([^/]+)/(.+)$',
             'index.php?h3tm_tour=$matches[1]&h3tm_file=$matches[2]',
             'top'
         );
 
-        // Add query vars
-        add_filter('query_vars', function($vars) {
-            $vars[] = 'h3tm_tour';
-            $vars[] = 'h3tm_file';
-            return $vars;
-        });
+        // Force flush rewrite rules for S3 proxy
+        add_action('admin_init', array($this, 'maybe_flush_rewrite_rules'));
+    }
 
-        // Flush rewrite rules on activation (only once)
-        if (get_option('h3tm_rewrite_rules_flushed') !== '1') {
+    /**
+     * Add query vars
+     */
+    public function add_query_vars($vars) {
+        $vars[] = 'h3tm_tour';
+        $vars[] = 'h3tm_file';
+        return $vars;
+    }
+
+    /**
+     * Flush rewrite rules if needed
+     */
+    public function maybe_flush_rewrite_rules() {
+        if (get_option('h3tm_s3_rewrite_rules_flushed') !== H3TM_VERSION) {
             flush_rewrite_rules();
-            update_option('h3tm_rewrite_rules_flushed', '1');
+            update_option('h3tm_s3_rewrite_rules_flushed', H3TM_VERSION);
+            error_log('H3TM S3 Proxy: Flushed rewrite rules for version ' . H3TM_VERSION);
         }
     }
 
