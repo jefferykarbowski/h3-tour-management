@@ -311,8 +311,8 @@ class H3TM_S3_Simple {
     private function download_zip_temporarily($s3_key, $file_name) {
         $config = $this->get_s3_credentials();
 
-        // Generate signed download URL for secure access
-        $download_url = $this->generate_signed_download_url($config, $s3_key);
+        // Try simple public URL first (since we updated bucket policy)
+        $download_url = 'https://' . $config['bucket'] . '.s3.' . $config['region'] . '.amazonaws.com/' . $s3_key;
 
         $upload_dir = wp_upload_dir();
         $temp_dir = $upload_dir['basedir'] . '/temp-s3-processing';
@@ -320,7 +320,7 @@ class H3TM_S3_Simple {
 
         $temp_zip_path = $temp_dir . '/' . uniqid('s3_') . '_' . $file_name;
 
-        error_log('H3TM S3-to-S3: Downloading from signed URL: ' . substr($download_url, 0, 100) . '...');
+        error_log('H3TM S3-to-S3: Downloading from public URL: ' . $download_url);
 
         $response = wp_remote_get($download_url, array(
             'timeout' => 300,
