@@ -3,7 +3,7 @@
  * Plugin Name: H3 Tour Management
  * Plugin URI: https://github.com/jefferykarbowski/h3-tour-management
  * Description: Comprehensive 3D Tour Management system with analytics, email notifications, and user management
- * Version: 1.5.6
+ * Version: 1.5.7
  * Author: H3 Photography
  * Author URI: https://h3vt.com/
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('H3TM_VERSION', '1.5.6');
+define('H3TM_VERSION', '1.5.7');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -33,7 +33,10 @@ require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-manager.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-pantheon-helper.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-cron-analytics.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-config-manager.php';
-require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-integration.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-bulletproof-config.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-config-adapter.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-config-ajax-handlers.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-simple.php';
 // Use simplified analytics display
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-shortcodes-v4.php';
 
@@ -46,6 +49,13 @@ register_deactivation_hook(__FILE__, array('H3TM_Activator', 'deactivate'));
 // Initialize plugin
 add_action('plugins_loaded', 'h3tm_init');
 function h3tm_init() {
+    // Initialize bulletproof configuration system first
+    H3TM_Bulletproof_Config::getInstance();
+    H3TM_Config_Adapter::getInstance();
+
+    // Initialize AJAX handlers
+    new H3TM_Config_AJAX_Handlers();
+
     // Initialize components
     new H3TM_Admin();
     new H3TM_User_Fields();
@@ -53,7 +63,7 @@ function h3tm_init() {
     new H3TM_Email();
     new H3TM_Tour_Manager();
     // Initialize S3 Integration as singleton for consistent configuration
-    H3TM_S3_Integration::getInstance();
+    new H3TM_S3_Simple();
     new H3TM_Shortcodes_V4();
 }
 

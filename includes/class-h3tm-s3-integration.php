@@ -58,6 +58,7 @@ class H3TM_S3_Integration {
 
     /**
      * Get S3 configuration with robust fallback mechanism
+     * FIXED: Updated to use correct option keys that match settings form
      */
     public function get_s3_config() {
         if ($this->config_cache !== null) {
@@ -67,18 +68,20 @@ class H3TM_S3_Integration {
         $config = array();
 
         // Priority 1: Environment variables (most secure)
+        // FIXED: Updated bucket option key to match settings form
         $config['bucket_name'] = $this->get_config_value('bucket', [
             'H3_S3_BUCKET',
             'H3TM_S3_BUCKET',
             'AWS_S3_BUCKET'
-        ], 'h3tm_s3_bucket');
+        ], 'h3tm_s3_bucket_name');  // FIXED: Was 'h3tm_s3_bucket'
 
+        // FIXED: Updated region option key to match settings form
         $config['region'] = $this->get_config_value('region', [
             'H3_S3_REGION',
             'H3TM_S3_REGION',
             'AWS_DEFAULT_REGION',
             'AWS_REGION'
-        ], 'h3tm_s3_region', 'us-east-1');
+        ], 'h3tm_aws_region', 'us-east-1');  // FIXED: Was 'h3tm_s3_region'
 
         $config['access_key'] = $this->get_config_value('access_key', [
             'AWS_ACCESS_KEY_ID',
@@ -264,6 +267,7 @@ class H3TM_S3_Integration {
 
     /**
      * Generate presigned URL for direct S3 upload with enhanced error handling
+     * FIXED: Updated to use correct option keys in AJAX context
      */
     public function handle_get_presigned_url() {
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
@@ -276,23 +280,19 @@ class H3TM_S3_Integration {
 
         error_log('H3TM S3 Presigned URL: Starting generation with enhanced validation');
 
-        // Force fresh configuration check for AJAX requests
-        $this->config_cache = null;
+        // Force fresh configuration check for AJAX requests using bulletproof config
+        $this->config_adapter->clear_cache();
 
-        // Reload configuration from original simple method
-        $this->bucket_name = defined('H3_S3_BUCKET') ? H3_S3_BUCKET : get_option('h3tm_s3_bucket', '');
-        $this->region = defined('H3_S3_REGION') ? H3_S3_REGION : get_option('h3tm_s3_region', 'us-east-1');
-        $this->access_key = defined('AWS_ACCESS_KEY_ID') ? AWS_ACCESS_KEY_ID : get_option('h3tm_aws_access_key', '');
-        $this->secret_key = defined('AWS_SECRET_ACCESS_KEY') ? AWS_SECRET_ACCESS_KEY : get_option('h3tm_aws_secret_key', '');
+        // Get fresh configuration using bulletproof system
+        $config = $this->get_s3_config();
 
-        error_log('H3TM S3 AJAX: Direct config load - bucket=' . $this->bucket_name);
-        error_log('H3TM S3 AJAX: Direct config load - access_key=' . (empty($this->access_key) ? 'EMPTY' : 'SET'));
-        error_log('H3TM S3 AJAX: Direct config load - secret_key=' . (empty($this->secret_key) ? 'EMPTY' : 'SET'));
+        error_log('H3TM S3 AJAX: Bulletproof config load - bucket=' . ($config['bucket_name'] ?? 'MISSING'));
+        error_log('H3TM S3 AJAX: Bulletproof config load - configured=' . ($this->is_configured() ? 'YES' : 'NO'));
 
-        // Validate configuration
-        $validation_result = $this->validate_configuration();
-        if ($validation_result !== true) {
-            $error_message = 'S3 configuration errors: ' . implode(', ', $validation_result);
+        // Validate configuration using bulletproof system
+        $validation_result = $this->config_adapter->validate_s3_configuration();
+        if (!$validation_result['valid']) {
+            $error_message = 'S3 configuration errors: ' . implode(', ', $validation_result['errors']);
             error_log('H3TM S3 Presigned URL Error: ' . $error_message);
             wp_send_json_error($error_message);
         }
@@ -303,8 +303,8 @@ class H3TM_S3_Integration {
         error_log('H3TM S3 Presigned URL: Config status - ' .
                  'bucket=' . ($config['bucket_name'] ? 'SET' : 'MISSING') .
                  ', region=' . $config['region'] .
-                 ', access_key=' . ($config['access_key'] ? 'SET' : 'MISSING') .
-                 ', secret_key=' . ($config['secret_key'] ? 'SET' : 'MISSING'));
+                 ', configured=' . ($config['configured'] ? 'YES' : 'NO') .
+                 ', source=' . ($config['source'] ?? 'unknown'));
 
         // Double-check configuration
         if (!$this->is_configured()) {
@@ -728,6 +728,7 @@ class H3TM_S3_Integration {
 
     /**
      * AJAX handler for configuration debugging
+     * FIXED: Updated to show correct option keys
      */
     public function handle_debug_s3_config() {
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
@@ -759,8 +760,8 @@ class H3TM_S3_Integration {
                 'AWS_SECRET_ACCESS_KEY' => defined('AWS_SECRET_ACCESS_KEY') ? 'SET' : 'NOT_SET'
             ),
             'wordpress_options' => array(
-                'h3tm_s3_bucket' => get_option('h3tm_s3_bucket') ? 'SET' : 'NOT_SET',
-                'h3tm_s3_region' => get_option('h3tm_s3_region', 'us-east-1'),
+                'h3tm_s3_bucket_name' => get_option('h3tm_s3_bucket_name') ? 'SET' : 'NOT_SET',  // FIXED: Correct key
+                'h3tm_aws_region' => get_option('h3tm_aws_region', 'us-east-1'),  // FIXED: Correct key
                 'h3tm_aws_access_key' => get_option('h3tm_aws_access_key') ? 'SET' : 'NOT_SET',
                 'h3tm_aws_secret_key' => get_option('h3tm_aws_secret_key') ? 'SET' : 'NOT_SET'
             )

@@ -1,388 +1,214 @@
-# H3 Tour Management S3 Integration Testing Suite
+# H3TM S3 Configuration Testing Suite
 
-Comprehensive testing suite for the H3 Tour Management plugin S3 integration functionality. This test suite helps identify and resolve configuration issues, verify functionality, and ensure system reliability.
+Comprehensive testing suite to identify and resolve the "all credentials missing" error that occurs in AJAX contexts but works in WordPress admin.
 
-## 🎯 Test Suite Purpose
+## Problem Statement
 
-The primary goal is to identify and resolve the specific issue where:
-- ✅ S3 connection test succeeds
-- ❌ S3 AJAX handler returns "S3 not configured"
+S3 configuration consistently works in WordPress admin pages but always fails during AJAX requests with "all credentials missing" errors. This testing suite provides comprehensive diagnostic tools to identify the exact cause and provide solutions.
 
-This test suite provides systematic testing to verify all components work correctly and catch configuration inconsistencies between different WordPress contexts.
+## Test Files Overview
 
-## 📁 Test Files Overview
+### 🎯 Master Test Runner
+**File:** `run-comprehensive-s3-tests.php`
+- **Purpose:** Orchestrates all tests to provide comprehensive analysis
+- **Usage:** `?run_master_s3_tests=1`
+- **Output:** Executive summary with root cause analysis and recommendations
 
-### Core Test Files
+### 🔍 Context Validator
+**File:** `comprehensive-s3-context-validator.php`
+- **Purpose:** Compares S3 configuration between admin and AJAX contexts
+- **Usage:** `?run_comprehensive_validation=1`
+- **Key Features:**
+  - Side-by-side admin vs AJAX comparison
+  - Environment variable access validation
+  - Database option access validation
+  - WordPress initialization timing analysis
 
-| File | Purpose | Focus |
-|------|---------|-------|
-| `test-s3-configuration.php` | Configuration validation across contexts | Environment vs Database config priority |
-| `test-s3-ajax-handlers.php` | AJAX handler registration and execution | Handler callbacks and context consistency |
-| `test-s3-presigned-urls.php` | URL generation with various scenarios | AWS Signature v4 compliance and security |
-| `test-s3-error-handling.php` | Error handling and fallback mechanisms | System resilience and recovery |
-| `test-s3-integration-pipeline.php` | End-to-end integration testing | Tour upload pipeline integration |
-| `s3-configuration-debugger.php` | Diagnostic and troubleshooting utility | Real-time configuration analysis |
+### ⚠️ Edge Case Validator
+**File:** `s3-edge-case-validator.php`
+- **Purpose:** Tests failure scenarios and recovery mechanisms
+- **Usage:** `?run_edge_case_validation=1`
+- **Test Scenarios:**
+  - Missing bucket configuration
+  - Missing credentials
+  - Partial configuration states
+  - Cache interference
+  - Memory pressure conditions
 
-### Utility Files
+### 🛠️ Debug Utilities
+**File:** `s3-debug-utilities.php`
+- **Purpose:** Real-time configuration monitoring and path tracing
+- **Usage:** `?run_s3_debug=1&test_type=quick`
+- **Available Tests:**
+  - `quick` - Fast diagnostic
+  - `trace` - Configuration loading path trace
+  - `context` - Context difference analysis
+  - `monitor` - Real-time monitoring
+  - `recovery` - Recovery mechanism testing
 
-| File | Purpose |
-|------|---------|
-| `run-all-tests.php` | Master test runner |
-| `test-report-generator.php` | Consolidated reporting |
+### 📋 Existing Tests
+- `test-s3-configuration.php` - Basic configuration validation
+- `test-s3-ajax-handlers.php` - AJAX handler testing
+- `s3-configuration-debugger.php` - Configuration debugging
+- `test-s3-error-handling.php` - Error handling validation
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Quick Diagnostic
-
-For immediate issue identification:
-
-```bash
-# Via browser (WordPress admin)
-https://yoursite.com/wp-content/plugins/h3-tour-management/tests/s3-configuration-debugger.php?h3tm_debug=1
-
-# Via WP-CLI
-wp eval-file tests/s3-configuration-debugger.php
+### 1. Run Master Test Suite (Recommended)
+```
+https://your-site.com/wp-content/plugins/h3-tour-management/tests/run-comprehensive-s3-tests.php?run_master_s3_tests=1
 ```
 
-### 2. Run Specific Tests
-
-```bash
-# Configuration validation
-wp eval-file tests/test-s3-configuration.php
-
-# AJAX handler testing
-wp eval-file tests/test-s3-ajax-handlers.php
-
-# Presigned URL testing
-wp eval-file tests/test-s3-presigned-urls.php
-
-# Error handling testing
-wp eval-file tests/test-s3-error-handling.php
-
-# Integration pipeline testing
-wp eval-file tests/test-s3-integration-pipeline.php
+### 2. Quick Diagnostic
+```
+https://your-site.com/wp-content/plugins/h3-tour-management/tests/s3-debug-utilities.php?run_s3_debug=1&test_type=quick
 ```
 
-### 3. Run Complete Test Suite
-
-```bash
-# All tests with consolidated report
-wp eval-file tests/run-all-tests.php
+### 3. Context Comparison
+```
+https://your-site.com/wp-content/plugins/h3-tour-management/tests/comprehensive-s3-context-validator.php?run_comprehensive_validation=1
 ```
 
-## 🔧 Test Execution Methods
+## Test Methodology
 
-### Method 1: WordPress CLI (Recommended)
+### Phase 1: Quick Diagnostic
+- Rapid configuration health assessment
+- Environment variable detection
+- Database option verification
+- Class instantiation testing
 
-```bash
-cd /path/to/wordpress
-wp eval-file wp-content/plugins/h3-tour-management/tests/test-name.php
-```
+### Phase 2: Context Validation
+- Admin context configuration capture
+- AJAX context configuration capture
+- Side-by-side comparison analysis
+- Critical difference identification
 
-**Advantages:**
-- Clean environment
-- No browser timeouts
-- Easy automation
-- Detailed logging
+### Phase 3: Edge Case Testing
+- Missing component scenarios
+- Partial configuration testing
+- Cache interference detection
+- Recovery mechanism validation
 
-### Method 2: Direct Browser Access
+### Phase 4: Configuration Tracing
+- Step-by-step loading path analysis
+- Environment variable resolution
+- Database option resolution
+- Priority logic verification
 
-```
-https://yoursite.com/wp-content/plugins/h3-tour-management/tests/test-name.php?run_test=1
-```
+### Phase 5: Root Cause Analysis
+- Cross-phase pattern identification
+- Evidence correlation
+- Confidence-scored conclusions
+- Actionable recommendations
 
-**Requirements:**
-- Must be logged in as administrator
-- Browser must not timeout (large tests may take time)
-- JavaScript should be enabled for interactive reports
+## Expected Findings
 
-### Method 3: WordPress Admin Integration
+### Likely Root Causes
+1. **AJAX Context Configuration Failure** - Configuration loading fails specifically in AJAX requests
+2. **Context-Dependent Data Access** - Environment variables or database options not accessible in AJAX
+3. **WordPress Initialization Timing** - Configuration loaded before WordPress is fully initialized in AJAX
+4. **Cache Interference** - Cached configuration not properly invalidated between contexts
 
-Add to your theme's `functions.php` or create an admin page:
+### Common Issues
+- Environment variables not defined in AJAX context
+- Database connection not available during AJAX initialization
+- Class instantiation timing issues
+- Configuration manager caching problems
 
+## Troubleshooting Guide
+
+### If Tests Show "All Healthy"
+- Issue may be intermittent or request-specific
+- Run monitoring test: `test_type=monitor&duration=60`
+- Check specific AJAX endpoints directly
+
+### If Tests Confirm AJAX Issues
+1. Check environment variable access in AJAX context
+2. Verify database option availability during AJAX
+3. Test configuration manager instantiation timing
+4. Implement recommended fixes from test output
+
+### If Tests Fail to Run
+1. Ensure user has `manage_options` capability
+2. Check WordPress is fully loaded
+3. Verify plugin files are accessible
+4. Check PHP error logs for fatal errors
+
+## Configuration Requirements
+
+### Environment Variables (Recommended)
 ```php
-// Add this to create an admin menu for testing
-add_action('admin_menu', function() {
-    add_management_page(
-        'S3 Integration Tests',
-        'S3 Tests',
-        'manage_options',
-        's3-tests',
-        function() {
-            include plugin_dir_path(__FILE__) . 'tests/run-all-tests.php';
-        }
-    );
-});
+// In wp-config.php
+define('H3_S3_BUCKET', 'your-bucket-name');
+define('H3_S3_REGION', 'us-east-1');
+define('AWS_ACCESS_KEY_ID', 'your-access-key');
+define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');
 ```
 
-## 📊 Understanding Test Results
+### Database Options (Alternative)
+- `h3tm_s3_bucket`
+- `h3tm_s3_region`
+- `h3tm_aws_access_key`
+- `h3tm_aws_secret_key`
+- `h3tm_s3_enabled`
 
-### Result Structure
+## Security Notes
 
-Each test returns a standardized result structure:
+- Tests sanitize credential output (show only first 4 characters)
+- No credentials are logged in plain text
+- Tests require admin privileges to run
+- Temporary configuration changes are automatically restored
 
-```json
-{
-  "timestamp": "2024-01-15 10:30:45",
-  "test_count": 8,
-  "results": {
-    "Test Name": {
-      "test_data": "...",
-      "success_metrics": "..."
-    }
-  },
-  "debug_info": {
-    "Test Name": {
-      "summary": "Brief test summary",
-      "recommendation": "Action to take"
-    }
-  },
-  "overall_assessment": "Status summary",
-  "action_items": ["Priority actions to take"]
-}
-```
+## Output Formats
 
-### Severity Levels
+### JSON Export
+All tests can export results to JSON files in the uploads directory:
+- `h3tm-s3-master-test-results-YYYY-MM-DD-HH-MM-SS.json`
+- `h3tm-s3-context-validation-YYYY-MM-DD-HH-MM-SS.json`
+- `h3tm-s3-edge-case-validation-YYYY-MM-DD-HH-MM-SS.json`
 
-- 🔴 **Critical**: System broken, requires immediate attention
-- 🟠 **Error**: Feature not working, needs fixing
-- 🟡 **Warning**: Potential issues, should be addressed
-- 🟢 **Info**: Informational, system working correctly
+### Console Output
+Tests provide structured console output with:
+- Executive summary
+- Critical findings
+- Root cause analysis
+- Recommended actions
+- Technical details
 
-### Common Result Interpretations
+## Advanced Usage
 
-#### Configuration Test Results
-
-```json
-{
-  "overall_assessment": "CRITICAL ISSUES: Configuration inconsistent in AJAX context"
-}
-```
-**Action**: This is the primary issue. Configuration works in normal context but fails in AJAX.
-
-```json
-{
-  "overall_assessment": "All tests passed - S3 configuration appears consistent"
-}
-```
-**Action**: Configuration is working correctly across all contexts.
-
-#### AJAX Handler Results
-
-```json
-{
-  "overall_assessment": "CRITICAL ISSUES FOUND: AJAX Context Configuration"
-}
-```
-**Action**: AJAX handlers are registered but configuration fails when called.
-
-## 🔍 Troubleshooting Common Issues
-
-### Issue 1: "S3 not configured" in AJAX but works in admin
-
-**Symptoms:**
-- S3 connection test passes
-- AJAX handlers return "S3 not configured"
-- Configuration debugger shows inconsistency
-
-**Diagnosis:**
+### WP-CLI Integration
 ```bash
-wp eval-file tests/s3-configuration-debugger.php
-```
-Look for: `"configuration_consistent": false`
-
-**Common Causes:**
-1. S3 Integration class instantiated differently in AJAX context
-2. WordPress environment variables not available in AJAX
-3. Database options not properly loaded in AJAX context
-4. Plugin initialization order issues
-
-**Solutions:**
-1. Ensure S3 Integration is instantiated during `plugins_loaded` action
-2. Verify environment variables are properly defined
-3. Check database options are accessible in AJAX context
-4. Review plugin initialization order
-
-### Issue 2: All tests fail with class not found errors
-
-**Symptoms:**
-- "Class 'H3TM_S3_Integration' not found"
-- Plugin appears inactive
-
-**Solutions:**
-1. Verify plugin is active: `wp plugin list`
-2. Check file permissions
-3. Ensure WordPress constants are properly defined
-4. Verify plugin file structure
-
-### Issue 3: Network connectivity issues
-
-**Symptoms:**
-- Connection timeouts
-- SSL/TLS errors
-- DNS resolution failures
-
-**Diagnosis:**
-```bash
-wp eval-file tests/test-s3-error-handling.php
+wp eval-file tests/run-comprehensive-s3-tests.php
 ```
 
-**Solutions:**
-1. Check server firewall settings
-2. Verify SSL certificates are up to date
-3. Test DNS resolution manually
-4. Check proxy settings if applicable
-
-### Issue 4: AWS authentication failures
-
-**Symptoms:**
-- "Access Denied" errors
-- "Invalid credentials" messages
-- Signature mismatch errors
-
-**Solutions:**
-1. Verify AWS credentials are correct
-2. Check IAM permissions include S3 access
-3. Ensure system clock is synchronized
-4. Verify bucket region settings
-
-## 📈 Test Coverage
-
-### Configuration Testing
-- ✅ Environment variable detection
-- ✅ Database option detection
-- ✅ Configuration priority logic
-- ✅ Cross-context consistency
-- ✅ Validation and sanitization
-
-### AJAX Handler Testing
-- ✅ Handler registration
-- ✅ Callback verification
-- ✅ Context simulation
-- ✅ Error handling
-- ✅ Permission verification
-
-### Presigned URL Testing
-- ✅ Basic URL generation
-- ✅ File size variations
-- ✅ Special character handling
-- ✅ AWS Signature v4 compliance
-- ✅ Security validation
-
-### Error Handling Testing
-- ✅ Configuration errors
-- ✅ Network errors
-- ✅ AWS API errors
-- ✅ Timeout handling
-- ✅ Fallback mechanisms
-
-### Integration Testing
-- ✅ End-to-end upload flow
-- ✅ File processing pipeline
-- ✅ Metadata preservation
-- ✅ Performance impact
-- ✅ Backward compatibility
-
-## 📋 Test Execution Checklist
-
-### Pre-Testing
-
-- [ ] WordPress site is accessible
-- [ ] H3 Tour Management plugin is active
-- [ ] User has administrator privileges
-- [ ] Server meets system requirements (PHP 7.4+, required extensions)
-
-### During Testing
-
-- [ ] Monitor error logs for additional information
-- [ ] Save test results for analysis
-- [ ] Note any system performance impacts
-- [ ] Document any manual intervention required
-
-### Post-Testing
-
-- [ ] Review all critical and error severity issues
-- [ ] Implement recommended fixes
-- [ ] Re-run tests to verify fixes
-- [ ] Update configuration documentation
-
-## 🔄 Continuous Testing
-
-### Automated Testing Setup
-
-Create a cron job for regular testing:
-
-```bash
-# Add to crontab for daily testing
-0 2 * * * cd /path/to/wordpress && wp eval-file wp-content/plugins/h3-tour-management/tests/s3-configuration-debugger.php --quiet >> /var/log/h3tm-s3-tests.log 2>&1
+### Custom Test Scenarios
+```php
+$validator = new H3TM_S3_Context_Validator();
+$results = $validator->validate_all_contexts();
 ```
 
 ### Monitoring Integration
-
-Monitor test results with your existing monitoring system:
-
-```bash
-# Example integration with monitoring
-wp eval-file tests/run-all-tests.php --format=json | your-monitoring-tool
+```php
+$debug_utilities = new H3TM_S3_Debug_Utilities(true);
+$monitor_results = $debug_utilities->monitor_configuration_changes(120);
 ```
 
-## 🆘 Getting Help
+## Contributing
 
-### Log Analysis
+When adding new tests:
+1. Follow existing naming conventions
+2. Include comprehensive error handling
+3. Sanitize credential output
+4. Add appropriate logging
+5. Update this README
 
-Check WordPress debug logs for detailed information:
+## Support
 
-```bash
-tail -f /path/to/wordpress/wp-content/debug.log | grep "H3TM"
-```
+For issues with the testing suite:
+1. Check WordPress error logs
+2. Verify admin permissions
+3. Ensure plugin is fully loaded
+4. Test individual components first
 
-### Support Information
-
-When requesting support, include:
-
-1. **Quick diagnostic results:**
-```bash
-wp eval-file tests/s3-configuration-debugger.php --quick
-```
-
-2. **System information:**
-- WordPress version
-- PHP version
-- Plugin version
-- Server environment (shared/VPS/dedicated)
-
-3. **Configuration details:**
-- Configuration method (environment variables vs database)
-- AWS region
-- File sizes being uploaded
-- Error patterns (consistent vs intermittent)
-
-### Common Support Requests
-
-**"Tests pass but uploads still fail"**
-- Run integration pipeline tests
-- Check file size limits
-- Verify tour file format
-
-**"Intermittent failures"**
-- Run error handling tests
-- Check network connectivity
-- Review server resources
-
-**"Works in staging but not production"**
-- Compare configurations between environments
-- Check environment variable availability
-- Verify AWS credentials and permissions
-
-## 📚 Additional Resources
-
-- [AWS S3 Documentation](https://docs.aws.amazon.com/s3/)
-- [WordPress AJAX API](https://codex.wordpress.org/AJAX_in_Plugins)
-- [WordPress Plugin Development](https://developer.wordpress.org/plugins/)
-- [H3 Tour Management Plugin Documentation](../README.md)
-
----
-
-**Last Updated:** 2024-01-15
-**Test Suite Version:** 1.0
-**Compatible with:** H3 Tour Management v1.5.0+
+The comprehensive test suite will identify the root cause of S3 configuration failures in AJAX contexts and provide specific recommendations for resolution.
