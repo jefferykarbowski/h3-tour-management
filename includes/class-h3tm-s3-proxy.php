@@ -1,0 +1,163 @@
+<?php
+/**
+ * S3 URL Proxy - Makes S3 tours appear as local /h3panos/ URLs
+ */
+class H3TM_S3_Proxy {
+
+    public function __construct() {
+        // Add rewrite rules for tour URLs
+        add_action('init', array($this, 'add_rewrite_rules'));
+        add_action('template_redirect', array($this, 'handle_tour_requests'));
+
+        // Update tour manager to show local URLs
+        add_filter('h3tm_tour_url', array($this, 'convert_s3_to_local_url'), 10, 2);
+    }
+
+    /**
+     * Add rewrite rules for h3panos tours
+     */
+    public function add_rewrite_rules() {
+        // Match /h3panos/TourName/anything
+        add_rewrite_rule(
+            '^h3panos/([^/]+)/(.*)$',
+            'index.php?h3tm_tour=$matches[1]&h3tm_file=$matches[2]',
+            'top'
+        );
+
+        // Add query vars
+        add_filter('query_vars', function($vars) {
+            $vars[] = 'h3tm_tour';
+            $vars[] = 'h3tm_file';
+            return $vars;
+        });
+
+        // Flush rewrite rules on activation (only once)
+        if (get_option('h3tm_rewrite_rules_flushed') !== '1') {
+            flush_rewrite_rules();
+            update_option('h3tm_rewrite_rules_flushed', '1');
+        }
+    }
+
+    /**
+     * Handle tour file requests and proxy from S3
+     */
+    public function handle_tour_requests() {
+        $tour_name = get_query_var('h3tm_tour');
+        $file_path = get_query_var('h3tm_file');
+
+        if (empty($tour_name)) {
+            return; // Not a tour request
+        }
+
+        error_log('H3TM S3 Proxy: Request for tour=' . $tour_name . ', file=' . $file_path);
+
+        // Default to index.htm if no file specified
+        if (empty($file_path)) {
+            $file_path = 'index.htm';
+        }
+
+        // Get S3 configuration
+        $s3_simple = new H3TM_S3_Simple();
+        $s3_config = $s3_simple->get_s3_config();
+
+        if (!$s3_config['configured']) {
+            wp_die('S3 not configured for tour delivery');
+        }
+
+        // Build S3 URL for the tour file
+        $tour_s3_name = sanitize_file_name($tour_name);
+        $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . $tour_s3_name . '/' . $file_path;
+
+        error_log('H3TM S3 Proxy: Serving from S3: ' . $s3_url);
+
+        // Proxy the file from S3
+        $this->proxy_s3_file($s3_url, $file_path);
+        exit();
+    }
+
+    /**
+     * Proxy file content from S3
+     */
+    private function proxy_s3_file($s3_url, $file_path) {
+        // Get file from S3
+        $response = wp_remote_get($s3_url, array(
+            'timeout' => 30
+        ));
+
+        if (is_wp_error($response)) {
+            error_log('H3TM S3 Proxy Error: ' . $response->get_error_message());
+            status_header(404);
+            wp_die('Tour file not found');
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        if ($response_code !== 200) {
+            error_log('H3TM S3 Proxy: S3 returned ' . $response_code . ' for ' . $s3_url);
+            status_header(404);
+            wp_die('Tour file not found');
+        }
+
+        // Get content and content type
+        $content = wp_remote_retrieve_body($response);
+        $content_type = $this->get_content_type($file_path);
+
+        // Set appropriate headers
+        header('Content-Type: ' . $content_type);
+        header('Content-Length: ' . strlen($content));
+
+        // Cache headers for better performance
+        header('Cache-Control: public, max-age=3600');
+        header('Expires: ' . gmdate('D, d M Y H:i:s \G\M\T', time() + 3600));
+
+        // Output the content
+        echo $content;
+    }
+
+    /**
+     * Convert S3 URL to local /h3panos/ URL
+     */
+    public function convert_s3_to_local_url($url, $tour_name) {
+        // Convert S3 URLs to local /h3panos/ URLs for display
+        return site_url('/h3panos/' . rawurlencode($tour_name) . '/');
+    }
+
+    /**
+     * Get content type for file
+     */
+    private function get_content_type($file_path) {
+        $ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+
+        $content_types = array(
+            'html' => 'text/html',
+            'htm' => 'text/html',
+            'js' => 'application/javascript',
+            'css' => 'text/css',
+            'png' => 'image/png',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'mp4' => 'video/mp4',
+            'json' => 'application/json',
+            'txt' => 'text/plain'
+        );
+
+        return isset($content_types[$ext]) ? $content_types[$ext] : 'application/octet-stream';
+    }
+
+    /**
+     * Clean up old uploads (can be called manually or via cron)
+     */
+    public static function cleanup_old_uploads() {
+        $s3_simple = new H3TM_S3_Simple();
+        $s3_config = $s3_simple->get_s3_config();
+
+        if (!$s3_config['configured']) {
+            return false;
+        }
+
+        // This would require AWS SDK to list and delete old uploads
+        // For now, we rely on S3 lifecycle policies to clean up old uploads
+        error_log('H3TM S3 Proxy: Cleanup should be handled by S3 lifecycle policies');
+        return true;
+    }
+}

@@ -69,6 +69,7 @@ exports.handler = async (event) => {
                     Key: key
                 }));
 
+                console.log(`🧹 Cleaned up original upload: ${key}`);
                 console.log(`🎉 Tour "${tourName}" processed successfully!`);
                 console.log(`🌐 Available at: https://${bucket}.s3.us-east-1.amazonaws.com/tours/${tourName}/index.htm`);
 
