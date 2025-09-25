@@ -278,7 +278,16 @@ class H3TM_S3_Integration {
 
         // Force fresh configuration check for AJAX requests
         $this->config_cache = null;
-        $this->config_validated = false;
+
+        // Reload configuration from original simple method
+        $this->bucket_name = defined('H3_S3_BUCKET') ? H3_S3_BUCKET : get_option('h3tm_s3_bucket', '');
+        $this->region = defined('H3_S3_REGION') ? H3_S3_REGION : get_option('h3tm_s3_region', 'us-east-1');
+        $this->access_key = defined('AWS_ACCESS_KEY_ID') ? AWS_ACCESS_KEY_ID : get_option('h3tm_aws_access_key', '');
+        $this->secret_key = defined('AWS_SECRET_ACCESS_KEY') ? AWS_SECRET_ACCESS_KEY : get_option('h3tm_aws_secret_key', '');
+
+        error_log('H3TM S3 AJAX: Direct config load - bucket=' . $this->bucket_name);
+        error_log('H3TM S3 AJAX: Direct config load - access_key=' . (empty($this->access_key) ? 'EMPTY' : 'SET'));
+        error_log('H3TM S3 AJAX: Direct config load - secret_key=' . (empty($this->secret_key) ? 'EMPTY' : 'SET'));
 
         // Validate configuration
         $validation_result = $this->validate_configuration();
