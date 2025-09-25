@@ -39,7 +39,9 @@
       "Bash(sort:*)",
       "Bash(git checkout:*)",
       "WebFetch(domain:github.com)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Read(//c//**)",
+      "Bash(git restore:*)"
     ],
     "deny": []
   }

@@ -19,8 +19,10 @@ class H3TM_Admin {
         add_action('wp_ajax_h3tm_upload_tour', array($this, 'handle_upload_tour'));
         add_action('wp_ajax_h3tm_upload_chunk', array($this, 'handle_upload_chunk'));
         add_action('wp_ajax_h3tm_process_upload', array($this, 'handle_process_upload'));
-        add_action('wp_ajax_h3tm_get_s3_presigned_url', array($this, 'handle_get_s3_presigned_url'));
-        add_action('wp_ajax_h3tm_process_s3_upload', array($this, 'handle_process_s3_upload'));
+        // S3 AJAX handlers are handled by H3TM_S3_Integration class:
+        // - wp_ajax_h3tm_get_s3_presigned_url
+        // - wp_ajax_h3tm_process_s3_upload
+        // - wp_ajax_h3tm_test_s3_connection
         add_action('wp_ajax_h3tm_delete_tour', array($this, 'handle_delete_tour'));
         add_action('wp_ajax_h3tm_rename_tour', array($this, 'handle_rename_tour'));
         // add_action('wp_ajax_h3tm_update_tours_analytics', array($this, 'handle_update_tours_analytics')); // Disabled with analytics settings

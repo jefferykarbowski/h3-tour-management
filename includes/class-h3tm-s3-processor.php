@@ -14,7 +14,7 @@ class H3TM_S3_Processor {
     private $tour_manager;
 
     public function __construct() {
-        $this->s3_integration = new H3TM_S3_Integration();
+        $this->s3_integration = H3TM_S3_Integration::getInstance();
         $this->tour_manager = new H3TM_Tour_Manager();
 
         // Register WordPress cron hook

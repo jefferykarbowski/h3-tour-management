@@ -12,7 +12,7 @@ class H3TM_S3_Settings {
     private $s3_integration;
 
     public function __construct() {
-        $this->s3_integration = new H3TM_S3_Integration();
+        $this->s3_integration = H3TM_S3_Integration::getInstance();
 
         add_action('admin_menu', array($this, 'add_settings_page'));
         add_action('admin_init', array($this, 'init_settings'));
@@ -57,6 +57,9 @@ class H3TM_S3_Settings {
         $config_status = $this->s3_integration->get_configuration_status();
         $processor = new H3TM_S3_Processor();
         $stats = $processor->get_processing_stats();
+
+        // Clear any cached configuration to ensure fresh data
+        $this->s3_integration->clear_config_cache();
 
         ?>
         <div class="wrap">
@@ -103,14 +106,20 @@ class H3TM_S3_Settings {
                         </tr>
                     </table>
 
-                    <?php if ($config_status['configured']): ?>
-                        <p>
-                            <button type="button" id="test-s3-connection" class="button button-secondary">
-                                <?php _e('Test S3 Connection', 'h3-tour-management'); ?>
-                            </button>
-                        </p>
-                        <div id="s3-test-result"></div>
-                    <?php endif; ?>
+                    <p>
+                        <button type="button" id="test-s3-connection" class="button button-secondary">
+                            <?php _e('Test S3 Connection', 'h3-tour-management'); ?>
+                        </button>
+                        <button type="button" id="validate-s3-config" class="button button-secondary">
+                            <?php _e('Validate Configuration', 'h3-tour-management'); ?>
+                        </button>
+                        <button type="button" id="debug-s3-config" class="button button-secondary">
+                            <?php _e('Debug Configuration', 'h3-tour-management'); ?>
+                        </button>
+                    </p>
+                    <div id="s3-test-result"></div>
+                    <div id="s3-validation-result"></div>
+                    <div id="s3-debug-result"></div>
                 </div>
 
                 <!-- Upload Statistics -->
@@ -445,10 +454,27 @@ class H3TM_S3_Settings {
             }
 
             #management-result.error,
-            #s3-test-result.error {
+            #s3-test-result.error,
+            #s3-validation-result.error,
+            #s3-debug-result.error {
                 background: #f8d7da;
                 border: 1px solid #f5c6cb;
                 color: #721c24;
+            }
+
+            #s3-validation-result.success,
+            #s3-debug-result.success {
+                background: #d4edda;
+                border: 1px solid #c3e6cb;
+                color: #155724;
+            }
+
+            #s3-debug-result ul {
+                margin-left: 20px;
+            }
+
+            #s3-debug-result li {
+                margin-bottom: 5px;
             }
         </style>
 
@@ -464,7 +490,7 @@ class H3TM_S3_Settings {
 
                 $.post(ajaxurl, {
                     action: 'h3tm_test_s3_connection',
-                    nonce: '<?php echo wp_create_nonce('h3tm_s3_test'); ?>'
+                    nonce: '<?php echo wp_create_nonce('h3tm_ajax_nonce'); ?>'
                 }, function(response) {
                     $result.removeClass('success error')
                            .addClass(response.success ? 'success' : 'error')
@@ -473,6 +499,82 @@ class H3TM_S3_Settings {
                 })
                 .always(function() {
                     $button.prop('disabled', false).text('Test S3 Connection');
+                });
+            });
+
+            // Validate S3 configuration
+            $('#validate-s3-config').on('click', function() {
+                var $button = $(this);
+                var $result = $('#s3-validation-result');
+
+                $button.prop('disabled', true).text('Validating...');
+                $result.hide();
+
+                $.post(ajaxurl, {
+                    action: 'h3tm_validate_s3_config',
+                    nonce: '<?php echo wp_create_nonce('h3tm_ajax_nonce'); ?>'
+                }, function(response) {
+                    if (response.success) {
+                        $result.removeClass('success error')
+                               .addClass('success')
+                               .text(response.data)
+                               .show();
+                    } else {
+                        var errorText = response.data.message || response.data;
+                        if (response.data.errors && response.data.errors.length > 0) {
+                            errorText += ': ' + response.data.errors.join(', ');
+                        }
+                        $result.removeClass('success error')
+                               .addClass('error')
+                               .text(errorText)
+                               .show();
+                    }
+                })
+                .always(function() {
+                    $button.prop('disabled', false).text('Validate Configuration');
+                });
+            });
+
+            // Debug S3 configuration
+            $('#debug-s3-config').on('click', function() {
+                var $button = $(this);
+                var $result = $('#s3-debug-result');
+
+                $button.prop('disabled', true).text('Debugging...');
+                $result.hide();
+
+                $.post(ajaxurl, {
+                    action: 'h3tm_debug_s3_config',
+                    nonce: '<?php echo wp_create_nonce('h3tm_ajax_nonce'); ?>'
+                }, function(response) {
+                    if (response.success) {
+                        var debugInfo = '<h4>Configuration Debug Information:</h4><ul>';
+                        $.each(response.data, function(key, value) {
+                            if (typeof value === 'object') {
+                                debugInfo += '<li><strong>' + key + ':</strong><ul>';
+                                $.each(value, function(subKey, subValue) {
+                                    debugInfo += '<li>' + subKey + ': ' + subValue + '</li>';
+                                });
+                                debugInfo += '</ul></li>';
+                            } else {
+                                debugInfo += '<li><strong>' + key + ':</strong> ' + value + '</li>';
+                            }
+                        });
+                        debugInfo += '</ul>';
+
+                        $result.removeClass('success error')
+                               .addClass('success')
+                               .html(debugInfo)
+                               .show();
+                    } else {
+                        $result.removeClass('success error')
+                               .addClass('error')
+                               .text(response.data || 'Debug failed')
+                               .show();
+                    }
+                })
+                .always(function() {
+                    $button.prop('disabled', false).text('Debug Configuration');
                 });
             });
 
@@ -513,25 +615,42 @@ class H3TM_S3_Settings {
     }
 
     public function test_s3_connection() {
-        if (!wp_verify_nonce($_POST['nonce'], 'h3tm_s3_test') || !current_user_can('manage_options')) {
+        if (!wp_verify_nonce($_POST['nonce'], 'h3tm_ajax_nonce') || !current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
         }
 
         try {
-            // Test basic S3 connection
-            if (!$this->s3_integration->is_s3_configured()) {
+            // Clear cache and force fresh validation
+            $this->s3_integration->clear_config_cache();
+
+            // Test basic S3 connection using the integration's test method
+            if (!$this->s3_integration->is_configured()) {
                 wp_send_json_error('S3 not properly configured. Please check your settings.');
             }
 
-            // Try to list bucket contents (basic connectivity test)
-            $bucket_name = get_option('h3tm_s3_bucket_name');
+            // Use the test connection method from S3 integration
+            $test_result = $this->call_private_method($this->s3_integration, 'test_s3_connection');
 
-            // This would require additional methods in the S3 integration class
-            wp_send_json_success('S3 connection successful! Bucket "' . $bucket_name . '" is accessible.');
+            if ($test_result) {
+                update_option('h3tm_s3_last_test', current_time('mysql'));
+                wp_send_json_success('S3 connection successful! Configuration is working properly.');
+            } else {
+                wp_send_json_error('S3 connection test failed. Check your credentials and bucket configuration.');
+            }
 
         } catch (Exception $e) {
             wp_send_json_error('S3 connection failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Helper method to call private methods for testing
+     */
+    private function call_private_method($object, $method_name, $parameters = array()) {
+        $reflection = new ReflectionClass(get_class($object));
+        $method = $reflection->getMethod($method_name);
+        $method->setAccessible(true);
+        return $method->invokeArgs($object, $parameters);
     }
 
     public function manual_cleanup() {
