@@ -1,0 +1,33 @@
+# Example Terraform variables file for H3 Tour Management Lambda
+# Copy this file to terraform.tfvars and update with your values
+
+# Required Variables
+bucket_name = "h3-tour-files-h3vt"
+webhook_url = "https://yourdomain.com/wp-admin/admin-ajax.php?action=h3tm_lambda_webhook"
+
+# Environment Configuration
+environment = "dev"
+aws_region  = "us-west-2"
+
+# Optional - Email for error notifications
+alert_email = "admin@yourdomain.com"
+
+# Lambda Configuration
+lambda_memory_size = 1024  # MB - Increase for larger files or faster processing
+lambda_timeout     = 900   # seconds (15 minutes max)
+
+# File Processing Limits
+max_file_size = 1073741824  # 1GB in bytes
+
+# Monitoring Configuration
+enable_monitoring           = true
+error_threshold            = 0      # Alert on any errors
+duration_threshold_seconds = 600    # 10 minutes
+log_retention_days        = 14      # CloudWatch log retention
+
+# Additional Tags (optional)
+tags = {
+  Owner       = "H3-Team"
+  CostCenter  = "Development"
+  Backup      = "Daily"
+}

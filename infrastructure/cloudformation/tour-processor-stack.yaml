@@ -1,0 +1,228 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'H3 Tour Management - Lambda ZIP Processing Infrastructure'
+
+Parameters:
+  UploadsBucketName:
+    Type: String
+    Description: S3 bucket name for ZIP uploads
+    Default: h3-tour-uploads
+
+  ToursBucketName:
+    Type: String
+    Description: S3 bucket name for extracted tours
+    Default: h3-tour-files
+
+  WordPressWebhookUrl:
+    Type: String
+    Description: WordPress webhook URL for notifications
+    Default: https://your-site.com/wp-json/h3/v1/tour-processed
+
+  Environment:
+    Type: String
+    Description: Environment name (dev, staging, prod)
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # S3 Buckets
+  UploadsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${UploadsBucketName}-${Environment}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [PUT, POST]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .zip
+            Function: !GetAtt TourProcessorFunction.Arn
+
+  ToursBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ToursBucketName}-${Environment}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+
+  # SNS Topic for notifications
+  TourProcessingTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "h3-tour-processing-${Environment}"
+      DisplayName: H3 Tour Processing Notifications
+
+  # Lambda Execution Role
+  TourProcessorExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "h3-tour-processor-role-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !Sub "${UploadsBucket}/*"
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource: !Sub "${ToursBucket}/*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt UploadsBucket.Arn
+                  - !GetAtt ToursBucket.Arn
+        - PolicyName: SNSPublish
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref TourProcessingTopic
+
+  # Lambda Function
+  TourProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "h3-tour-processor-${Environment}"
+      Description: Processes uploaded tour ZIP files
+      Runtime: python3.9
+      Handler: tour_processor.lambda_handler
+      Code:
+        ZipFile: |
+          # Placeholder - deploy actual code using deployment script
+          def lambda_handler(event, context):
+              return {"statusCode": 200, "body": "Placeholder function"}
+      MemorySize: 1024
+      Timeout: 900  # 15 minutes
+      Role: !GetAtt TourProcessorExecutionRole.Arn
+      Environment:
+        Variables:
+          UPLOADS_BUCKET: !Ref UploadsBucket
+          TOURS_BUCKET: !Ref ToursBucket
+          NOTIFICATION_TOPIC_ARN: !Ref TourProcessingTopic
+          WORDPRESS_WEBHOOK_URL: !Ref WordPressWebhookUrl
+          ENVIRONMENT: !Ref Environment
+
+  # Lambda Permission for S3 to invoke function
+  S3InvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref TourProcessorFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt UploadsBucket.Arn
+
+  # CloudWatch Log Group
+  TourProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/h3-tour-processor-${Environment}"
+      RetentionInDays: 30
+
+  # CloudWatch Alarms
+  TourProcessorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "h3-tour-processor-errors-${Environment}"
+      AlarmDescription: Lambda function errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TourProcessorFunction
+      AlarmActions:
+        - !Ref TourProcessingTopic
+
+  TourProcessorDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "h3-tour-processor-duration-${Environment}"
+      AlarmDescription: Lambda function long duration
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 600000  # 10 minutes in milliseconds
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TourProcessorFunction
+      AlarmActions:
+        - !Ref TourProcessingTopic
+
+Outputs:
+  UploadsBucketName:
+    Description: Name of the uploads S3 bucket
+    Value: !Ref UploadsBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-UploadsBucket"
+
+  ToursBucketName:
+    Description: Name of the tours S3 bucket
+    Value: !Ref ToursBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-ToursBucket"
+
+  TourProcessorFunctionArn:
+    Description: ARN of the tour processor Lambda function
+    Value: !GetAtt TourProcessorFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaFunctionArn"
+
+  NotificationTopicArn:
+    Description: ARN of the SNS notification topic
+    Value: !Ref TourProcessingTopic
+    Export:
+      Name: !Sub "${AWS::StackName}-NotificationTopic"
+
+  UploadsBucketUrl:
+    Description: S3 URL for uploads bucket
+    Value: !Sub "https://${UploadsBucket}.s3.${AWS::Region}.amazonaws.com"
+
+  ToursBucketUrl:
+    Description: S3 URL for tours bucket
+    Value: !Sub "https://${ToursBucket}.s3.${AWS::Region}.amazonaws.com"

@@ -16,16 +16,6 @@
             "Resource": "arn:aws:s3:::h3-tour-files-h3vt/uploads/*"
         },
         {
-            "Sid": "DenyDirectAccessToUploads",
-            "Effect": "Deny",
-            "Principal": "*",
-            "Action": "s3:GetObject",
-            "Resource": [
-                "arn:aws:s3:::h3-tour-files-h3vt/uploads/*",
-                "arn:aws:s3:::h3-tour-files-h3vt/temp/*"
-            ]
-        },
-        {
             "Sid": "RequireSSLRequestsOnly",
             "Effect": "Deny",
             "Principal": "*",

@@ -1,0 +1,42 @@
+{
+  "name": "h3-tour-processor",
+  "version": "1.0.0",
+  "description": "AWS Lambda function for processing H3 tour ZIP files with nested extraction and S3 integration",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "package": "zip -r ../h3-tour-processor.zip . -x '*.git*' 'node_modules/.cache/*' 'coverage/*' '*.log'",
+    "deploy": "aws lambda update-function-code --function-name h3-tour-processor --zip-file fileb://../h3-tour-processor.zip",
+    "logs": "aws logs tail /aws/lambda/h3-tour-processor --follow"
+  },
+  "keywords": [
+    "aws-lambda",
+    "s3",
+    "zip-extraction",
+    "tour-processing",
+    "serverless"
+  ],
+  "author": "H3 Tour Management",
+  "license": "MIT",
+  "dependencies": {
+    "aws-sdk": "^2.1490.0",
+    "unzipper": "^0.10.14"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "aws-sdk-mock": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=18.x"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/h3-tour-management/aws-lambda-processor.git"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverage": true,
+    "coverageDirectory": "coverage",
+    "coverageReporters": ["text", "lcov", "html"]
+  }
+}

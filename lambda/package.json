@@ -1,0 +1,16 @@
+{
+  "name": "h3-tour-processor",
+  "version": "1.0.0",
+  "description": "H3 Tour Management Lambda ZIP processor",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["h3", "tour", "zip", "s3", "lambda"],
+  "author": "H3 Photography",
+  "license": "GPL-2.0",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "adm-zip": "^0.5.10"
+  }
+}
