@@ -343,7 +343,7 @@ class H3TM_S3_Integration {
 
         } catch (Exception $e) {
             error_log('H3TM S3 Error: Failed to generate presigned URL: ' . $e->getMessage());
-            wp_send_json_error('Failed to generate upload URL. Falling back to chunked upload.');
+            wp_send_json_error('Failed to generate S3 upload URL. Please check your S3 configuration.');
         }
     }
 

@@ -194,12 +194,12 @@ class H3TM_Tour_Manager {
     private function extract_zip_streaming($zip, $extract_to) {
         $is_pantheon = defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0;
 
-        // Increase memory limits for large files
+        // Set reasonable limits for S3 downloaded files
         $original_memory = ini_get('memory_limit');
         $original_time = ini_get('max_execution_time');
 
-        @ini_set('memory_limit', '1024M');
-        @ini_set('max_execution_time', 900); // 15 minutes for large files
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', 300); // 5 minutes should be sufficient
 
         $memory_limit = $is_pantheon ? 300000000 : 800000000; // Higher limits for large files
         $extracted_count = 0;
@@ -426,9 +426,9 @@ class H3TM_Tour_Manager {
         $debug_info['attempts'] = array();
         
         try {
-            // Set longer execution time for large tours
+            // Set reasonable execution time for S3 operations
             if (function_exists('set_time_limit')) {
-                set_time_limit(900); // 15 minutes for large tours
+                set_time_limit(300); // 5 minutes for tour operations
             }
             
             // Method 1: Fast copy-and-delete approach (same as upload process)

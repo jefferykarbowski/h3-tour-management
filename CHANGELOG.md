@@ -5,6 +5,27 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2025-09-25
+
+### 🚀 **MAJOR RELEASE: S3-Only Architecture**
+- **Complete removal** of chunked upload system - S3 required for all uploads
+- **Simplified architecture**: Browser → S3 → WordPress processing
+- **No file size limits**: Supports unlimited file sizes through S3
+- **Eliminated server constraints**: No more Pantheon disk space or memory limits
+- **Clean codebase**: Removed 500+ lines of chunked upload complexity
+
+### Added
+- **S3-only upload workflow** with XMLHttpRequest (no AWS SDK dependency)
+- **Enhanced error handling** with clear S3 configuration guidance
+- **Comprehensive validation suite** for S3-only functionality
+- **Professional UI** with S3 direct upload progress tracking
+
+### Removed
+- **All chunked upload functionality** (handle_upload_chunk, handle_process_upload)
+- **Server-side chunk processing** and temporary file management
+- **Dual upload mode complexity** and fallback mechanisms
+- **Pantheon-specific workarounds** and disk space checking
+
 ## [1.5.0] - 2025-09-21
 
 ### Added

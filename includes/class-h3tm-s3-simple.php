@@ -34,7 +34,7 @@ class H3TM_S3_Simple {
     }
 
     /**
-     * Test S3 connection
+     * Test S3 connection by attempting to list bucket
      */
     public function handle_test_s3_connection() {
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
@@ -46,10 +46,27 @@ class H3TM_S3_Simple {
         $config = $this->get_s3_credentials();
 
         if (!$config['configured']) {
-            wp_send_json_error('S3 configuration incomplete');
+            $missing = array();
+            if (empty($config['bucket'])) $missing[] = 'bucket';
+            if (empty($config['access_key'])) $missing[] = 'access_key';
+            if (empty($config['secret_key'])) $missing[] = 'secret_key';
+
+            wp_send_json_error('S3 configuration incomplete: ' . implode(', ', $missing));
         }
 
-        wp_send_json_success('S3 connection successful!');
+        try {
+            // Simple bucket test - attempt to generate a presigned URL
+            $test_key = 'test/' . uniqid() . '.txt';
+            $presigned_url = $this->generate_simple_presigned_url($config, $test_key);
+
+            if (!empty($presigned_url)) {
+                wp_send_json_success('S3 connection test successful!');
+            } else {
+                wp_send_json_error('Failed to generate presigned URL');
+            }
+        } catch (Exception $e) {
+            wp_send_json_error('S3 test failed: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -100,30 +117,58 @@ class H3TM_S3_Simple {
     }
 
     /**
-     * Simple presigned URL generation
+     * Generate proper AWS4 presigned URL
      */
     private function generate_simple_presigned_url($config, $s3_key) {
-        // Basic presigned URL for testing
         $host = $config['bucket'] . ".s3." . $config['region'] . ".amazonaws.com";
         $datetime = gmdate('Ymd\THis\Z');
         $date = gmdate('Ymd');
+        $expires = 3600; // 1 hour
 
-        $url = "https://" . $host . "/" . $s3_key;
-        $url .= "?X-Amz-Algorithm=AWS4-HMAC-SHA256";
-        $url .= "&X-Amz-Credential=" . urlencode($config['access_key'] . "/" . $date . "/" . $config['region'] . "/s3/aws4_request");
-        $url .= "&X-Amz-Date=" . $datetime;
-        $url .= "&X-Amz-Expires=3600";
-        $url .= "&X-Amz-SignedHeaders=host";
+        // Create canonical request
+        $method = 'PUT';
+        $canonical_uri = '/' . $s3_key;
+        $canonical_querystring = 'X-Amz-Algorithm=AWS4-HMAC-SHA256';
+        $canonical_querystring .= '&X-Amz-Credential=' . urlencode($config['access_key'] . '/' . $date . '/' . $config['region'] . '/s3/aws4_request');
+        $canonical_querystring .= '&X-Amz-Date=' . $datetime;
+        $canonical_querystring .= '&X-Amz-Expires=' . $expires;
+        $canonical_querystring .= '&X-Amz-SignedHeaders=host';
 
-        // Simple signature calculation
-        $signature = hash_hmac('sha256', 'test', $config['secret_key']);
-        $url .= "&X-Amz-Signature=" . $signature;
+        $canonical_headers = "host:" . $host . "\n";
+        $signed_headers = 'host';
+        $payload_hash = 'UNSIGNED-PAYLOAD';
+
+        $canonical_request = $method . "\n" . $canonical_uri . "\n" . $canonical_querystring . "\n" . $canonical_headers . "\n" . $signed_headers . "\n" . $payload_hash;
+
+        // Create string to sign
+        $algorithm = 'AWS4-HMAC-SHA256';
+        $credential_scope = $date . '/' . $config['region'] . '/s3/aws4_request';
+        $string_to_sign = $algorithm . "\n" . $datetime . "\n" . $credential_scope . "\n" . hash('sha256', $canonical_request);
+
+        // Calculate signature
+        $signing_key = $this->getSignatureKey($config['secret_key'], $date, $config['region'], 's3');
+        $signature = hash_hmac('sha256', $string_to_sign, $signing_key);
+
+        // Build final URL
+        $url = "https://" . $host . $canonical_uri . '?' . $canonical_querystring . '&X-Amz-Signature=' . $signature;
 
         return $url;
     }
 
     /**
-     * Process S3 upload
+     * Generate AWS4 signing key
+     */
+    private function getSignatureKey($key, $dateStamp, $regionName, $serviceName) {
+        $kDate = hash_hmac('sha256', $dateStamp, 'AWS4' . $key, true);
+        $kRegion = hash_hmac('sha256', $regionName, $kDate, true);
+        $kService = hash_hmac('sha256', $serviceName, $kRegion, true);
+        $kSigning = hash_hmac('sha256', 'aws4_request', $kService, true);
+
+        return $kSigning;
+    }
+
+    /**
+     * Process S3 upload by downloading from S3 and extracting tour
      */
     public function handle_process_s3_upload() {
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
@@ -132,7 +177,91 @@ class H3TM_S3_Simple {
             wp_die('Unauthorized');
         }
 
-        wp_send_json_success('S3 upload processed successfully');
+        $tour_name = sanitize_text_field($_POST['tour_name']);
+        $s3_key = sanitize_text_field($_POST['s3_key']);
+        $unique_id = sanitize_text_field($_POST['unique_id']);
+        $file_name = sanitize_file_name($_POST['file_name']);
+
+        if (empty($tour_name) || empty($s3_key)) {
+            wp_send_json_error('Missing required parameters');
+        }
+
+        try {
+            // Download file from S3
+            $local_file_path = $this->download_from_s3($s3_key, $file_name);
+
+            if (!$local_file_path) {
+                wp_send_json_error('Failed to download file from S3');
+            }
+
+            // Process the downloaded file using tour manager
+            $tour_manager = new H3TM_Tour_Manager();
+            $file_info = array(
+                'name' => $file_name,
+                'tmp_name' => $local_file_path,
+                'error' => UPLOAD_ERR_OK,
+                'size' => file_exists($local_file_path) ? filesize($local_file_path) : 0
+            );
+
+            $result = $tour_manager->upload_tour($tour_name, $file_info, false);
+
+            if ($result['success']) {
+                wp_send_json_success($result['message']);
+            } else {
+                wp_send_json_error($result['message']);
+            }
+
+        } catch (Exception $e) {
+            error_log('H3TM S3 Processing Error: ' . $e->getMessage());
+            wp_send_json_error('S3 processing failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download file from S3
+     */
+    private function download_from_s3($s3_key, $file_name) {
+        $config = $this->get_s3_credentials();
+
+        if (!$config['configured']) {
+            throw new Exception('S3 not configured');
+        }
+
+        // Create download URL
+        $download_url = "https://" . $config['bucket'] . ".s3." . $config['region'] . ".amazonaws.com/" . $s3_key;
+
+        // Create local file path
+        $upload_dir = wp_upload_dir();
+        $h3_tours_dir = $upload_dir['basedir'] . '/h3-tours';
+
+        if (!file_exists($h3_tours_dir)) {
+            if (!wp_mkdir_p($h3_tours_dir)) {
+                throw new Exception('Failed to create h3-tours directory');
+            }
+        }
+
+        $local_file_path = $h3_tours_dir . '/' . $file_name;
+
+        // Download file with proper authentication (simplified approach)
+        $response = wp_remote_get($download_url, array(
+            'timeout' => 600, // 10 minutes for large files
+            'stream' => true,
+            'filename' => $local_file_path
+        ));
+
+        if (is_wp_error($response)) {
+            throw new Exception('Download failed: ' . $response->get_error_message());
+        }
+
+        if (wp_remote_retrieve_response_code($response) !== 200) {
+            throw new Exception('S3 download failed with status: ' . wp_remote_retrieve_response_code($response));
+        }
+
+        if (!file_exists($local_file_path) || filesize($local_file_path) === 0) {
+            throw new Exception('Downloaded file is empty or missing');
+        }
+
+        return $local_file_path;
     }
 
     /**
@@ -144,7 +273,7 @@ class H3TM_S3_Simple {
             'configured' => $config['configured'],
             'bucket' => $config['bucket'],
             'region' => $config['region'],
-            'threshold_mb' => get_option('h3tm_s3_threshold', 100)
+            'threshold_mb' => get_option('h3tm_s3_threshold', 50) // Lower threshold for S3-only approach
         );
     }
 }

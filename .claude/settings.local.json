@@ -41,7 +41,8 @@
       "WebFetch(domain:github.com)",
       "Bash(chmod:*)",
       "Read(//c//**)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(xargs ls:*)"
     ],
     "deny": []
   }

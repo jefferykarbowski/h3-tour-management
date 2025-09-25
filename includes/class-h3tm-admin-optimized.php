@@ -355,7 +355,6 @@ class H3TM_Admin_Optimized extends H3TM_Admin_V2 {
 
         // Optimization settings
         register_setting('h3tm_general_settings', 'h3tm_use_optimized_operations');
-        register_setting('h3tm_general_settings', 'h3tm_chunk_threshold');
         register_setting('h3tm_general_settings', 'h3tm_max_execution_time');
         register_setting('h3tm_general_settings', 'h3tm_progress_cleanup_interval');
     }

@@ -222,7 +222,7 @@ class H3TM_S3_Settings {
                                            value="<?php echo intval($threshold / 1024 / 1024); ?>"
                                            min="1" max="1000" /> MB
                                     <p class="description">
-                                        <?php _e('Files larger than this size will use S3 direct upload. Smaller files will use chunked upload.', 'h3-tour-management'); ?>
+                                        <?php _e('All files will be uploaded directly to S3 (threshold setting no longer used).', 'h3-tour-management'); ?>
                                     </p>
                                 </td>
                             </tr>

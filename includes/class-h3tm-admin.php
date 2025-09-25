@@ -17,9 +17,7 @@ class H3TM_Admin {
         // AJAX handlers
         add_action('wp_ajax_h3tm_test_email', array($this, 'handle_test_email'));
         add_action('wp_ajax_h3tm_upload_tour', array($this, 'handle_upload_tour'));
-        add_action('wp_ajax_h3tm_upload_chunk', array($this, 'handle_upload_chunk'));
-        add_action('wp_ajax_h3tm_process_upload', array($this, 'handle_process_upload'));
-        // S3 AJAX handlers are handled by H3TM_S3_Integration class:
+        // S3 AJAX handlers are handled by H3TM_S3_Simple class:
         // - wp_ajax_h3tm_get_s3_presigned_url
         // - wp_ajax_h3tm_process_s3_upload
         // - wp_ajax_h3tm_test_s3_connection
@@ -178,9 +176,9 @@ class H3TM_Admin {
                                         $s3_config = $s3_integration->get_s3_config();
                                         $s3_configured = $s3_config['configured'] && get_option('h3tm_s3_enabled', '0') === '1';
                                         if ($s3_configured) {
-                                            _e('Large files (>100MB) will use S3 Direct Upload for optimal performance. Smaller files use chunked upload.', 'h3-tour-management');
+                                            _e('All files will be uploaded directly to S3 for optimal performance.', 'h3-tour-management');
                                         } else {
-                                            _e('All files will be uploaded in chunks (1MB each) to avoid server limits. Configure S3 for large file optimization.', 'h3-tour-management');
+                                            _e('S3 Direct Upload must be configured to upload tour files.', 'h3-tour-management');
                                         }
                                         ?>
                                     </p>
@@ -191,9 +189,9 @@ class H3TM_Admin {
                                         </p>
                                     <?php else: ?>
                                         <p class="description" style="color: #d63384;">
-                                            <span class="dashicons dashicons-info"></span>
-                                            <?php _e('S3 Direct Upload not configured. Large files will use chunked upload.', 'h3-tour-management'); ?>
-                                            <a href="<?php echo esc_url(admin_url('admin.php?page=h3tm-upload-settings')); ?>"> <?php _e('Configure S3', 'h3-tour-management'); ?></a>
+                                            <span class="dashicons dashicons-warning"></span>
+                                            <?php _e('S3 Direct Upload is required for file uploads.', 'h3-tour-management'); ?>
+                                            <a href="<?php echo esc_url(admin_url('admin.php?page=h3tm-upload-settings')); ?>"> <?php _e('Configure S3 Now', 'h3-tour-management'); ?></a>
                                         </p>
                                     <?php endif; ?>
                                     <div id="file-info" style="margin-top: 5px; display: none;">
@@ -446,10 +444,10 @@ class H3TM_Admin {
                     </thead>
                     <tbody>
                         <tr>
-                            <td><strong>Chunked Upload</strong></td>
-                            <td>All files (default)</td>
-                            <td>Uploads files in 1MB chunks through WordPress. Works for all file sizes but may timeout on very large files.</td>
-                            <td><span style="color: #00a32a;">✓ Always Available</span></td>
+                            <td><strong>S3 Direct Upload</strong></td>
+                            <td>All files (required)</td>
+                            <td>Uploads files directly from browser to Amazon S3. Fast, reliable, and supports unlimited file sizes.</td>
+                            <td><span style="color: #00a32a;">✓ Required</span></td>
                         </tr>
                         <tr>
                             <td><strong>S3 Direct Upload</strong></td>
@@ -476,7 +474,7 @@ class H3TM_Admin {
 
             <div class="h3tm-section">
                 <h2><?php _e('S3 Direct Upload Configuration', 'h3-tour-management'); ?></h2>
-                <p><?php _e('Configure Amazon S3 for direct upload of large files. Leave blank to use chunked upload only.', 'h3-tour-management'); ?></p>
+                <p><?php _e('Configure Amazon S3 for direct upload of all tour files. S3 configuration is required for uploads.', 'h3-tour-management'); ?></p>
 
                 <form method="post" action="">
                     <table class="form-table">
@@ -575,7 +573,7 @@ class H3TM_Admin {
                             <td><?php echo !empty($env_region) ? esc_html($env_region) : 'us-east-1 (default)'; ?></td>
                         </tr>
                         <tr>
-                            <td><strong>Database Options</strong><br><small>(Fallback)</small></td>
+                            <td><strong>Database Options</strong><br><small>(Alternative)</small></td>
                             <td><?php echo !empty($s3_access_key) ? '<span style="color: #00a32a;">✓ Set</span>' : '<span style="color: #666;">Not set</span>'; ?></td>
                             <td><?php echo !empty($s3_secret_key) ? '<span style="color: #00a32a;">✓ Set</span>' : '<span style="color: #666;">Not set</span>'; ?></td>
                             <td><?php echo !empty($s3_bucket) ? '<span style="color: #00a32a;">' . esc_html($s3_bucket) . '</span>' : '<span style="color: #666;">Not set</span>'; ?></td>
@@ -591,7 +589,7 @@ class H3TM_Admin {
                                     </p>
                                 <?php else: ?>
                                     <span style="color: #d63384; font-weight: bold;">✗ S3 Direct Upload Not Available</span>
-                                    <p style="margin: 5px 0 0 0; color: #666; font-size: 13px;">All uploads will use chunked method</p>
+                                    <p style="margin: 5px 0 0 0; color: #666; font-size: 13px;">File uploads are disabled</p>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -791,7 +789,7 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
                     <li>✅ <?php _e('Supports files up to 1GB+', 'h3-tour-management'); ?></li>
                     <li>✅ <?php _e('Eliminates server disk space limitations', 'h3-tour-management'); ?></li>
                     <li>✅ <?php _e('Faster uploads with direct browser-to-S3', 'h3-tour-management'); ?></li>
-                    <li>✅ <?php _e('Automatic fallback to chunked upload if needed', 'h3-tour-management'); ?></li>
+                    <li>✅ <?php _e('No server disk space limitations', 'h3-tour-management'); ?></li>
                 </ul>
             </div>
         </div>
@@ -849,7 +847,7 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
         }
         
         try {
-            // Real analytics only - no fallback
+            // Real analytics only
             $analytics = new H3TM_Analytics();
             $analytics->send_analytics_for_user($user_id);
             $user = get_user_by('id', $user_id);
@@ -890,443 +888,9 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
         }
     }
     
-    /**
-     * Handle chunked upload
-     */
-    public function handle_upload_chunk() {
-        // Increase limits for large uploads
-        @ini_set('max_execution_time', 900); // 15 minutes for large uploads
-        @ini_set('memory_limit', '1024M');
-        
-        check_ajax_referer('h3tm_ajax_nonce', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_die('Unauthorized');
-        }
-        
-        $chunk_number = intval($_POST['chunk_number']);
-        $total_chunks = intval($_POST['total_chunks']);
-        $unique_id = sanitize_text_field($_POST['unique_id']);
-        $file_name = sanitize_file_name($_POST['file_name']);
-        
-        // Better error handling for chunk upload
-        if (!isset($_FILES['chunk'])) {
-            error_log('H3TM Upload Error - Chunk ' . $chunk_number . ': No chunk data received');
-            wp_send_json_error(__('No chunk data received', 'h3-tour-management'));
-        }
-        
-        if ($_FILES['chunk']['error'] !== UPLOAD_ERR_OK) {
-            $error_messages = array(
-                UPLOAD_ERR_INI_SIZE => 'Chunk exceeds upload_max_filesize',
-                UPLOAD_ERR_FORM_SIZE => 'Chunk exceeds MAX_FILE_SIZE',
-                UPLOAD_ERR_PARTIAL => 'Chunk was only partially uploaded',
-                UPLOAD_ERR_NO_FILE => 'No chunk was uploaded',
-                UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
-                UPLOAD_ERR_CANT_WRITE => 'Failed to write chunk to disk',
-                UPLOAD_ERR_EXTENSION => 'Upload stopped by extension'
-            );
-            $error_msg = isset($error_messages[$_FILES['chunk']['error']]) 
-                ? $error_messages[$_FILES['chunk']['error']] 
-                : 'Unknown upload error: ' . $_FILES['chunk']['error'];
-            
-            error_log('H3TM Upload Error - Chunk ' . $chunk_number . ': ' . $error_msg);
-            wp_send_json_error($error_msg);
-        }
-        
-        // Create temp directory for chunks
-        $upload_dir = wp_upload_dir();
-        $temp_dir = $upload_dir['basedir'] . '/h3-tours-temp';
-        if (!file_exists($temp_dir)) {
-            if (!wp_mkdir_p($temp_dir)) {
-                error_log('H3TM Upload Error: Failed to create temp directory: ' . $temp_dir);
-                wp_send_json_error(__('Failed to create temp directory', 'h3-tour-management'));
-            }
-        }
-        
-        // Skip disk space check on Pantheon (disk_free_space unreliable)
-        // Instead test write permissions directly
-        $h3panos_path = ABSPATH . 'h3panos';
-        
-        // Create debug info for admin display
-        $debug_info = array(
-            'is_pantheon' => (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0),
-            'h3panos_path' => $h3panos_path,
-            'h3panos_exists' => file_exists($h3panos_path),
-            'h3panos_writeable' => is_writeable($h3panos_path),
-            'abspath' => ABSPATH,
-            'upload_basedir' => $upload_dir['basedir'],
-            'disk_space_check' => 'skipped_on_pantheon'
-        );
-        
-        // Test write permissions instead of disk space
-        if (!is_writeable($h3panos_path)) {
-            // Try to create directory if it doesn't exist
-            if (!file_exists($h3panos_path)) {
-                if (!wp_mkdir_p($h3panos_path)) {
-                    wp_send_json_error(array(
-                        'message' => __('Cannot create tours directory', 'h3-tour-management'),
-                        'debug' => $debug_info
-                    ));
-                }
-            } else {
-                wp_send_json_error(array(
-                    'message' => __('Tours directory is not writeable', 'h3-tour-management'),
-                    'debug' => $debug_info
-                ));
-            }
-        }
-        
-        // Create unique directory for this upload
-        $upload_temp_dir = $temp_dir . '/' . $unique_id;
-        if (!file_exists($upload_temp_dir)) {
-            if (!wp_mkdir_p($upload_temp_dir)) {
-                error_log('H3TM Upload Error: Failed to create upload directory: ' . $upload_temp_dir);
-                wp_send_json_error(__('Failed to create upload directory', 'h3-tour-management'));
-            }
-        }
-        
-        // Save chunk with padded number for proper sorting
-        $chunk_file = $upload_temp_dir . '/chunk_' . str_pad($chunk_number, 6, '0', STR_PAD_LEFT);
-        if (!move_uploaded_file($_FILES['chunk']['tmp_name'], $chunk_file)) {
-            error_log('H3TM Upload Error: Failed to move chunk ' . $chunk_number . ' to ' . $chunk_file);
-            wp_send_json_error(__('Failed to save chunk ' . $chunk_number, 'h3-tour-management'));
-        }
-        
-        // Log progress for large uploads
-        if ($chunk_number % 100 === 0 || $chunk_number === $total_chunks - 1) {
-            error_log('H3TM Upload Progress: Chunk ' . $chunk_number . ' of ' . $total_chunks . ' completed');
-        }
-        
-        wp_send_json_success(array(
-            'chunk' => $chunk_number,
-            'total' => $total_chunks,
-            'free_space' => 'not_checked' // Free space check removed for Pantheon compatibility
-        ));
-    }
-    
-    /**
-     * Process uploaded chunks with Pantheon compatibility
-     */
-    public function handle_process_upload() {
-        // Add Pantheon-specific error monitoring
-        if (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0) {
-            // Register shutdown function to catch fatal errors
-            register_shutdown_function(array($this, 'handle_pantheon_shutdown'));
+    // All chunked upload functionality removed - S3 Direct Upload only
 
-            // Set more generous limits for Pantheon large file uploads
-            @ini_set('max_execution_time', 600); // 10 minutes for Pantheon
-            @ini_set('memory_limit', '512M');
-        }
-
-        check_ajax_referer('h3tm_ajax_nonce', 'nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_die('Unauthorized');
-        }
-        
-        $tour_name = sanitize_text_field($_POST['tour_name']);
-        $unique_id = sanitize_text_field($_POST['unique_id']);
-        $file_name = sanitize_file_name($_POST['file_name']);
-        
-        if (empty($tour_name)) {
-            wp_send_json_error(__('Tour name is required', 'h3-tour-management'));
-        }
-        
-        // Get temp directory
-        $upload_dir = wp_upload_dir();
-        $temp_dir = $upload_dir['basedir'] . '/h3-tours-temp';
-        $upload_temp_dir = $temp_dir . '/' . $unique_id;
-        
-        if (!file_exists($upload_temp_dir)) {
-            wp_send_json_error(__('Upload directory not found', 'h3-tour-management'));
-        }
-        
-        // Combine chunks
-        $final_file = $upload_dir['basedir'] . '/h3-tours/' . $file_name;
-        error_log('H3TM Chunk Combine: Target file: ' . $final_file);
-
-        if (!file_exists(dirname($final_file))) {
-            if (!wp_mkdir_p(dirname($final_file))) {
-                error_log('H3TM Chunk Combine Error: Failed to create directory: ' . dirname($final_file));
-                wp_send_json_error(__('Failed to create output directory', 'h3-tour-management'));
-            }
-        }
-
-        // Get all chunk files first
-        $chunks = glob($upload_temp_dir . '/chunk_*');
-        natsort($chunks);
-        error_log('H3TM Chunk Combine: Found ' . count($chunks) . ' chunk files in: ' . $upload_temp_dir);
-
-        if (empty($chunks)) {
-            error_log('H3TM Chunk Combine Error: No chunk files found in: ' . $upload_temp_dir);
-            wp_send_json_error(__('No chunk files found for combination', 'h3-tour-management'));
-        }
-
-        // Calculate total size needed and check disk space
-        $total_chunk_size = 0;
-        foreach ($chunks as $chunk_file) {
-            if (file_exists($chunk_file)) {
-                $total_chunk_size += filesize($chunk_file);
-            }
-        }
-
-        // Skip disk space check on Pantheon (disk_free_space unreliable)
-        $is_pantheon = (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0);
-
-        if (!$is_pantheon) {
-            $free_space = disk_free_space(dirname($final_file));
-            error_log('H3TM Disk Space Check: Need ' . round($total_chunk_size/1024/1024) . 'MB, Available: ' .
-                     ($free_space !== false ? round($free_space/1024/1024) . 'MB' : 'unknown'));
-
-            if ($free_space !== false && $free_space < ($total_chunk_size * 1.1)) { // 10% buffer
-                error_log('H3TM Chunk Combine Error: Insufficient disk space. Need: ' . round($total_chunk_size/1024/1024) . 'MB, Available: ' . round($free_space/1024/1024) . 'MB');
-
-                // Clean up old temp directories to free space
-                $this->cleanup_old_temp_files();
-
-                // Check space again after cleanup
-                $free_space_after = disk_free_space(dirname($final_file));
-                if ($free_space_after !== false && $free_space_after < ($total_chunk_size * 1.1)) {
-                    wp_send_json_error(array(
-                        'message' => sprintf(__('Insufficient disk space. Need %dMB, only %dMB available.', 'h3-tour-management'),
-                                           round($total_chunk_size/1024/1024),
-                                           round($free_space_after/1024/1024)),
-                        'debug' => array(
-                            'required_mb' => round($total_chunk_size/1024/1024),
-                            'available_mb' => round($free_space_after/1024/1024),
-                            'chunks_found' => count($chunks)
-                        )
-                    ));
-                } else {
-                    error_log('H3TM: Cleanup freed space, retrying combination');
-                }
-            }
-        } else {
-            // On Pantheon, just clean up old files and proceed
-            error_log('H3TM Pantheon: Skipping disk space check (unreliable), cleaning up old temp files');
-            $this->cleanup_old_temp_files();
-            error_log('H3TM Pantheon: Proceeding with chunk combination for ' . round($total_chunk_size/1024/1024) . 'MB file (' . count($chunks) . ' chunks)');
-        }
-
-        $output = fopen($final_file, 'wb');
-        if (!$output) {
-            error_log('H3TM Chunk Combine Error: Failed to open output file for writing: ' . $final_file);
-            wp_send_json_error(__('Failed to create output file', 'h3-tour-management'));
-        }
-
-        $total_written = 0;
-        $chunk_count = 0;
-
-        foreach ($chunks as $chunk_file) {
-            $chunk_data = file_get_contents($chunk_file);
-            if ($chunk_data === false) {
-                error_log('H3TM Chunk Combine Error: Failed to read chunk: ' . $chunk_file);
-                fclose($output);
-                if (file_exists($final_file)) unlink($final_file);
-                $this->cleanup_temp_dir($upload_temp_dir);
-                wp_send_json_error(__('Failed to read chunk', 'h3-tour-management'));
-            }
-
-            $chunk_size = strlen($chunk_data);
-            $bytes_written = fwrite($output, $chunk_data);
-
-            // More detailed write error checking
-            if ($bytes_written === false) {
-                error_log('H3TM Chunk Combine Error: fwrite() returned FALSE for chunk: ' . $chunk_file);
-                fclose($output);
-                if (file_exists($final_file)) unlink($final_file);
-                $this->cleanup_temp_dir($upload_temp_dir);
-                wp_send_json_error(__('Failed to write chunk data - write operation failed', 'h3-tour-management'));
-            } else if ($bytes_written !== $chunk_size) {
-                error_log('H3TM Chunk Combine Error: Partial write for chunk: ' . $chunk_file . ' (wrote ' . $bytes_written . ' of ' . $chunk_size . ' bytes)');
-                fclose($output);
-                if (file_exists($final_file)) unlink($final_file);
-                $this->cleanup_temp_dir($upload_temp_dir);
-                wp_send_json_error(__('Failed to write chunk data - partial write detected', 'h3-tour-management'));
-            }
-
-            $total_written += $bytes_written;
-            $chunk_count++;
-
-            // Clear chunk from memory immediately
-            unset($chunk_data);
-            unlink($chunk_file);
-
-            // Log progress every 50 chunks for large files
-            if ($chunk_count % 50 === 0) {
-                error_log('H3TM Chunk Combine Progress: ' . $chunk_count . ' chunks combined, ' . round($total_written/1024/1024) . 'MB written');
-
-                // Force garbage collection for large files
-                if (function_exists('gc_collect_cycles')) {
-                    gc_collect_cycles();
-                }
-            }
-        }
-
-        fclose($output);
-        error_log('H3TM Chunk Combine Complete: ' . $chunk_count . ' chunks combined, final size: ' . round($total_written/1024/1024) . 'MB');
-        
-        // Clean up temp directory
-        $this->cleanup_temp_dir($upload_temp_dir);
-        
-        // Process the uploaded file with enhanced error handling
-        try {
-            $tour_manager = $this->get_tour_manager();
-            $file_info = array(
-                'name' => $file_name,
-                'tmp_name' => $final_file,
-                'error' => UPLOAD_ERR_OK,
-                'size' => file_exists($final_file) ? filesize($final_file) : 0
-            );
-
-            // Debug info for troubleshooting
-            $debug_info = array(
-                'tour_name' => $tour_name,
-                'file_name' => $file_name,
-                'final_file' => $final_file,
-                'final_file_exists' => file_exists($final_file),
-                'final_file_size' => file_exists($final_file) ? filesize($final_file) : 0,
-                'using_optimized' => $this->use_optimized,
-                'tour_manager_class' => get_class($tour_manager)
-            );
-
-            // Use the existing upload_tour method with the combined file
-            $result = $tour_manager->upload_tour($tour_name, $file_info, true);
-
-            // Verify result structure
-            if (!is_array($result) || !isset($result['success'])) {
-                error_log('H3TM Process Upload Error: Invalid result structure | Debug: ' . json_encode($debug_info));
-                wp_send_json_error(array(
-                    'message' => 'Invalid result from upload_tour method',
-                    'debug' => $debug_info
-                ));
-            }
-
-            if ($result['success']) {
-                wp_send_json_success($result['message']);
-            } else {
-                // Clean up the final file if processing failed
-                if (file_exists($final_file)) {
-                    unlink($final_file);
-                }
-
-                // Enhanced error response with debug info
-                error_log('H3TM Process Upload Error: ' . $result['message'] . ' | Debug: ' . json_encode($debug_info));
-                wp_send_json_error(array(
-                    'message' => $result['message'],
-                    'debug' => $debug_info
-                ));
-            }
-        } catch (Exception $e) {
-            // Catch any unexpected exceptions
-            error_log('H3TM Process Upload Exception: ' . $e->getMessage() . ' | File: ' . $final_file);
-
-            // Clean up the final file
-            if (file_exists($final_file)) {
-                unlink($final_file);
-            }
-
-            wp_send_json_error(array(
-                'message' => 'Upload processing failed: ' . $e->getMessage(),
-                'debug' => array(
-                    'exception_type' => get_class($e),
-                    'file' => $final_file,
-                    'tour_name' => $tour_name
-                )
-            ));
-        }
-    }
-
-    /**
-     * Handle Pantheon shutdown errors for upload operations
-     */
-    public function handle_pantheon_shutdown() {
-        $error = error_get_last();
-
-        if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR])) {
-            // Log the fatal error
-            error_log('H3TM Pantheon Fatal Error during upload: ' . json_encode($error));
-
-            // Try to send error response if possible
-            if (!headers_sent()) {
-                http_response_code(500);
-                header('Content-Type: application/json');
-                echo json_encode(array(
-                    'success' => false,
-                    'data' => array(
-                        'message' => 'Upload failed due to server resource limits',
-                        'debug' => array(
-                            'error_type' => 'fatal_error',
-                            'is_pantheon' => true,
-                            'memory_usage' => memory_get_usage(true),
-                            'error_message' => $error['message']
-                        )
-                    )
-                ));
-            }
-        }
-    }
-
-    /**
-     * Clean up temporary directory
-     */
-    private function cleanup_temp_dir($dir) {
-        if (is_dir($dir)) {
-            $files = array_diff(scandir($dir), array('.', '..'));
-            foreach ($files as $file) {
-                unlink($dir . '/' . $file);
-            }
-            rmdir($dir);
-        }
-    }
-
-    /**
-     * Clean up old temporary files to free disk space
-     */
-    private function cleanup_old_temp_files() {
-        $upload_dir = wp_upload_dir();
-        $temp_base_dir = $upload_dir['basedir'] . '/h3-tours-temp';
-
-        if (!is_dir($temp_base_dir)) {
-            return;
-        }
-
-        $temp_dirs = glob($temp_base_dir . '/*', GLOB_ONLYDIR);
-        $cleaned_count = 0;
-        $freed_space = 0;
-
-        foreach ($temp_dirs as $temp_dir) {
-            $dir_age = time() - filemtime($temp_dir);
-            // Clean up directories older than 1 hour (3600 seconds)
-            if ($dir_age > 3600) {
-                $dir_size = $this->get_directory_size($temp_dir);
-                if ($this->cleanup_temp_dir($temp_dir)) {
-                    $freed_space += $dir_size;
-                    $cleaned_count++;
-                }
-            }
-        }
-
-        if ($cleaned_count > 0) {
-            error_log('H3TM Cleanup: Removed ' . $cleaned_count . ' old temp directories, freed ' . round($freed_space/1024/1024) . 'MB');
-        }
-    }
-
-    /**
-     * Get directory size in bytes
-     */
-    private function get_directory_size($dir) {
-        $size = 0;
-        if (is_dir($dir)) {
-            $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS));
-            foreach ($files as $file) {
-                if ($file->isFile()) {
-                    $size += $file->getSize();
-                }
-            }
-        }
-        return $size;
-    }
+    // Temporary file cleanup methods removed - not needed for S3 uploads
 
     /**
      * Get S3 configuration from WordPress options or environment variables
@@ -1362,7 +926,7 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
         if (!$s3_config) {
             wp_send_json_error(array(
                 'message' => 'S3 not configured',
-                'fallback' => 'chunked'
+                'error' => 'S3 required'
             ));
         }
 
@@ -1374,7 +938,7 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
         if (empty($tour_name) || empty($file_name)) {
             wp_send_json_error(array(
                 'message' => 'Missing required parameters',
-                'fallback' => 'chunked'
+                'error' => 'Invalid parameters'
             ));
         }
 
@@ -1411,7 +975,7 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
             error_log('H3TM S3 Presigned URL Error: ' . $e->getMessage());
             wp_send_json_error(array(
                 'message' => 'Failed to generate S3 upload URL',
-                'fallback' => 'chunked'
+                'error' => 'S3 configuration error'
             ));
         }
     }
