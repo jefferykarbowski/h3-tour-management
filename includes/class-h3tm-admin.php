@@ -185,7 +185,7 @@ class H3TM_Admin {
                                     <?php if ($s3_configured): ?>
                                         <p class="description" style="color: #0073aa; font-weight: 500;">
                                             <span class="dashicons dashicons-yes-alt" style="color: #00a32a;"></span>
-                                            <?php _e('S3 Direct Upload is configured and ready for large files.', 'h3-tour-management'); ?>
+                                            <?php _e('AWS S3 is configured and ready for all tour uploads.', 'h3-tour-management'); ?>
                                         </p>
                                     <?php else: ?>
                                         <p class="description" style="color: #d63384;">
