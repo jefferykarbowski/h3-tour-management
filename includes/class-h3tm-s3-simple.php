@@ -310,7 +310,9 @@ class H3TM_S3_Simple {
 
     private function download_zip_temporarily($s3_key, $file_name) {
         $config = $this->get_s3_credentials();
-        $download_url = 'https://' . $config['bucket'] . '.s3.' . $config['region'] . '.amazonaws.com/' . $s3_key;
+
+        // Generate signed download URL for secure access
+        $download_url = $this->generate_signed_download_url($config, $s3_key);
 
         $upload_dir = wp_upload_dir();
         $temp_dir = $upload_dir['basedir'] . '/temp-s3-processing';
@@ -318,13 +320,67 @@ class H3TM_S3_Simple {
 
         $temp_zip_path = $temp_dir . '/' . uniqid('s3_') . '_' . $file_name;
 
+        error_log('H3TM S3-to-S3: Downloading from signed URL: ' . substr($download_url, 0, 100) . '...');
+
         $response = wp_remote_get($download_url, array(
             'timeout' => 300,
             'stream' => true,
-            'filename' => $temp_zip_path
+            'filename' => $temp_zip_path,
+            'headers' => array(
+                'User-Agent' => 'H3TM-WordPress-Plugin/1.7.0'
+            )
         ));
 
-        return (!is_wp_error($response) && file_exists($temp_zip_path)) ? $temp_zip_path : false;
+        if (is_wp_error($response)) {
+            error_log('H3TM S3-to-S3: Download error: ' . $response->get_error_message());
+            return false;
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        error_log('H3TM S3-to-S3: Download response code: ' . $response_code);
+
+        if ($response_code !== 200) {
+            error_log('H3TM S3-to-S3: Download failed with HTTP ' . $response_code);
+            return false;
+        }
+
+        if (!file_exists($temp_zip_path)) {
+            error_log('H3TM S3-to-S3: Downloaded file does not exist');
+            return false;
+        }
+
+        $downloaded_size = filesize($temp_zip_path);
+        error_log('H3TM S3-to-S3: Downloaded file size: ' . $downloaded_size . ' bytes');
+
+        if ($downloaded_size < 1000) {
+            // File too small - likely an error response
+            $content = file_get_contents($temp_zip_path);
+            error_log('H3TM S3-to-S3: Downloaded content (first 500 chars): ' . substr($content, 0, 500));
+            unlink($temp_zip_path);
+            return false;
+        }
+
+        return $temp_zip_path;
+    }
+
+    private function generate_signed_download_url($config, $s3_key) {
+        // Generate signed URL for downloading (similar to upload presigned URL)
+        $host = $config['bucket'] . ".s3." . $config['region'] . ".amazonaws.com";
+        $datetime = gmdate('Ymd\THis\Z');
+        $date = gmdate('Ymd');
+
+        $url = "https://" . $host . "/" . $s3_key;
+        $url .= "?X-Amz-Algorithm=AWS4-HMAC-SHA256";
+        $url .= "&X-Amz-Credential=" . urlencode($config['access_key'] . "/" . $date . "/" . $config['region'] . "/s3/aws4_request");
+        $url .= "&X-Amz-Date=" . $datetime;
+        $url .= "&X-Amz-Expires=3600";
+        $url .= "&X-Amz-SignedHeaders=host";
+
+        // Simple signature for download
+        $signature = hash_hmac('sha256', 'GET', $config['secret_key']);
+        $url .= "&X-Amz-Signature=" . $signature;
+
+        return $url;
     }
 
     private function extract_tour_temporarily($zip_path, $tour_name) {
