@@ -13,7 +13,9 @@
                 "https://dev-h3-tours.pantheonsite.io",
                 "https://live-h3-tours.pantheonsite.io",
                 "https://h3vt.com",
-                "https://www.h3vt.com"
+                "https://www.h3vt.com",
+                "https://h3vt.local",
+                "http://h3vt.local"
             ],
             "ExposeHeaders": [
                 "ETag",

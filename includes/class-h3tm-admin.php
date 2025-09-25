@@ -113,12 +113,30 @@ class H3TM_Admin {
         wp_enqueue_script('h3tm-admin', H3TM_PLUGIN_URL . 'assets/js/admin.js', array('jquery', 'select2'), H3TM_VERSION, true);
         wp_enqueue_style('h3tm-admin', H3TM_PLUGIN_URL . 'assets/css/admin.css', array(), H3TM_VERSION);
         
+        // Get S3 configuration
+        $s3_integration = new H3TM_S3_Integration();
+        $s3_config = $s3_integration->get_s3_config();
+        $s3_enabled = get_option('h3tm_s3_enabled', '0') === '1';
+
+        // Debug S3 configuration
+        error_log('H3TM S3 Config Debug: configured=' . ($s3_config['configured'] ? 'true' : 'false') .
+                  ', enabled=' . ($s3_enabled ? 'true' : 'false') .
+                  ', bucket=' . $s3_config['bucket']);
+
         // Localize script
         wp_localize_script('h3tm-admin', 'h3tm_ajax', array(
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('h3tm_ajax_nonce'),
-            's3_threshold_mb' => get_option('h3tm_s3_threshold', 100),
-            's3_configured' => $this->get_s3_config() !== false
+            's3_threshold_mb' => $s3_config['threshold_mb'],
+            's3_configured' => $s3_config['configured'] && $s3_enabled,
+            's3_enabled' => $s3_enabled,
+            's3_bucket' => $s3_config['bucket'],
+            's3_region' => $s3_config['region'],
+            'debug_s3_check' => array(
+                'configured' => $s3_config['configured'],
+                'enabled' => $s3_enabled,
+                'combined' => $s3_config['configured'] && $s3_enabled
+            )
         ));
     }
     

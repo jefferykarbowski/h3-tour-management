@@ -2,45 +2,29 @@
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "ListBucketForTours",
+            "Sid": "AllowBucketOperations",
             "Effect": "Allow",
             "Action": [
-                "s3:ListBucket"
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+                "s3:GetBucketVersioning",
+                "s3:ListBucketMultipartUploads"
             ],
-            "Resource": "arn:aws:s3:::h3-tour-files-h3vt",
-            "Condition": {
-                "StringLike": {
-                    "s3:prefix": [
-                        "uploads/*",
-                        "temp/*",
-                        "tours/*"
-                    ]
-                }
-            }
+            "Resource": "arn:aws:s3:::h3-tour-files-h3vt"
         },
         {
-            "Sid": "ManageUploadFiles",
+            "Sid": "AllowObjectOperations",
             "Effect": "Allow",
             "Action": [
                 "s3:GetObject",
                 "s3:PutObject",
-                "s3:DeleteObject"
-            ],
-            "Resource": [
-                "arn:aws:s3:::h3-tour-files-h3vt/uploads/*",
-                "arn:aws:s3:::h3-tour-files-h3vt/temp/*"
-            ]
-        },
-        {
-            "Sid": "ManageTourFiles",
-            "Effect": "Allow",
-            "Action": [
-                "s3:GetObject",
-                "s3:PutObject",
+                "s3:DeleteObject",
                 "s3:PutObjectTagging",
-                "s3:DeleteObject"
+                "s3:GetObjectTagging",
+                "s3:AbortMultipartUpload",
+                "s3:ListMultipartUploadParts"
             ],
-            "Resource": "arn:aws:s3:::h3-tour-files-h3vt/tours/*"
+            "Resource": "arn:aws:s3:::h3-tour-files-h3vt/*"
         }
     ]
 }
