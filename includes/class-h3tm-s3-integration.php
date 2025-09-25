@@ -40,7 +40,12 @@ class H3TM_S3_Integration {
             wp_die('Unauthorized');
         }
 
+        error_log('H3TM S3 Presigned URL: Starting generation');
+        error_log('H3TM S3 Presigned URL: is_configured=' . ($this->is_configured() ? 'true' : 'false'));
+        error_log('H3TM S3 Presigned URL: bucket=' . $this->bucket_name . ', region=' . $this->region);
+
         if (!$this->is_configured()) {
+            error_log('H3TM S3 Presigned URL Error: S3 not configured');
             wp_send_json_error('S3 not configured. Please configure AWS settings.');
         }
 

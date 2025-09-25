@@ -998,7 +998,7 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
         wp_send_json_success(array(
             'chunk' => $chunk_number,
             'total' => $total_chunks,
-            'free_space' => $free_space !== false ? round($free_space / 1024 / 1024) . 'MB' : 'unknown'
+            'free_space' => 'not_checked' // Free space check removed for Pantheon compatibility
         ));
     }
     
