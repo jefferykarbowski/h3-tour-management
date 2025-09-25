@@ -17,10 +17,20 @@ class H3TM_S3_Integration {
         $this->access_key = defined('AWS_ACCESS_KEY_ID') ? AWS_ACCESS_KEY_ID : get_option('h3tm_aws_access_key', '');
         $this->secret_key = defined('AWS_SECRET_ACCESS_KEY') ? AWS_SECRET_ACCESS_KEY : get_option('h3tm_aws_secret_key', '');
 
-        // Add AJAX handlers
+        error_log('H3TM S3 Integration: Constructor called, registering AJAX handlers');
+
+        // Add AJAX handlers with debugging
         add_action('wp_ajax_h3tm_get_s3_presigned_url', array($this, 'handle_get_presigned_url'));
         add_action('wp_ajax_h3tm_process_s3_upload', array($this, 'handle_process_s3_upload'));
         add_action('wp_ajax_h3tm_test_s3_connection', array($this, 'handle_test_s3_connection'));
+
+        // Test AJAX handler registration
+        add_action('wp_ajax_h3tm_test_ajax_handler', function() {
+            error_log('H3TM S3 Integration: Test AJAX handler called successfully');
+            wp_send_json_success('AJAX handler working');
+        });
+
+        error_log('H3TM S3 Integration: AJAX handlers registered');
     }
 
     /**
