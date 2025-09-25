@@ -13,8 +13,8 @@ class H3TM_CRON_Analytics {
         add_action('init', array($this, 'schedule_cron'));
         add_action($this->cron_hook, array($this, 'run_analytics_injection'));
         
-        // Admin integration
-        add_action('admin_menu', array($this, 'add_admin_menu'));
+        // Admin integration - CRON tab removed per user request
+        // add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_notices', array($this, 'show_new_tour_notices'));
         add_action('wp_ajax_h3tm_manual_inject', array($this, 'manual_injection_ajax'));
         
