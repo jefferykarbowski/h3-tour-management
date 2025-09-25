@@ -364,23 +364,52 @@ class H3TM_S3_Simple {
     }
 
     private function generate_signed_download_url($config, $s3_key) {
-        // Generate signed URL for downloading (similar to upload presigned URL)
+        // Generate proper AWS Signature V4 for GET request
         $host = $config['bucket'] . ".s3." . $config['region'] . ".amazonaws.com";
         $datetime = gmdate('Ymd\THis\Z');
         $date = gmdate('Ymd');
+        $canonical_uri = '/' . ltrim($s3_key, '/');
 
-        $url = "https://" . $host . "/" . $s3_key;
-        $url .= "?X-Amz-Algorithm=AWS4-HMAC-SHA256";
-        $url .= "&X-Amz-Credential=" . urlencode($config['access_key'] . "/" . $date . "/" . $config['region'] . "/s3/aws4_request");
-        $url .= "&X-Amz-Date=" . $datetime;
-        $url .= "&X-Amz-Expires=3600";
-        $url .= "&X-Amz-SignedHeaders=host";
+        // Build canonical query string for download
+        $canonical_querystring = http_build_query(array(
+            'X-Amz-Algorithm' => 'AWS4-HMAC-SHA256',
+            'X-Amz-Credential' => $config['access_key'] . "/" . $date . "/" . $config['region'] . "/s3/aws4_request",
+            'X-Amz-Date' => $datetime,
+            'X-Amz-Expires' => 3600,
+            'X-Amz-SignedHeaders' => 'host'
+        ));
 
-        // Simple signature for download
-        $signature = hash_hmac('sha256', 'GET', $config['secret_key']);
-        $url .= "&X-Amz-Signature=" . $signature;
+        // Create canonical request for GET
+        $canonical_headers = "host:" . $host . "\n";
+        $signed_headers = 'host';
+        $payload_hash = 'UNSIGNED-PAYLOAD';
 
-        return $url;
+        $canonical_request = "GET\n" . $canonical_uri . "\n" . $canonical_querystring . "\n" .
+                           $canonical_headers . "\n" . $signed_headers . "\n" . $payload_hash;
+
+        // Create string to sign
+        $algorithm = 'AWS4-HMAC-SHA256';
+        $credential_scope = $date . '/' . $config['region'] . '/s3/aws4_request';
+        $string_to_sign = $algorithm . "\n" . $datetime . "\n" . $credential_scope . "\n" .
+                         hash('sha256', $canonical_request);
+
+        // Calculate signature using proper AWS signing key
+        $signing_key = $this->get_signing_key($date, $config['region'], 's3', $config['secret_key']);
+        $signature = hash_hmac('sha256', $string_to_sign, $signing_key);
+
+        // Build final presigned URL
+        $presigned_url = "https://" . $host . $canonical_uri . '?' . $canonical_querystring . '&X-Amz-Signature=' . $signature;
+
+        return $presigned_url;
+    }
+
+    private function get_signing_key($date, $region, $service, $secret_key) {
+        $key = 'AWS4' . $secret_key;
+        $key = hash_hmac('sha256', $date, $key, true);
+        $key = hash_hmac('sha256', $region, $key, true);
+        $key = hash_hmac('sha256', $service, $key, true);
+        $key = hash_hmac('sha256', 'aws4_request', $key, true);
+        return $key;
     }
 
     private function extract_tour_temporarily($zip_path, $tour_name) {
