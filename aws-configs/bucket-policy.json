@@ -9,6 +9,13 @@
             "Resource": "arn:aws:s3:::h3-tour-files-h3vt/tours/*"
         },
         {
+            "Sid": "AllowPublicReadUploads",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::h3-tour-files-h3vt/uploads/*"
+        },
+        {
             "Sid": "DenyDirectAccessToUploads",
             "Effect": "Deny",
             "Principal": "*",

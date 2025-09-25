@@ -173,7 +173,7 @@ class H3TM_S3_Simple {
     }
 
     /**
-     * Process S3 upload by downloading from S3 and extracting tour
+     * Process S3 upload with S3-to-S3 workflow (no local storage)
      */
     public function handle_process_s3_upload() {
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
@@ -186,51 +186,55 @@ class H3TM_S3_Simple {
         $s3_key = isset($_POST['s3_key']) ? sanitize_text_field($_POST['s3_key']) : '';
         $unique_id = isset($_POST['unique_id']) ? sanitize_text_field($_POST['unique_id']) : '';
 
-        // Extract file name from s3_key if not provided directly
         $file_name = isset($_POST['file_name']) ? sanitize_file_name($_POST['file_name']) : basename($s3_key);
 
-        error_log('H3TM S3 Process: tour_name=' . $tour_name . ', s3_key=' . $s3_key . ', file_name=' . $file_name);
+        error_log('H3TM S3-to-S3: Processing tour=' . $tour_name . ', s3_key=' . $s3_key);
 
         if (empty($tour_name) || empty($s3_key)) {
             wp_send_json_error('Missing required parameters');
         }
 
         try {
-            error_log('H3TM S3 Process: Starting S3 download for key: ' . $s3_key);
+            // Step 1: Download ZIP from S3 to temporary location
+            error_log('H3TM S3-to-S3: Step 1 - Downloading ZIP from S3');
+            $temp_zip_path = $this->download_zip_temporarily($s3_key, $file_name);
 
-            // Download file from S3
-            $local_file_path = $this->download_from_s3($s3_key, $file_name);
-
-            if (!$local_file_path) {
-                error_log('H3TM S3 Process Error: Download from S3 failed');
-                wp_send_json_error('Failed to download file from S3');
+            if (!$temp_zip_path) {
+                error_log('H3TM S3-to-S3: Failed to download ZIP from S3');
+                wp_send_json_error('Failed to download tour from S3');
             }
 
-            error_log('H3TM S3 Process: Downloaded to: ' . $local_file_path . ', size: ' . filesize($local_file_path));
+            // Step 2: Extract ZIP locally to temporary directory
+            error_log('H3TM S3-to-S3: Step 2 - Extracting ZIP locally');
+            $temp_extract_dir = $this->extract_tour_temporarily($temp_zip_path, $tour_name);
 
-            // Process the downloaded file using existing tour manager
-            $tour_manager = new H3TM_Tour_Manager();
-            $file_info = array(
-                'name' => $file_name,
-                'tmp_name' => $local_file_path,
-                'error' => UPLOAD_ERR_OK,
-                'size' => file_exists($local_file_path) ? filesize($local_file_path) : 0
-            );
-
-            error_log('H3TM S3 Process: Calling tour_manager->upload_tour with file_info: ' . json_encode($file_info));
-
-            $result = $tour_manager->upload_tour($tour_name, $file_info, true); // Use pre-uploaded flag
-
-            error_log('H3TM S3 Process: Tour manager result: ' . json_encode($result));
-
-            if ($result['success']) {
-                wp_send_json_success($result['message']);
-            } else {
-                wp_send_json_error($result['message']);
+            if (!$temp_extract_dir) {
+                unlink($temp_zip_path);
+                wp_send_json_error('Failed to extract tour ZIP');
             }
+
+            // Step 3: Upload extracted tour files to S3 public tours/ directory
+            error_log('H3TM S3-to-S3: Step 3 - Uploading extracted tour to S3 tours/');
+            $s3_tour_url = $this->upload_tour_to_s3_public($temp_extract_dir, $tour_name);
+
+            if (!$s3_tour_url) {
+                $this->cleanup_temp_files($temp_zip_path, $temp_extract_dir);
+                wp_send_json_error('Failed to upload extracted tour to S3');
+            }
+
+            // Step 4: Register tour in WordPress with S3 URL
+            error_log('H3TM S3-to-S3: Step 4 - Registering tour with S3 URL: ' . $s3_tour_url);
+            $this->register_s3_tour($tour_name, $s3_tour_url);
+
+            // Step 5: Cleanup temporary files and S3 upload
+            $this->cleanup_temp_files($temp_zip_path, $temp_extract_dir);
+            $this->delete_s3_upload($s3_key);
+
+            error_log('H3TM S3-to-S3: SUCCESS - Tour available at: ' . $s3_tour_url);
+            wp_send_json_success('Tour uploaded and processed successfully! Available at: ' . $s3_tour_url);
 
         } catch (Exception $e) {
-            error_log('H3TM S3 Processing Error: ' . $e->getMessage());
+            error_log('H3TM S3-to-S3 Error: ' . $e->getMessage());
             wp_send_json_error('S3 processing failed: ' . $e->getMessage());
         }
     }
@@ -293,5 +297,161 @@ class H3TM_S3_Simple {
             'region' => $config['region'],
             'threshold_mb' => get_option('h3tm_s3_threshold', 50) // Lower threshold for S3-only approach
         );
+    }
+
+    /**
+     * S3-to-S3 Processing Helper Methods
+     */
+
+    private function download_zip_temporarily($s3_key, $file_name) {
+        $config = $this->get_s3_credentials();
+        $download_url = 'https://' . $config['bucket'] . '.s3.' . $config['region'] . '.amazonaws.com/' . $s3_key;
+
+        $upload_dir = wp_upload_dir();
+        $temp_dir = $upload_dir['basedir'] . '/temp-s3-processing';
+        if (!file_exists($temp_dir)) wp_mkdir_p($temp_dir);
+
+        $temp_zip_path = $temp_dir . '/' . uniqid('s3_') . '_' . $file_name;
+
+        $response = wp_remote_get($download_url, array(
+            'timeout' => 300,
+            'stream' => true,
+            'filename' => $temp_zip_path
+        ));
+
+        return (!is_wp_error($response) && file_exists($temp_zip_path)) ? $temp_zip_path : false;
+    }
+
+    private function extract_tour_temporarily($zip_path, $tour_name) {
+        $upload_dir = wp_upload_dir();
+        $temp_extract_dir = $upload_dir['basedir'] . '/temp-s3-processing/' . uniqid('extract_');
+
+        if (!wp_mkdir_p($temp_extract_dir)) return false;
+
+        $zip = new ZipArchive();
+        if ($zip->open($zip_path) === TRUE) {
+            $zip->extractTo($temp_extract_dir);
+            $zip->close();
+            $this->fix_s3_tour_structure($temp_extract_dir);
+            return $temp_extract_dir;
+        }
+        return false;
+    }
+
+    private function upload_tour_to_s3_public($temp_extract_dir, $tour_name) {
+        $config = $this->get_s3_credentials();
+        $tour_s3_name = sanitize_file_name($tour_name);
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($temp_extract_dir, RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        $uploaded_count = 0;
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $relative_path = substr($file->getPathname(), strlen($temp_extract_dir) + 1);
+                $s3_key = 'tours/' . $tour_s3_name . '/' . str_replace('\\', '/', $relative_path);
+
+                if ($this->upload_file_to_s3_public($file->getPathname(), $s3_key)) {
+                    $uploaded_count++;
+                }
+            }
+        }
+
+        if ($uploaded_count > 0) {
+            return 'https://' . $config['bucket'] . '.s3.' . $config['region'] . '.amazonaws.com/tours/' . $tour_s3_name . '/';
+        }
+        return false;
+    }
+
+    private function upload_file_to_s3_public($local_file, $s3_key) {
+        $config = $this->get_s3_credentials();
+        $upload_url = $this->generate_simple_presigned_url($config, $s3_key);
+
+        $content = file_get_contents($local_file);
+        if ($content === false) return false;
+
+        $response = wp_remote_request($upload_url, array(
+            'method' => 'PUT',
+            'body' => $content,
+            'timeout' => 60,
+            'headers' => array('Content-Type' => $this->get_content_type($local_file))
+        ));
+
+        return !is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200;
+    }
+
+    private function fix_s3_tour_structure($extract_dir) {
+        $items = scandir($extract_dir);
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') continue;
+            $item_path = $extract_dir . '/' . $item;
+            if (is_dir($item_path)) {
+                $web_zip_path = $item_path . '/Web.zip';
+                if (file_exists($web_zip_path)) {
+                    $web_zip = new ZipArchive();
+                    if ($web_zip->open($web_zip_path) === TRUE) {
+                        $web_temp_dir = $item_path . '/web_temp';
+                        wp_mkdir_p($web_temp_dir);
+                        $web_zip->extractTo($web_temp_dir);
+                        $web_zip->close();
+
+                        $web_dir = $web_temp_dir . '/Web';
+                        if (is_dir($web_dir)) {
+                            $this->move_directory_contents($web_dir, $extract_dir);
+                        }
+                        $this->delete_directory($item_path);
+                    }
+                }
+            }
+        }
+    }
+
+    private function move_directory_contents($source, $destination) {
+        $items = scandir($source);
+        foreach ($items as $item) {
+            if ($item == '.' || $item == '..') continue;
+            $source_path = $source . '/' . $item;
+            $dest_path = $destination . '/' . $item;
+            if (is_dir($source_path)) {
+                wp_mkdir_p($dest_path);
+                $this->move_directory_contents($source_path, $dest_path);
+            } else {
+                copy($source_path, $dest_path);
+            }
+        }
+    }
+
+    private function delete_directory($dir) {
+        if (!is_dir($dir)) return unlink($dir);
+        foreach (scandir($dir) as $item) {
+            if ($item == '.' || $item == '..') continue;
+            $this->delete_directory($dir . '/' . $item);
+        }
+        return rmdir($dir);
+    }
+
+    private function get_content_type($file_path) {
+        $ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+        $types = array('html' => 'text/html', 'htm' => 'text/html', 'js' => 'application/javascript',
+                      'css' => 'text/css', 'png' => 'image/png', 'jpg' => 'image/jpeg', 'mp4' => 'video/mp4');
+        return isset($types[$ext]) ? $types[$ext] : 'application/octet-stream';
+    }
+
+    private function register_s3_tour($tour_name, $s3_tour_url) {
+        $tours = get_option('h3tm_s3_tours', array());
+        $tours[$tour_name] = array('url' => $s3_tour_url, 'created' => current_time('mysql'));
+        update_option('h3tm_s3_tours', $tours);
+    }
+
+    private function cleanup_temp_files($temp_zip_path, $temp_extract_dir) {
+        if (file_exists($temp_zip_path)) unlink($temp_zip_path);
+        if (is_dir($temp_extract_dir)) $this->delete_directory($temp_extract_dir);
+    }
+
+    private function delete_s3_upload($s3_key) {
+        $config = $this->get_s3_credentials();
+        $delete_url = 'https://' . $config['bucket'] . '.s3.' . $config['region'] . '.amazonaws.com/' . $s3_key;
+        wp_remote_request($delete_url, array('method' => 'DELETE', 'timeout' => 30));
     }
 }
