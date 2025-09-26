@@ -75,6 +75,9 @@ class H3TM_S3_Proxy {
         $tour_name = get_query_var('h3tm_tour');
         $file_path = get_query_var('h3tm_file');
 
+        // Decode URL encoding (convert %20 to spaces)
+        $tour_name = urldecode($tour_name);
+
         error_log('H3TM S3 Proxy: Query vars - tour_name=' . $tour_name . ', file_path=' . $file_path);
 
         if (empty($tour_name)) {
