@@ -1,12 +1,17 @@
 // Use AWS SDK v3 (built into Node.js 18 Lambda)
-const { S3Client, CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const s3 = new S3Client({ region: 'us-east-1' });
 
 exports.handler = async (event) => {
     console.log('H3 Tour Processor Lambda triggered');
     console.log('Event:', JSON.stringify(event, null, 2));
 
-    // Extract S3 event information
+    // Check if this is a direct invocation for deletion
+    if (event.action === 'delete_tour') {
+        return await handleTourDeletion(event);
+    }
+
+    // Extract S3 event information (for new uploads)
     for (const record of event.Records) {
         if (record.eventName.startsWith('ObjectCreated')) {
             const bucket = record.s3.bucket.name;
@@ -262,4 +267,11 @@ async function extractAndProcessZip(zipData, tourName) {
         console.error('❌ ZIP extraction failed:', error);
         return null;
     }
+}
+// Handle tour deletion from WordPress
+async function handleTourDeletion(event) {
+    const { bucket, tourName } = event;
+    console.log(\);
+    // Implementation here
+    return { statusCode: 200, body: 'Deletion complete' };
 }

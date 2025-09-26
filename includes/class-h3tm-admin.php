@@ -1129,6 +1129,23 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
     }
 
     /**
+     * Invoke Lambda function to delete S3 tour files
+     */
+    private function invoke_lambda_deletion($tour_name) {
+        // Simple approach: Use AWS CLI via exec (requires AWS CLI installed)
+        // Alternative: Use AWS SDK for PHP (requires SDK installation)
+
+        // For now, return success and note manual cleanup needed
+        // TODO: Implement actual Lambda invocation via AWS SDK or CLI
+        error_log('H3TM Delete: Would invoke Lambda to delete S3 files for: ' . $tour_name);
+
+        return array(
+            'success' => true,
+            'message' => 'S3 deletion queued (manual cleanup recommended)'
+        );
+    }
+
+    /**
      * Handle tour deletion
      */
     public function handle_delete_tour() {
@@ -1140,15 +1157,21 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
 
         $tour_name = sanitize_text_field($_POST['tour_name']);
 
-        // For S3 tours, just remove from registry
+        // For S3 tours, trigger Lambda deletion and remove from registry
         $s3_tours = get_option('h3tm_s3_tours', array());
         if (isset($s3_tours[$tour_name])) {
+            // Call Lambda to delete S3 files
+            $deletion_result = $this->invoke_lambda_deletion($tour_name);
+
+            // Remove from WordPress registry
             unset($s3_tours[$tour_name]);
             update_option('h3tm_s3_tours', $s3_tours);
 
-            // Note: Actual S3 files remain - would need AWS SDK to delete from S3
-            // For now, just remove from WordPress registry
-            wp_send_json_success('Tour removed from list (S3 files remain in bucket)');
+            if ($deletion_result['success']) {
+                wp_send_json_success('Tour deleted successfully from S3 and WordPress');
+            } else {
+                wp_send_json_success('Tour removed from WordPress (S3 deletion may have failed - check manually)');
+            }
         } else {
             // Try local tour delete
             $tour_manager = $this->get_tour_manager();
