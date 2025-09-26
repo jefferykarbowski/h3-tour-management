@@ -133,18 +133,35 @@ function getContentType(filePath) {
 
 // Inject analytics script tag into HTML
 function injectAnalyticsScript(htmlContent, tourName) {
-    // Create analytics script tag that loads from WordPress
-    const scriptTag = `
+    try {
+        console.log('📊 Analytics injection: Processing HTML content, length:', htmlContent.length);
+        console.log('📊 Analytics injection: Tour name:', tourName);
+
+        // Check if </head> exists
+        if (!htmlContent.includes('</head>')) {
+            console.log('⚠️ Analytics injection: No </head> tag found in HTML');
+            return htmlContent; // Return original if no </head> found
+        }
+
+        // Create analytics script tag that loads from WordPress
+        const scriptTag = `
 <!-- H3 Tour Analytics -->
 <script src="/h3-analytics.js" data-tour-name="${tourName}"></script>
 <!-- End H3 Tour Analytics -->
 </head>`;
 
-    // Replace </head> with script tag + </head>
-    const updatedHtml = htmlContent.replace('</head>', scriptTag);
+        // Replace </head> with script tag + </head>
+        const updatedHtml = htmlContent.replace('</head>', scriptTag);
 
-    console.log('📊 Analytics script injected successfully');
-    return updatedHtml;
+        console.log('✅ Analytics script injected successfully');
+        console.log('📏 Original HTML length:', htmlContent.length, '→ Updated:', updatedHtml.length);
+
+        return updatedHtml;
+
+    } catch (error) {
+        console.error('❌ Analytics injection failed:', error);
+        return htmlContent; // Return original on error
+    }
 }
 
 // Notify WordPress that tour processing is complete
