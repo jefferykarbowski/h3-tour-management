@@ -1133,20 +1133,32 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
      */
     public function handle_delete_tour() {
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_die('Unauthorized');
         }
-        
+
         $tour_name = sanitize_text_field($_POST['tour_name']);
 
-        $tour_manager = $this->get_tour_manager();
-        $result = $tour_manager->delete_tour($tour_name);
-        
-        if ($result['success']) {
-            wp_send_json_success($result['message']);
+        // For S3 tours, just remove from registry
+        $s3_tours = get_option('h3tm_s3_tours', array());
+        if (isset($s3_tours[$tour_name])) {
+            unset($s3_tours[$tour_name]);
+            update_option('h3tm_s3_tours', $s3_tours);
+
+            // Note: Actual S3 files remain - would need AWS SDK to delete from S3
+            // For now, just remove from WordPress registry
+            wp_send_json_success('Tour removed from list (S3 files remain in bucket)');
         } else {
-            wp_send_json_error($result['message']);
+            // Try local tour delete
+            $tour_manager = $this->get_tour_manager();
+            $result = $tour_manager->delete_tour($tour_name);
+
+            if ($result['success']) {
+                wp_send_json_success($result['message']);
+            } else {
+                wp_send_json_error($result['message']);
+            }
         }
     }
     
@@ -1154,10 +1166,6 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
      * Handle tour rename with enhanced error handling and Pantheon optimizations
      */
     public function handle_rename_tour() {
-        // Increase limits for large tour operations (like upload handler)
-        @ini_set('max_execution_time', 900); // 15 minutes for large operations
-        @ini_set('memory_limit', '1024M');
-
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
 
         if (!current_user_can('manage_options')) {
@@ -1166,6 +1174,22 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
 
         $old_name = sanitize_text_field($_POST['old_name']);
         $new_name = sanitize_text_field($_POST['new_name']);
+
+        // For S3 tours, just update the registry
+        $s3_tours = get_option('h3tm_s3_tours', array());
+        if (isset($s3_tours[$old_name])) {
+            $s3_tours[$new_name] = $s3_tours[$old_name];
+            unset($s3_tours[$old_name]);
+            update_option('h3tm_s3_tours', $s3_tours);
+
+            // Note: Actual S3 files remain with old name - would need AWS SDK to rename in S3
+            wp_send_json_success('Tour renamed in list (S3 files keep original name)');
+            return;
+        }
+
+        // Try local tour rename
+        @ini_set('max_execution_time', 900);
+        @ini_set('memory_limit', '1024M');
 
         // Create debug info for troubleshooting (like upload handler)
         $h3panos_path = ABSPATH . 'h3panos';
