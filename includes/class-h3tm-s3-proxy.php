@@ -100,8 +100,11 @@ class H3TM_S3_Proxy {
         }
 
         // Build S3 URL for the tour file
-        $tour_s3_name = sanitize_file_name($tour_name);
-        $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . $tour_s3_name . '/' . $file_path;
+        // Convert tour name (with spaces) to S3 folder name (with dashes)
+        $tour_s3_folder = str_replace(' ', '-', $tour_name);
+        $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . $tour_s3_folder . '/' . $file_path;
+
+        error_log('H3TM S3 Proxy: Tour "' . $tour_name . '" → S3 folder "' . $tour_s3_folder . '"');
 
         error_log('H3TM S3 Proxy: Serving from S3: ' . $s3_url);
 
