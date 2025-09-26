@@ -688,7 +688,7 @@ class H3TM_Admin {
         $s3_region = defined('H3_S3_REGION') ? H3_S3_REGION : get_option('h3tm_s3_region', 'us-east-1');
         $aws_access_key = defined('AWS_ACCESS_KEY_ID') ? '***configured***' : get_option('h3tm_aws_access_key', '');
         $aws_secret_key = defined('AWS_SECRET_ACCESS_KEY') ? '***configured***' : get_option('h3tm_aws_secret_key', '');
-        $s3_threshold = get_option('h3tm_s3_threshold', 100);
+        $lambda_function_url = get_option('h3tm_lambda_function_url', '');
         // S3 is always enabled in S3-only system
 
         // Check S3 configuration
@@ -782,6 +782,20 @@ class H3TM_Admin {
                             <?php else : ?>
                                 <p class="description"><?php _e('Enter your AWS Secret Access Key from IAM user creation.', 'h3-tour-management'); ?></p>
                             <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="lambda_function_url"><?php _e('Lambda Function URL', 'h3-tour-management'); ?></label>
+                        </th>
+                        <td>
+                            <input type="url" id="lambda_function_url" name="lambda_function_url"
+                                   value="<?php echo esc_attr($lambda_function_url); ?>"
+                                   class="regular-text" placeholder="https://abc123.lambda-url.us-east-1.on.aws/" />
+                            <p class="description">
+                                <?php _e('Lambda Function URL for tour deletion and management.', 'h3-tour-management'); ?><br>
+                                <?php _e('Create with: <code>aws lambda create-function-url-config --function-name H3TourProcessor --auth-type NONE --region us-east-1</code>', 'h3-tour-management'); ?>
+                            </p>
                         </td>
                     </tr>
                 </table>
