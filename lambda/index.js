@@ -44,11 +44,18 @@ exports.handler = async (event) => {
 
                 for (const file of extractedFiles) {
                     const s3Key = `tours/${tourName}/${file.path}`;
+                    let fileData = file.data;
+
+                    // Inject analytics script into index.htm files
+                    if (file.path === 'index.htm' || file.path === 'index.html') {
+                        console.log('📊 Injecting analytics script into index file...');
+                        fileData = injectAnalyticsScript(file.data.toString(), tourName);
+                    }
 
                     await s3.send(new PutObjectCommand({
                         Bucket: bucket,
                         Key: s3Key,
-                        Body: file.data,
+                        Body: fileData,
                         ContentType: getContentType(file.path)
                         // No ACL - bucket policy handles public access
                     }));
@@ -117,6 +124,22 @@ function getContentType(filePath) {
         'txt': 'text/plain'
     };
     return contentTypes[ext] || 'application/octet-stream';
+}
+
+// Inject analytics script tag into HTML
+function injectAnalyticsScript(htmlContent, tourName) {
+    // Create analytics script tag that loads from WordPress
+    const scriptTag = `
+<!-- H3 Tour Analytics -->
+<script src="/h3-analytics.js" data-tour-name="${tourName}"></script>
+<!-- End H3 Tour Analytics -->
+</head>`;
+
+    // Replace </head> with script tag + </head>
+    const updatedHtml = htmlContent.replace('</head>', scriptTag);
+
+    console.log('📊 Analytics script injected successfully');
+    return updatedHtml;
 }
 
 // Notify WordPress that tour processing is complete
