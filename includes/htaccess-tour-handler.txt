@@ -1,0 +1,51 @@
+# H3TM Tour URL Handler - .htaccess Rules
+# Add these rules to your WordPress .htaccess file BEFORE the WordPress rules
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# H3TM Tour Handler - Multiple fallback methods
+# Method 1: Direct rewrite to tour handler
+RewriteCond %{REQUEST_URI} ^/h3panos/([^/]+)/?$ [NC]
+RewriteRule ^h3panos/([^/]+)/?$ /wp-content/plugins/h3-tour-management/includes/h3tour-direct-handler.php?tour=$1 [QSA,L]
+
+# Method 2: Direct rewrite with file path
+RewriteCond %{REQUEST_URI} ^/h3panos/([^/]+)/(.+)$ [NC]
+RewriteRule ^h3panos/([^/]+)/(.+)$ /wp-content/plugins/h3-tour-management/includes/h3tour-direct-handler.php?tour=$1&file=$2 [QSA,L]
+
+# Method 3: Fallback to WordPress with query vars (if above fails)
+RewriteCond %{REQUEST_URI} ^/h3panos/([^/]+)/?$ [NC]
+RewriteRule ^h3panos/([^/]+)/?$ /index.php?h3tour=$1 [QSA,L]
+
+RewriteCond %{REQUEST_URI} ^/h3panos/([^/]+)/(.+)$ [NC]
+RewriteRule ^h3panos/([^/]+)/(.+)$ /index.php?h3tour=$1&h3file=$2 [QSA,L]
+
+# Method 4: Handle missing files in h3panos directory
+RewriteCond %{REQUEST_URI} ^/h3panos/ [NC]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^h3panos/(.*)$ /wp-content/plugins/h3-tour-management/includes/h3tour-direct-handler.php?tour=$1 [QSA,L]
+
+</IfModule>
+
+# Performance optimization for tour files
+<IfModule mod_expires.c>
+ExpiresActive On
+ExpiresByType text/html "access plus 1 hour"
+ExpiresByType application/javascript "access plus 1 day"
+ExpiresByType text/css "access plus 1 day"
+ExpiresByType image/png "access plus 1 week"
+ExpiresByType image/jpeg "access plus 1 week"
+ExpiresByType video/mp4 "access plus 1 week"
+</IfModule>
+
+# Security headers for tour content
+<IfModule mod_headers.c>
+Header always set X-Content-Type-Options nosniff
+Header always set X-Frame-Options SAMEORIGIN
+</IfModule>
+
+# Compression for better performance
+<IfModule mod_deflate.c>
+AddOutputFilterByType DEFLATE text/html text/css application/javascript
+</IfModule>

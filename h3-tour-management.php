@@ -32,6 +32,8 @@ require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-email.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-manager.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-pantheon-helper.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-cron-analytics.php';
+// Include S3 proxy for URL rewriting (CRITICAL FIX)
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-proxy.php';
 // Only include simple S3 integration to avoid dependency issues
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-simple.php';
 // Use simplified analytics display
@@ -52,6 +54,8 @@ function h3tm_init() {
     new H3TM_Analytics();
     new H3TM_Email();
     new H3TM_Tour_Manager();
+    // CRITICAL FIX: Instantiate S3 Proxy for rewrite rules
+    new H3TM_S3_Proxy();
     new H3TM_S3_Simple();
     new H3TM_Shortcodes_V4();
 }
@@ -83,4 +87,3 @@ $myUpdateChecker = PucFactory::buildUpdateChecker(
 
 //Set the branch that contains the stable release.
 $myUpdateChecker->setBranch('main');
-
