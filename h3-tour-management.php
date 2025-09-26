@@ -57,12 +57,8 @@ function h3tm_init() {
     new H3TM_S3_Simple();
     new H3TM_Shortcodes_V4();
 
-    // Initialize URL manager (handles all alternative URL approaches)
-    new H3TM_URL_Manager();
-
-    // Initialize robust tour URL handling (highest priority)
-    new H3TM_Tour_URL_Handler();
-    new H3TM_Tour_URL_Diagnostics();
+    // Initialize S3 URL proxy for tour serving
+    new H3TM_S3_Proxy();
 }
 
 // Disable new user notification emails (moved from functions.php)
