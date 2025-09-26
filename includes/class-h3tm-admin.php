@@ -86,6 +86,15 @@ class H3TM_Admin {
             array($this, 'render_s3_settings_page')
         );
 
+        add_submenu_page(
+            'h3-tour-management',
+            __('URL Handler Settings', 'h3-tour-management'),
+            __('URL Handlers', 'h3-tour-management'),
+            'manage_options',
+            'h3tm-url-handlers',
+            array($this, 'render_url_handlers_page')
+        );
+
         // Analytics Settings page removed - not needed without PHP index files
         // add_submenu_page(
         //     'h3-tour-management',
@@ -1412,4 +1421,28 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
         }
     }
     */
+
+    /**
+     * Render URL handlers management page
+     */
+    public function render_url_handlers_page() {
+        // Check if URL manager is available
+        if (!class_exists('H3TM_URL_Manager')) {
+            echo '<div class="wrap"><h1>URL Handler Settings</h1><div class="notice notice-error"><p>URL Manager not available. Please check your installation.</p></div></div>';
+            return;
+        }
+
+        echo '<div class="wrap">';
+        echo '<h1>' . __('URL Handler Settings', 'h3-tour-management') . '</h1>';
+        echo '<p>' . __('Manage different approaches for serving S3 tour content through local /h3panos/ URLs.', 'h3-tour-management') . '</p>';
+
+        // Get URL manager instance
+        $url_manager_class = 'H3TM_URL_Manager';
+        $url_manager = new $url_manager_class();
+
+        // Render the management panel
+        echo $url_manager->render_admin_panel();
+
+        echo '</div>';
+    }
 }

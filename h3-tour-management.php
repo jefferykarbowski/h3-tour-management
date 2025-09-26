@@ -3,7 +3,7 @@
  * Plugin Name: H3 Tour Management
  * Plugin URI: https://github.com/jefferykarbowski/h3-tour-management
  * Description: Comprehensive 3D Tour Management system with analytics, email notifications, and user management
- * Version: 1.6.0
+ * Version: 1.7.0
  * Author: H3 Photography
  * Author URI: https://h3vt.com/
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('H3TM_VERSION', '1.6.0');
+define('H3TM_VERSION', '1.7.0');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -39,6 +39,17 @@ require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-simple.php';
 // Use simplified analytics display
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-shortcodes-v4.php';
 
+// Alternative URL handling approaches (rewrite-rule independent)
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-404-handler.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-direct-handler.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-action-hook.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-endpoint-handler.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-url-manager.php';
+
+// Include robust tour URL handling system
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-url-handler.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-url-diagnostics.php';
+
 // Activation hook
 register_activation_hook(__FILE__, array('H3TM_Activator', 'activate'));
 
@@ -58,6 +69,13 @@ function h3tm_init() {
     new H3TM_S3_Proxy();
     new H3TM_S3_Simple();
     new H3TM_Shortcodes_V4();
+
+    // Initialize URL manager (handles all alternative URL approaches)
+    new H3TM_URL_Manager();
+
+    // Initialize robust tour URL handling (highest priority)
+    new H3TM_Tour_URL_Handler();
+    new H3TM_Tour_URL_Diagnostics();
 }
 
 // Disable new user notification emails (moved from functions.php)

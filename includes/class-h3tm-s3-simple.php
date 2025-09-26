@@ -34,6 +34,13 @@ class H3TM_S3_Simple {
     }
 
     /**
+     * Public method to get S3 configuration (for tour URL handler)
+     */
+    public function get_s3_config() {
+        return $this->get_s3_credentials();
+    }
+
+    /**
      * Test S3 connection by attempting to list bucket
      */
     public function handle_test_s3_connection() {
