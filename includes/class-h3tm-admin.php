@@ -1158,6 +1158,20 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
             return array('success' => false, 'message' => 'Lambda not configured');
         }
 
+        // Get the actual S3 folder name (might be different from display name)
+        $s3_tours = get_option('h3tm_s3_tours', array());
+        $s3_folder_name = $tour_name;
+
+        if (isset($s3_tours[$tour_name]) && !empty($s3_tours[$tour_name]['original_name'])) {
+            // Use original S3 folder name if this is a renamed tour
+            $s3_folder_name = $s3_tours[$tour_name]['original_name'];
+        } else {
+            // Convert spaces to dashes for S3 folder lookup
+            $s3_folder_name = str_replace(' ', '-', $tour_name);
+        }
+
+        error_log('H3TM Delete: Tour "' . $tour_name . '" → S3 folder "' . $s3_folder_name . '"');
+
         // Invoke Lambda via HTTP (using Function URL)
         $response = wp_remote_post($lambda_function_url, array(
             'timeout' => 30,
@@ -1165,7 +1179,7 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
             'body' => json_encode(array(
                 'action' => 'delete_tour',
                 'bucket' => get_option('h3tm_s3_bucket', 'h3-tour-files-h3vt'),
-                'tourName' => $tour_name
+                'tourName' => $s3_folder_name // Use S3 folder name, not display name
             ))
         ));
 
