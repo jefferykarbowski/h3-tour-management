@@ -52,13 +52,9 @@ function h3tm_init() {
     new H3TM_Analytics();
     new H3TM_Email();
     new H3TM_Tour_Manager();
-    // CRITICAL FIX: Instantiate S3 Proxy for rewrite rules
-    new H3TM_S3_Proxy();
     new H3TM_S3_Simple();
-    new H3TM_Shortcodes_V4();
-
-    // Initialize S3 URL proxy for tour serving
     new H3TM_S3_Proxy();
+    new H3TM_Shortcodes_V4();
 }
 
 // Disable new user notification emails (moved from functions.php)
