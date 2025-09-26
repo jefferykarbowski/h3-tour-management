@@ -678,7 +678,11 @@ class H3TM_Admin {
                 update_option('h3tm_aws_secret_key', sanitize_text_field($_POST['aws_secret_key']));
             }
 
-            update_option('h3tm_s3_threshold', intval($_POST['s3_threshold']));
+            // Save Lambda Function URL
+            if (isset($_POST['lambda_function_url'])) {
+                update_option('h3tm_lambda_function_url', esc_url_raw($_POST['lambda_function_url']));
+                error_log('H3TM Settings: Lambda URL saved: ' . $_POST['lambda_function_url']);
+            }
 
             echo '<div class="notice notice-success"><p>' . __('S3 settings saved.', 'h3-tour-management') . '</p></div>';
         }
