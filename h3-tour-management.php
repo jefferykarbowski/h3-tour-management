@@ -32,23 +32,10 @@ require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-email.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-manager.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-pantheon-helper.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-cron-analytics.php';
-// Include S3 proxy for URL rewriting (CRITICAL FIX)
-require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-proxy.php';
-// Only include simple S3 integration to avoid dependency issues
+// Simple S3 integration only - no complex dependencies
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-simple.php';
-// Use simplified analytics display
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-proxy.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-shortcodes-v4.php';
-
-// Alternative URL handling approaches (rewrite-rule independent)
-require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-404-handler.php';
-require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-direct-handler.php';
-require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-action-hook.php';
-require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-endpoint-handler.php';
-require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-url-manager.php';
-
-// Include robust tour URL handling system
-require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-url-handler.php';
-require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-url-diagnostics.php';
 
 // Activation hook
 register_activation_hook(__FILE__, array('H3TM_Activator', 'activate'));
