@@ -285,10 +285,68 @@ async function extractAndProcessZip(zipData, tourName) {
         return null;
     }
 }
-// Handle tour deletion from WordPress
+// Handle tour deletion - archive to archive/ folder
 async function handleTourDeletion(event) {
     const { bucket, tourName } = event;
-    console.log(\);
-    // Implementation here
-    return { statusCode: 200, body: 'Deletion complete' };
+
+    console.log(`🗑️ Archiving tour: ${tourName} from S3 folder: ${tourName}`);
+
+    try {
+        // List all files in the tour directory
+        const listResponse = await s3.send(new ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: `tours/${tourName}/`
+        }));
+
+        if (!listResponse.Contents || listResponse.Contents.length === 0) {
+            console.log(`⚠️ No files found for tour: ${tourName}`);
+            return {
+                statusCode: 200,
+                body: JSON.stringify({ success: false, message: 'No files to archive' })
+            };
+        }
+
+        console.log(`📦 Found ${listResponse.Contents.length} files to archive`);
+
+        // Archive all files (copy to archive/ then delete from tours/)
+        let archivedCount = 0;
+        for (const object of listResponse.Contents) {
+            const archiveKey = object.Key.replace('tours/', 'archive/');
+
+            await s3.send(new CopyObjectCommand({
+                Bucket: bucket,
+                CopySource: `${bucket}/${object.Key}`,
+                Key: archiveKey
+            }));
+
+            await s3.send(new DeleteObjectCommand({
+                Bucket: bucket,
+                Key: object.Key
+            }));
+
+            archivedCount++;
+
+            if (archivedCount % 10 === 0) {
+                console.log(`📦 Archived ${archivedCount}/${listResponse.Contents.length} files...`);
+            }
+        }
+
+        console.log(`✅ Archived ${archivedCount} files to archive/${tourName}/`);
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                success: true,
+                archivedCount: archivedCount,
+                message: `Archived ${archivedCount} files`
+            })
+        };
+
+    } catch (error) {
+        console.error('❌ Archiving failed:', error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ success: false, error: error.message })
+        };
+    }
 }
