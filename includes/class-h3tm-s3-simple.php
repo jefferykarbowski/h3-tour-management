@@ -298,18 +298,7 @@ class H3TM_S3_Simple {
         return $local_file_path;
     }
 
-    /**
-     * Get configuration for admin compatibility
-     */
-    public function get_s3_config() {
-        $config = $this->get_s3_credentials();
-        return array(
-            'configured' => $config['configured'],
-            'bucket' => $config['bucket'],
-            'region' => $config['region'],
-            'threshold_mb' => get_option('h3tm_s3_threshold', 50) // Lower threshold for S3-only approach
-        );
-    }
+    // get_s3_config() method already exists above - removed duplicate
 
     /**
      * S3-to-S3 Processing Helper Methods
