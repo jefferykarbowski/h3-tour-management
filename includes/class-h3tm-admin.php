@@ -1129,19 +1129,41 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
     }
 
     /**
-     * Invoke Lambda function to delete S3 tour files
+     * Invoke Lambda function to delete S3 tour files via AWS API
      */
     private function invoke_lambda_deletion($tour_name) {
-        // Simple approach: Use AWS CLI via exec (requires AWS CLI installed)
-        // Alternative: Use AWS SDK for PHP (requires SDK installation)
+        // Use WordPress HTTP API to invoke Lambda (no AWS CLI needed)
+        $lambda_function_url = get_option('h3tm_lambda_function_url', '');
 
-        // For now, return success and note manual cleanup needed
-        // TODO: Implement actual Lambda invocation via AWS SDK or CLI
-        error_log('H3TM Delete: Would invoke Lambda to delete S3 files for: ' . $tour_name);
+        if (empty($lambda_function_url)) {
+            error_log('H3TM Delete: Lambda function URL not configured');
+            return array('success' => false, 'message' => 'Lambda not configured');
+        }
+
+        // Invoke Lambda via HTTP (using Function URL)
+        $response = wp_remote_post($lambda_function_url, array(
+            'timeout' => 30,
+            'headers' => array('Content-Type' => 'application/json'),
+            'body' => json_encode(array(
+                'action' => 'delete_tour',
+                'bucket' => get_option('h3tm_s3_bucket', 'h3-tour-files-h3vt'),
+                'tourName' => $tour_name
+            ))
+        ));
+
+        if (is_wp_error($response)) {
+            error_log('H3TM Delete: Lambda invocation failed: ' . $response->get_error_message());
+            return array('success' => false, 'message' => 'Lambda invocation failed');
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+
+        error_log('H3TM Delete: Lambda response: ' . $response_code . ' - ' . $response_body);
 
         return array(
-            'success' => true,
-            'message' => 'S3 deletion queued (manual cleanup recommended)'
+            'success' => $response_code === 200,
+            'message' => $response_body
         );
     }
 
