@@ -1175,15 +1175,24 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
         $old_name = sanitize_text_field($_POST['old_name']);
         $new_name = sanitize_text_field($_POST['new_name']);
 
-        // For S3 tours, just update the registry
+        // For S3 tours, update the registry and track original S3 folder name
         $s3_tours = get_option('h3tm_s3_tours', array());
         if (isset($s3_tours[$old_name])) {
-            $s3_tours[$new_name] = $s3_tours[$old_name];
+            // Copy tour data to new name
+            $tour_data = $s3_tours[$old_name];
+
+            // Store original S3 folder name for URL mapping
+            if (!isset($tour_data['original_name'])) {
+                $tour_data['original_name'] = str_replace(' ', '-', $old_name);
+            }
+
+            $s3_tours[$new_name] = $tour_data;
             unset($s3_tours[$old_name]);
             update_option('h3tm_s3_tours', $s3_tours);
 
-            // Note: Actual S3 files remain with old name - would need AWS SDK to rename in S3
-            wp_send_json_success('Tour renamed in list (S3 files keep original name)');
+            error_log('H3TM Rename: "' . $old_name . '" → "' . $new_name . '" (S3 folder: ' . $tour_data['original_name'] . ')');
+
+            wp_send_json_success('Tour renamed successfully');
             return;
         }
 
