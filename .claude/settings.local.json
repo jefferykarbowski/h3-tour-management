@@ -48,7 +48,8 @@
       "Bash(Compress-Archive -Path \"index.js\", \"package.json\" -DestinationPath \"function.zip\" -Force)",
       "Bash(aws s3 ls:*)",
       "Read(//c/Users/Jeff/**)",
-      "mcp__playwright__browser_network_requests"
+      "mcp__playwright__browser_network_requests",
+      "Bash(git rm:*)"
     ],
     "deny": []
   }
