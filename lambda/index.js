@@ -4,25 +4,44 @@ const s3 = new S3Client({ region: 'us-east-1' });
 
 exports.handler = async (event) => {
     console.log('H3 Tour Processor Lambda triggered');
-    console.log('Event:', JSON.stringify(event, null, 2));
+
+    // Parse event body if it's a Function URL request (comes as base64 encoded JSON)
+    let parsedEvent = event;
+
+    if (event.body) {
+        console.log('📦 Function URL request detected, parsing body...');
+        try {
+            // Decode and parse the JSON body
+            const body = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString() : event.body;
+            parsedEvent = JSON.parse(body);
+            console.log('Parsed event:', JSON.stringify(parsedEvent, null, 2));
+        } catch (error) {
+            console.error('❌ Failed to parse event body:', error);
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'Invalid request body' })
+            };
+        }
+    }
 
     // Check if this is a direct invocation for deletion
-    if (event.action === 'delete_tour') {
+    if (parsedEvent.action === 'delete_tour') {
         console.log('🗑️ Deletion action detected');
-        return await handleTourDeletion(event);
+        return await handleTourDeletion(parsedEvent);
     }
 
     // Check if this is an S3 event (has Records array)
-    if (!event.Records || !Array.isArray(event.Records)) {
+    if (!parsedEvent.Records || !Array.isArray(parsedEvent.Records)) {
         console.log('❌ Unknown event type - neither deletion nor S3 event');
+        console.log('Event structure:', Object.keys(parsedEvent));
         return {
             statusCode: 400,
-            body: JSON.stringify({ error: 'Invalid event type' })
+            body: JSON.stringify({ error: 'Invalid event type', receivedKeys: Object.keys(parsedEvent) })
         };
     }
 
     // Extract S3 event information (for new uploads)
-    for (const record of event.Records) {
+    for (const record of parsedEvent.Records) {
         if (record.eventName.startsWith('ObjectCreated')) {
             const bucket = record.s3.bucket.name;
             const key = decodeURIComponent(record.s3.object.key);
