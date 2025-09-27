@@ -8,7 +8,17 @@ exports.handler = async (event) => {
 
     // Check if this is a direct invocation for deletion
     if (event.action === 'delete_tour') {
+        console.log('🗑️ Deletion action detected');
         return await handleTourDeletion(event);
+    }
+
+    // Check if this is an S3 event (has Records array)
+    if (!event.Records || !Array.isArray(event.Records)) {
+        console.log('❌ Unknown event type - neither deletion nor S3 event');
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'Invalid event type' })
+        };
     }
 
     // Extract S3 event information (for new uploads)
