@@ -1183,6 +1183,8 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
             return array('success' => false, 'message' => 'Lambda not configured');
         }
 
+        error_log('H3TM Delete: Using Lambda URL: ' . $lambda_function_url);
+
         // Get the actual S3 folder name (might be different from display name)
         $s3_tours = get_option('h3tm_s3_tours', array());
         $s3_folder_name = $tour_name;
@@ -1217,6 +1219,16 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
         $response_body = wp_remote_retrieve_body($response);
 
         error_log('H3TM Delete: Lambda response: ' . $response_code . ' - ' . $response_body);
+
+        // If 403, log more details for debugging
+        if ($response_code === 403) {
+            error_log('H3TM Delete: 403 Forbidden - Check Lambda Function URL auth type is NONE');
+            error_log('H3TM Delete: Request body was: ' . json_encode(array(
+                'action' => 'delete_tour',
+                'bucket' => get_option('h3tm_s3_bucket', 'h3-tour-files-h3vt'),
+                'tourName' => $s3_folder_name
+            )));
+        }
 
         return array(
             'success' => $response_code === 200,
