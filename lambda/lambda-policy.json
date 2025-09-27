@@ -11,7 +11,8 @@
       ],
       "Resource": [
         "arn:aws:s3:::h3-tour-files-h3vt/uploads/*",
-        "arn:aws:s3:::h3-tour-files-h3vt/tours/*"
+        "arn:aws:s3:::h3-tour-files-h3vt/tours/*",
+        "arn:aws:s3:::h3-tour-files-h3vt/archive/*"
       ]
     },
     {

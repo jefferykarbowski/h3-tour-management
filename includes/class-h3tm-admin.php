@@ -155,21 +155,52 @@ class H3TM_Admin {
     private function auto_register_existing_tours() {
         $s3_tours = get_option('h3tm_s3_tours', array());
 
-        // Known tours that Lambda has processed
-        $known_tours = array('Bee Cave', 'Sugar Land', 'Onion Creek', 'Cedar Park');
+        // Verify each tour still exists by checking if URL is accessible
+        $verified_tours = array();
 
-        foreach ($known_tours as $tour_name) {
-            if (!isset($s3_tours[$tour_name])) {
-                $s3_tours[$tour_name] = array(
-                    'url' => '',
-                    'created' => current_time('mysql'),
-                    'status' => 'completed',
-                    'original_name' => str_replace(' ', '-', $tour_name)
-                );
+        foreach ($s3_tours as $tour_name => $tour_data) {
+            // Quick check if tour exists in S3 (try to access index.htm)
+            $tour_s3_folder = isset($tour_data['original_name']) ? $tour_data['original_name'] : str_replace(' ', '-', $tour_name);
+            $s3_config = $this->get_s3_simple_config();
+
+            if ($s3_config['configured']) {
+                $test_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . $tour_s3_folder . '/index.htm';
+
+                // Quick HEAD request to check if tour exists
+                $response = wp_remote_head($test_url, array('timeout' => 5));
+
+                if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+                    // Tour exists, keep it
+                    $verified_tours[$tour_name] = $tour_data;
+                } else {
+                    // Tour doesn't exist (might be archived or deleted)
+                    error_log('H3TM Sync: Tour "' . $tour_name . '" not found in S3, removing from registry');
+                }
+            } else {
+                // Can't verify without S3 config, keep all tours
+                $verified_tours[$tour_name] = $tour_data;
             }
         }
 
-        update_option('h3tm_s3_tours', $s3_tours);
+        // Update registry with only verified tours
+        if (count($verified_tours) !== count($s3_tours)) {
+            update_option('h3tm_s3_tours', $verified_tours);
+            error_log('H3TM Sync: Updated registry - ' . count($verified_tours) . ' tours verified');
+        }
+    }
+
+    /**
+     * Get S3 config helper
+     */
+    private function get_s3_simple_config() {
+        $bucket = defined('H3_S3_BUCKET') ? H3_S3_BUCKET : get_option('h3tm_s3_bucket', 'h3-tour-files-h3vt');
+        $region = defined('H3_S3_REGION') ? H3_S3_REGION : get_option('h3tm_s3_region', 'us-east-1');
+
+        return array(
+            'configured' => !empty($bucket),
+            'bucket' => $bucket,
+            'region' => $region
+        );
     }
 
     /**
