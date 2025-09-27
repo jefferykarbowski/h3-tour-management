@@ -1211,14 +1211,29 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
 
         $tour_name = sanitize_text_field($_POST['tour_name']);
 
-        // For S3 tours, trigger Lambda deletion and remove from registry
-        $s3_tours = get_option('h3tm_s3_tours', array());
-        if (isset($s3_tours[$tour_name])) {
-            // Call Lambda to delete S3 files
-            $deletion_result = $this->invoke_lambda_deletion($tour_name);
+        error_log('H3TM Delete: Attempting to delete: ' . $tour_name);
 
-            // Remove from WordPress registry
-            unset($s3_tours[$tour_name]);
+        // For S3 tours, check registry with flexible matching (spaces/dashes)
+        $s3_tours = get_option('h3tm_s3_tours', array());
+
+        // Try to find the tour (check exact match, with dashes, and with spaces)
+        $found_key = null;
+        if (isset($s3_tours[$tour_name])) {
+            $found_key = $tour_name;
+        } elseif (isset($s3_tours[str_replace(' ', '-', $tour_name)])) {
+            $found_key = str_replace(' ', '-', $tour_name);
+        } elseif (isset($s3_tours[str_replace('-', ' ', $tour_name)])) {
+            $found_key = str_replace('-', ' ', $tour_name);
+        }
+
+        error_log('H3TM Delete: S3 registry search - Found key: ' . ($found_key ?? 'NOT FOUND'));
+
+        if ($found_key) {
+            // Call Lambda to archive S3 files
+            $deletion_result = $this->invoke_lambda_deletion($found_key);
+
+            // Remove from WordPress registry using the found key
+            unset($s3_tours[$found_key]);
             update_option('h3tm_s3_tours', $s3_tours);
 
             if ($deletion_result['success']) {
