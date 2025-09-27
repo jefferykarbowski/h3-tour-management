@@ -94,6 +94,14 @@ class H3TM_S3_Proxy {
             $file_path = 'index.htm';
         }
 
+        // If accessing index.htm, redirect to directory URL (for proper base tag resolution)
+        if ($file_path === 'index.htm' && $_SERVER['REQUEST_URI'] && !preg_match('#/h3panos/[^/]+/$#', $_SERVER['REQUEST_URI'])) {
+            $redirect_url = site_url('/h3panos/' . rawurlencode($tour_name) . '/');
+            error_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
+            wp_redirect($redirect_url);
+            exit();
+        }
+
         // Get S3 configuration
         $s3_simple = new H3TM_S3_Simple();
         $s3_config = $s3_simple->get_s3_config();

@@ -47,7 +47,8 @@
       "Read(//c/Users/Jeff/Downloads/Jeffery (1)/temp_bee/Bee Cave/**)",
       "Bash(Compress-Archive -Path \"index.js\", \"package.json\" -DestinationPath \"function.zip\" -Force)",
       "Bash(aws s3 ls:*)",
-      "Read(//c/Users/Jeff/**)"
+      "Read(//c/Users/Jeff/**)",
+      "mcp__playwright__browser_network_requests"
     ],
     "deny": []
   }
