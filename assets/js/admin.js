@@ -196,11 +196,22 @@ jQuery(document).ready(function($) {
             console.log('S3 Upload completed. Status:', xhr.status);
 
             if (xhr.status === 200) {
-                console.log('✅ S3 upload successful! Processing...');
-                $progressText.html('Upload complete, processing tour... <span class="upload-method">(S3)</span>');
+                console.log('✅ S3 upload successful! Lambda will process automatically...');
+                $progressText.html('100% <span class="upload-method">(S3 Direct)</span>');
 
-                // Notify WordPress that S3 upload is complete
-                notifyS3UploadComplete(s3Data, tourName, $form, $spinner, $result, $progressBar, $progressText);
+                // Show immediate success - Lambda handles processing automatically via S3 trigger
+                $result.removeClass('notice-error').addClass('notice-success');
+                $result.html(
+                    '<p><strong>✅ Upload Complete!</strong></p>' +
+                    '<p>🚀 <strong>Processing:</strong> AWS Lambda is automatically extracting and deploying your tour.</p>' +
+                    '<p>⏱️ <strong>Time:</strong> Large tours may take 1-2 minutes to appear.</p>' +
+                    '<p>📁 <strong>What\'s Next:</strong> Refresh the page in a moment to see your tour in the list.</p>' +
+                    '<p><button type="button" class="button button-primary" onclick="location.reload();">Refresh Page Now</button></p>'
+                );
+                $form[0].reset();
+                $('#upload-progress-wrapper').hide();
+                $result.show();
+                $spinner.removeClass('is-active');
             } else {
                 console.log('❌ S3 upload failed. Status:', xhr.status);
                 var errorMsg = 'S3 upload failed with status ' + xhr.status;
