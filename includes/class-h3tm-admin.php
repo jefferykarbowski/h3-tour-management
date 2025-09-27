@@ -706,7 +706,8 @@ class H3TM_Admin {
             // Save Lambda Function URL
             if (isset($_POST['lambda_function_url'])) {
                 update_option('h3tm_lambda_function_url', esc_url_raw($_POST['lambda_function_url']));
-                error_log('H3TM Settings: Lambda URL saved: ' . $_POST['lambda_function_url']);
+                // Don't log full URL for security
+        error_log('H3TM Settings: Lambda URL configured successfully');
             }
 
             echo '<div class="notice notice-success"><p>' . __('S3 settings saved.', 'h3-tour-management') . '</p></div>';
@@ -1183,7 +1184,9 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
             return array('success' => false, 'message' => 'Lambda not configured');
         }
 
-        error_log('H3TM Delete: Using Lambda URL: ' . $lambda_function_url);
+        // Redact sensitive URL for security
+        $redacted_url = substr($lambda_function_url, 0, 30) . '***' . substr($lambda_function_url, -10);
+        error_log('H3TM Delete: Using Lambda URL: ' . $redacted_url);
 
         // Get the actual S3 folder name (might be different from display name)
         $s3_tours = get_option('h3tm_s3_tours', array());
