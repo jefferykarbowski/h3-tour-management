@@ -172,8 +172,11 @@ function injectAnalyticsScript(htmlContent, tourName) {
             return htmlContent; // Return original if no </head> found
         }
 
-        // Create analytics script tag that loads from WordPress
+        // Create base tag for relative URLs + analytics script
+        const tourFolderName = tourName.replace(/ /g, '-');
         const scriptTag = `
+<!-- H3 Tour Base URL -->
+<base href="/h3panos/${tourFolderName}/">
 <!-- H3 Tour Analytics -->
 <script src="/h3-analytics.js" data-tour-name="${tourName}"></script>
 <!-- End H3 Tour Analytics -->
