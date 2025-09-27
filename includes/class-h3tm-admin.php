@@ -136,7 +136,7 @@ class H3TM_Admin {
         wp_localize_script('h3tm-admin', 'h3tm_ajax', array(
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('h3tm_ajax_nonce'),
-            's3_threshold_mb' => $s3_config['threshold_mb'],
+            's3_threshold_mb' => isset($s3_config['threshold_mb']) ? $s3_config['threshold_mb'] : 100,
             's3_configured' => $s3_config['configured'] && $s3_enabled,
             's3_enabled' => $s3_enabled,
             's3_bucket' => $s3_config['bucket'],
@@ -189,7 +189,6 @@ class H3TM_Admin {
         // Combine all sources
         $all_tours = array_keys($s3_tours);
         $all_tours = array_merge($all_tours, $recent_uploads);
-        $all_tours = array_merge($all_tours, $known_s3_tours);
 
         // Also include any existing local tours for backward compatibility
         $tour_manager = $this->get_tour_manager();
