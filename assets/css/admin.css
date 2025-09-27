@@ -482,3 +482,72 @@
     font-size: 14px;
     color: #646970;
 }
+
+/* Lambda Processing Status */
+.h3tm-processing-status {
+    text-align: center;
+    padding: 30px 20px;
+}
+
+.h3tm-processing-spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #2271b1;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+.h3tm-processing-status h3 {
+    margin: 0 0 15px;
+    font-size: 20px;
+    color: #1d2327;
+}
+
+.h3tm-status-message {
+    font-size: 16px;
+    margin: 10px 0;
+    color: #1d2327;
+}
+
+.h3tm-status-details {
+    font-size: 14px;
+    color: #646970;
+    margin: 10px 0 20px;
+}
+
+.h3tm-processing-dots {
+    display: flex;
+    justify-content: space-around;
+    max-width: 600px;
+    margin: 20px auto 0;
+    padding: 15px;
+    background: #f6f7f7;
+    border-radius: 4px;
+}
+
+.h3tm-processing-dots span {
+    font-size: 13px;
+    color: #646970;
+    padding: 5px 10px;
+}
+
+.h3tm-success-status {
+    text-align: center;
+    padding: 30px 20px;
+}
+
+.h3tm-success-status h3 {
+    margin: 0 0 15px;
+    font-size: 20px;
+    color: #00a32a;
+}
+
+.h3tm-success-status p {
+    margin: 10px 0;
+}
+
+.notice.notice-info {
+    border-left-color: #2271b1;
+}

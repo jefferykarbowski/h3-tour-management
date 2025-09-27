@@ -196,22 +196,10 @@ jQuery(document).ready(function($) {
             console.log('S3 Upload completed. Status:', xhr.status);
 
             if (xhr.status === 200) {
-                console.log('✅ S3 upload successful! Lambda will process automatically...');
-                $progressText.html('100% <span class="upload-method">(S3 Direct)</span>');
+                console.log('✅ S3 upload successful! Starting Lambda processing monitor...');
 
-                // Show immediate success - Lambda handles processing automatically via S3 trigger
-                $result.removeClass('notice-error').addClass('notice-success');
-                $result.html(
-                    '<p><strong>✅ Upload Complete!</strong></p>' +
-                    '<p>🚀 <strong>Processing:</strong> AWS Lambda is automatically extracting and deploying your tour.</p>' +
-                    '<p>⏱️ <strong>Time:</strong> Large tours may take 1-2 minutes to appear.</p>' +
-                    '<p>📁 <strong>What\'s Next:</strong> Refresh the page in a moment to see your tour in the list.</p>' +
-                    '<p><button type="button" class="button button-primary" onclick="location.reload();">Refresh Page Now</button></p>'
-                );
-                $form[0].reset();
-                $('#upload-progress-wrapper').hide();
-                $result.show();
-                $spinner.removeClass('is-active');
+                // Show processing status with real-time monitoring
+                showLambdaProcessingStatus(tourName, $form, $spinner, $result, $progressBar, $progressText);
             } else {
                 console.log('❌ S3 upload failed. Status:', xhr.status);
                 var errorMsg = 'S3 upload failed with status ' + xhr.status;
@@ -982,4 +970,96 @@ jQuery(document).ready(function($) {
             }
         });
     });
+
+    // Show Lambda processing status with polling
+    function showLambdaProcessingStatus(tourName, $form, $spinner, $result, $progressBar, $progressText) {
+        console.log('🔄 Starting Lambda processing status monitor for:', tourName);
+
+        // Update UI to show processing
+        $progressText.html('Processing tour... <span class="upload-method">(Lambda)</span>');
+        $result.removeClass('notice-error').addClass('notice-info');
+        $result.html(
+            '<div class="h3tm-processing-status">' +
+            '<div class="h3tm-processing-spinner"></div>' +
+            '<h3>🚀 Processing Your Tour</h3>' +
+            '<p class="h3tm-status-message">AWS Lambda is extracting and deploying <strong>' + tourName + '</strong>...</p>' +
+            '<p class="h3tm-status-details">This may take 1-2 minutes for large tours. Please wait...</p>' +
+            '<div class="h3tm-processing-dots">' +
+            '<span>⬇️ Downloading</span>' +
+            '<span>📦 Extracting</span>' +
+            '<span>📊 Processing</span>' +
+            '<span>⬆️ Deploying</span>' +
+            '</div>' +
+            '</div>'
+        );
+        $result.show();
+
+        // Poll to check if tour is ready
+        var pollAttempts = 0;
+        var maxPolls = 24; // 2 minutes (24 * 5 seconds)
+
+        var pollInterval = setInterval(function() {
+            pollAttempts++;
+
+            console.log('🔍 Polling attempt', pollAttempts, '/', maxPolls);
+
+            // Check if tour is accessible (index.htm exists)
+            var testUrl = '/h3panos/' + tourName + '/index.htm';
+
+            $.ajax({
+                url: testUrl,
+                type: 'HEAD',
+                timeout: 5000,
+                success: function() {
+                    // Tour is ready!
+                    clearInterval(pollInterval);
+                    console.log('✅ Tour is ready!');
+
+                    $result.removeClass('notice-info').addClass('notice-success');
+                    $result.html(
+                        '<div class="h3tm-success-status">' +
+                        '<h3>✅ Tour Processed Successfully!</h3>' +
+                        '<p><strong>' + tourName + '</strong> is now ready to view.</p>' +
+                        '<p><a href="' + testUrl + '" target="_blank" class="button button-primary">View Tour</a> ' +
+                        '<button type="button" class="button button-secondary" onclick="location.reload();">Refresh Page</button></p>' +
+                        '</div>'
+                    );
+
+                    $('#upload-progress-wrapper').hide();
+                    $spinner.removeClass('is-active');
+                },
+                error: function() {
+                    // Tour not ready yet
+                    if (pollAttempts >= maxPolls) {
+                        // Timeout - tour taking too long
+                        clearInterval(pollInterval);
+                        console.log('⏱️ Processing timeout - tour still processing');
+
+                        $result.removeClass('notice-info').addClass('notice-warning');
+                        $result.html(
+                            '<p><strong>⏱️ Processing Taking Longer Than Expected</strong></p>' +
+                            '<p>Your tour is still being processed by Lambda. It should appear shortly.</p>' +
+                            '<p><button type="button" class="button button-primary" onclick="location.reload();">Refresh Page</button></p>'
+                        );
+
+                        $('#upload-progress-wrapper').hide();
+                        $spinner.removeClass('is-active');
+                    } else {
+                        // Update status message
+                        $('.h3tm-status-details').text('Processing... (' + (pollAttempts * 5) + ' seconds elapsed)');
+                    }
+                }
+            });
+        }, 5000); // Poll every 5 seconds
+
+        // Don't let page be reloaded during processing
+        $(window).on('beforeunload.h3tm-processing', function() {
+            return 'Tour is still being processed. Are you sure you want to leave?';
+        });
+
+        // Remove warning when processing completes
+        setTimeout(function() {
+            $(window).off('beforeunload.h3tm-processing');
+        }, maxPolls * 5000);
+    }
 });
