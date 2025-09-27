@@ -150,6 +150,29 @@ class H3TM_Admin {
     }
     
     /**
+     * Auto-register existing tours that Lambda has processed
+     */
+    private function auto_register_existing_tours() {
+        $s3_tours = get_option('h3tm_s3_tours', array());
+
+        // Known tours that Lambda has processed
+        $known_tours = array('Bee Cave', 'Sugar Land', 'Onion Creek', 'Cedar Park');
+
+        foreach ($known_tours as $tour_name) {
+            if (!isset($s3_tours[$tour_name])) {
+                $s3_tours[$tour_name] = array(
+                    'url' => '',
+                    'created' => current_time('mysql'),
+                    'status' => 'completed',
+                    'original_name' => str_replace(' ', '-', $tour_name)
+                );
+            }
+        }
+
+        update_option('h3tm_s3_tours', $s3_tours);
+    }
+
+    /**
      * Get tours from S3 instead of local directory
      */
     private function get_s3_tours() {
@@ -157,8 +180,11 @@ class H3TM_Admin {
         $s3_tours = get_option('h3tm_s3_tours', array());
         $recent_uploads = get_transient('h3tm_recent_uploads') ?: array();
 
-        // Manually add known S3 tours (temporary solution)
-        $known_s3_tours = array('Bee Cave', 'Onion Creek'); // Add tours you know Lambda processed
+        // Register any tours that aren't in the registry yet
+        $this->auto_register_existing_tours();
+
+        // Get tours from registry
+        $s3_tours = get_option('h3tm_s3_tours', array());
 
         // Combine all sources
         $all_tours = array_keys($s3_tours);
