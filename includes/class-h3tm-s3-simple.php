@@ -272,7 +272,7 @@ class H3TM_S3_Simple {
     }
 
     /**
-     * AJAX handler to list all tours (local + S3)
+     * AJAX handler to list S3 tours ONLY
      */
     public function handle_list_s3_tours() {
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
@@ -281,38 +281,11 @@ class H3TM_S3_Simple {
             wp_die('Unauthorized');
         }
 
-        $all_tours = array();
+        $s3_tours_only = array();
         $errors = array();
 
-        // Get local tours from h3panos directory (check both h3panos and h3-tours)
-        $upload_dir = wp_upload_dir();
-        $possible_dirs = array(
-            $upload_dir['basedir'] . '/h3panos',
-            $upload_dir['basedir'] . '/h3-tours'
-        );
-
-        foreach ($possible_dirs as $tours_dir) {
-            if (is_dir($tours_dir)) {
-                error_log('H3TM: Checking directory: ' . $tours_dir);
-                $local_dirs = scandir($tours_dir);
-                foreach ($local_dirs as $dir) {
-                    if ($dir === '.' || $dir === '..') continue;
-                    $full_path = $tours_dir . '/' . $dir;
-                    if (is_dir($full_path)) {
-                        $all_tours[] = $dir;
-                        error_log('H3TM: Found local tour directory: ' . $dir);
-                    } elseif (preg_match('/\.zip$/i', $dir)) {
-                        // Also count ZIP files as tours (remove .zip extension)
-                        $tour_name = preg_replace('/\.zip$/i', '', $dir);
-                        // Keep original name with spaces (e.g., "Bee Cave")
-                        // Don't convert to dashes here as this is the local file
-                        $all_tours[] = $tour_name;
-                        error_log('H3TM: Found local tour ZIP: ' . $tour_name);
-                    }
-                }
-                break; // Stop after finding first valid directory
-            }
-        }
+        // DO NOT include local tours - this handler is specifically for S3 tours
+        // The admin page shows S3 tours and local tours in separate sections
 
         // Check S3 configuration first
         $config = $this->get_s3_credentials();
@@ -363,45 +336,27 @@ class H3TM_S3_Simple {
                 }
             }
 
-            // Add S3 tours to the list
+            // Use S3 tours directly - no need to check for duplicates with local tours
             if (is_array($s3_tours)) {
-                foreach ($s3_tours as $tour) {
-                    // S3 tours already have spaces (converted from dashes)
-                    // Check if tour already exists (case-insensitive)
-                    $tour_exists = false;
-                    foreach ($all_tours as $existing_tour) {
-                        if (strcasecmp($existing_tour, $tour) === 0) {
-                            $tour_exists = true;
-                            break;
-                        }
-                    }
-                    if (!$tour_exists) {
-                        $all_tours[] = $tour;
-                    }
-                }
+                $s3_tours_only = $s3_tours;
                 error_log('H3TM: Successfully retrieved ' . count($s3_tours) . ' tours from S3');
             }
         }
 
-        // Also check database for registered tours
-        $db_tours = get_option('h3tm_s3_tours', array());
-        foreach (array_keys($db_tours) as $tour) {
-            if (!in_array($tour, $all_tours)) {
-                $all_tours[] = $tour;
-            }
-        }
+        // Skip database tours to avoid duplicates - we already have them from S3
+        // The database can have stale entries, so we rely on the actual S3 listing
 
-        sort($all_tours);
+        sort($s3_tours_only);
 
         // Send response with any errors
         if (!empty($errors)) {
             wp_send_json_success(array(
-                'tours' => $all_tours,
+                'tours' => $s3_tours_only,
                 'errors' => $errors,
                 'partial' => true
             ));
         } else {
-            wp_send_json_success($all_tours);
+            wp_send_json_success($s3_tours_only);
         }
     }
 
