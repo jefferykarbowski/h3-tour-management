@@ -707,11 +707,14 @@ class H3TM_Admin {
             // Save Lambda Function URL
             if (isset($_POST['lambda_function_url'])) {
                 update_option('h3tm_lambda_function_url', esc_url_raw($_POST['lambda_function_url']));
-                // Don't log full URL for security
-        error_log('H3TM Settings: Lambda URL configured successfully');
             }
 
-            echo '<div class="notice notice-success"><p>' . __('S3 settings saved.', 'h3-tour-management') . '</p></div>';
+            // Save CloudFront settings
+            update_option('h3tm_cloudfront_enabled', isset($_POST['cloudfront_enabled']) ? '1' : '0');
+            update_option('h3tm_cloudfront_domain', sanitize_text_field($_POST['cloudfront_domain']));
+            update_option('h3tm_cloudfront_distribution_id', sanitize_text_field($_POST['cloudfront_distribution_id']));
+
+            echo '<div class="notice notice-success"><p>' . __('Settings saved successfully.', 'h3-tour-management') . '</p></div>';
         }
 
         // Get current settings
@@ -720,22 +723,26 @@ class H3TM_Admin {
         $aws_access_key = defined('AWS_ACCESS_KEY_ID') ? '***configured***' : get_option('h3tm_aws_access_key', '');
         $aws_secret_key = defined('AWS_SECRET_ACCESS_KEY') ? '***configured***' : get_option('h3tm_aws_secret_key', '');
         $lambda_function_url = get_option('h3tm_lambda_function_url', '');
-        // S3 is always enabled in S3-only system
+        $cloudfront_enabled = get_option('h3tm_cloudfront_enabled', '0');
+        $cloudfront_domain = get_option('h3tm_cloudfront_domain', '');
+        $cloudfront_distribution_id = get_option('h3tm_cloudfront_distribution_id', '');
 
         // Check S3 configuration
         $s3_integration = new H3TM_S3_Simple();
         $is_configured = $s3_integration->get_s3_config()['configured'];
         ?>
         <div class="wrap">
-            <h1><?php _e('S3 Upload Settings', 'h3-tour-management'); ?></h1>
+            <h1><?php _e('S3 & CloudFront Settings', 'h3-tour-management'); ?></h1>
 
-            <div class="h3tm-s3-status">
-                <h2><?php _e('Configuration Status', 'h3-tour-management'); ?></h2>
+            <div class="h3tm-s3-status" style="margin-bottom: 20px;">
                 <p>
-                    <strong><?php _e('S3 Integration:', 'h3-tour-management'); ?></strong>
+                    <strong><?php _e('Status:', 'h3-tour-management'); ?></strong>
                     <?php if ($is_configured) : ?>
-                        <span style="color: green;">✓ <?php _e('Configured', 'h3-tour-management'); ?></span>
-                        <button type="button" id="test-s3-connection" class="button button-secondary"><?php _e('Test Connection', 'h3-tour-management'); ?></button>
+                        <span style="color: green;">✓ <?php _e('S3 Configured', 'h3-tour-management'); ?></span>
+                        <?php if ($cloudfront_enabled && !empty($cloudfront_domain)) : ?>
+                            <span style="color: green; margin-left: 15px;">✓ <?php _e('CloudFront Active', 'h3-tour-management'); ?></span>
+                        <?php endif; ?>
+                        <button type="button" id="test-s3-connection" class="button button-secondary" style="margin-left: 15px;"><?php _e('Test Connection', 'h3-tour-management'); ?></button>
                     <?php else : ?>
                         <span style="color: red;">✗ <?php _e('Not Configured', 'h3-tour-management'); ?></span>
                     <?php endif; ?>
@@ -751,11 +758,8 @@ class H3TM_Admin {
             <?php endif; ?>
 
             <form method="post" action="">
-                <div class="notice notice-info">
-                    <p><strong><?php _e('S3-Only System:', 'h3-tour-management'); ?></strong>
-                    <?php _e('All tour uploads now use AWS S3 directly. Traditional server uploads have been removed for better performance and reliability.', 'h3-tour-management'); ?></p>
-                </div>
 
+                <h2><?php _e('AWS Configuration', 'h3-tour-management'); ?></h2>
                 <table class="form-table">
                     <tr>
                         <th scope="row">
@@ -824,38 +828,53 @@ class H3TM_Admin {
                                    value="<?php echo esc_attr($lambda_function_url); ?>"
                                    class="regular-text" placeholder="https://abc123.lambda-url.us-east-1.on.aws/" />
                             <p class="description">
-                                <?php _e('Lambda Function URL for tour deletion and management.', 'h3-tour-management'); ?><br>
-                                <?php _e('Create with: <code>aws lambda create-function-url-config --function-name H3TourProcessor --auth-type NONE --region us-east-1</code>', 'h3-tour-management'); ?>
+                                <?php _e('For tour processing and deletion', 'h3-tour-management'); ?>
                             </p>
                         </td>
                     </tr>
                 </table>
+
+                <h2 style="margin-top: 30px;"><?php _e('CloudFront CDN (Optional)', 'h3-tour-management'); ?></h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="cloudfront_enabled"><?php _e('Enable CloudFront', 'h3-tour-management'); ?></label>
+                        </th>
+                        <td>
+                            <label>
+                                <input type="checkbox" id="cloudfront_enabled" name="cloudfront_enabled" value="1" <?php checked($cloudfront_enabled, '1'); ?> />
+                                <?php _e('Use CloudFront CDN for tour delivery', 'h3-tour-management'); ?>
+                            </label>
+                            <p class="description"><?php _e('Improves tour loading speed with global content delivery', 'h3-tour-management'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="cloudfront_domain"><?php _e('CloudFront Domain', 'h3-tour-management'); ?></label>
+                        </th>
+                        <td>
+                            <input type="text" id="cloudfront_domain" name="cloudfront_domain"
+                                   value="<?php echo esc_attr($cloudfront_domain); ?>"
+                                   class="regular-text" placeholder="d123abc.cloudfront.net" />
+                            <p class="description"><?php _e('Your CloudFront distribution domain (without https://)', 'h3-tour-management'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="cloudfront_distribution_id"><?php _e('Distribution ID', 'h3-tour-management'); ?></label>
+                        </th>
+                        <td>
+                            <input type="text" id="cloudfront_distribution_id" name="cloudfront_distribution_id"
+                                   value="<?php echo esc_attr($cloudfront_distribution_id); ?>"
+                                   class="regular-text" placeholder="E1ABC2DEF3GHIJ" />
+                            <p class="description"><?php _e('CloudFront distribution ID for cache invalidation (optional)', 'h3-tour-management'); ?></p>
+                        </td>
+                    </tr>
+                </table>
+
                 <?php submit_button(); ?>
             </form>
 
-            <div class="h3tm-s3-info">
-                <h2><?php _e('Setup Instructions', 'h3-tour-management'); ?></h2>
-                <ol>
-                    <li><?php _e('Create an AWS account and set up S3 bucket (see documentation)', 'h3-tour-management'); ?></li>
-                    <li><?php _e('Create IAM user with S3 permissions', 'h3-tour-management'); ?></li>
-                    <li><?php _e('Enter AWS credentials above or add to wp-config.php:', 'h3-tour-management'); ?>
-                        <pre>define('H3_S3_BUCKET', 'h3-tour-files-h3vt');
-define('H3_S3_REGION', 'us-east-1');
-define('AWS_ACCESS_KEY_ID', 'your-access-key');
-define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
-                    </li>
-                    <li><?php _e('Test the connection to verify setup', 'h3-tour-management'); ?></li>
-                </ol>
-
-                <h3><?php _e('S3-Only System Benefits', 'h3-tour-management'); ?></h3>
-                <ul>
-                    <li>✅ <?php _e('Supports unlimited file sizes', 'h3-tour-management'); ?></li>
-                    <li>✅ <?php _e('Eliminates all server limitations', 'h3-tour-management'); ?></li>
-                    <li>✅ <?php _e('Faster uploads with direct browser-to-S3', 'h3-tour-management'); ?></li>
-                    <li>✅ <?php _e('Professional cloud infrastructure', 'h3-tour-management'); ?></li>
-                    <li>✅ <?php _e('No more upload failures due to server constraints', 'h3-tour-management'); ?></li>
-                </ul>
-            </div>
         </div>
 
         <script>
