@@ -9,6 +9,7 @@ class H3TM_S3_Simple {
         add_action('wp_ajax_h3tm_get_s3_presigned_url', array($this, 'handle_get_presigned_url'));
         add_action('wp_ajax_h3tm_process_s3_upload', array($this, 'handle_process_s3_upload'));
         add_action('wp_ajax_h3tm_test_s3_connection', array($this, 'handle_test_s3_connection'));
+        add_action('wp_ajax_h3tm_list_s3_tours', array($this, 'handle_list_s3_tours'));
     }
 
     /**
@@ -20,9 +21,16 @@ class H3TM_S3_Simple {
         $access_key = defined('AWS_ACCESS_KEY_ID') ? AWS_ACCESS_KEY_ID : get_option('h3tm_aws_access_key', '');
         $secret_key = defined('AWS_SECRET_ACCESS_KEY') ? AWS_SECRET_ACCESS_KEY : get_option('h3tm_aws_secret_key', '');
 
-        error_log('H3TM S3 Simple: bucket=' . $bucket . ', region=' . $region);
-        error_log('H3TM S3 Simple: access_key=' . (empty($access_key) ? 'EMPTY' : 'SET'));
-        error_log('H3TM S3 Simple: secret_key=' . (empty($secret_key) ? 'EMPTY' : 'SET'));
+        // Enhanced debugging
+        error_log('H3TM S3 Credentials Debug:');
+        error_log('  - Bucket: ' . (!empty($bucket) ? $bucket : 'NOT SET'));
+        error_log('  - Region: ' . $region);
+        error_log('  - Access Key from constant: ' . (defined('AWS_ACCESS_KEY_ID') ? 'YES' : 'NO'));
+        error_log('  - Access Key from DB: ' . (!empty(get_option('h3tm_aws_access_key', '')) ? 'YES' : 'NO'));
+        error_log('  - Secret Key from constant: ' . (defined('AWS_SECRET_ACCESS_KEY') ? 'YES' : 'NO'));
+        error_log('  - Secret Key from DB: ' . (!empty(get_option('h3tm_aws_secret_key', '')) ? 'YES' : 'NO'));
+        error_log('  - Final Access Key: ' . (empty($access_key) ? 'EMPTY' : substr($access_key, 0, 4) . '...'));
+        error_log('  - Final Secret Key: ' . (empty($secret_key) ? 'EMPTY' : 'SET'));
 
         return array(
             'bucket' => $bucket,
@@ -39,6 +47,328 @@ class H3TM_S3_Simple {
     public function get_s3_config() {
         return $this->get_s3_credentials();
     }
+
+    /**
+     * List tours directly from S3 bucket
+     */
+    public function list_s3_tours() {
+        $config = $this->get_s3_credentials();
+
+        if (!$config['configured']) {
+            error_log('H3TM S3: Not configured, cannot list tours');
+            return array();
+        }
+
+        error_log('H3TM S3: Starting list_s3_tours with bucket=' . $config['bucket'] . ' region=' . $config['region']);
+
+        $all_tour_folders = array();
+        $continuation_token = null;
+        $page_count = 0;
+        $max_pages = 10; // Safety limit
+
+        try {
+            do {
+                $page_count++;
+                if ($page_count > $max_pages) {
+                    error_log('H3TM S3: Reached maximum pages limit');
+                    break;
+                }
+
+                // Create signed request for S3 ListObjectsV2
+                $service = 's3';
+                $host = $config['bucket'] . '.s3.' . $config['region'] . '.amazonaws.com';
+                $method = 'GET';
+                $uri = '/';
+
+                // Build query parameters properly for canonical request
+                // AWS requires parameters to be URL encoded and sorted alphabetically
+                $query_params = array(
+                    'list-type' => '2',
+                    'max-keys' => '1000',
+                    'prefix' => 'tours/'
+                );
+
+                // Add continuation token if this is not the first page
+                if ($continuation_token) {
+                    $query_params['continuation-token'] = $continuation_token;
+                    error_log('H3TM S3: Fetching page ' . $page_count . ' with continuation token');
+                }
+
+            // Sort parameters alphabetically for canonical query string
+            ksort($query_params);
+
+            // Build canonical query string with proper encoding
+            $canonical_querystring_parts = array();
+            foreach ($query_params as $key => $value) {
+                $canonical_querystring_parts[] = rawurlencode($key) . '=' . rawurlencode($value);
+            }
+            $canonical_querystring = implode('&', $canonical_querystring_parts);
+
+                // Build regular query string for the URL
+                $query_string = 'list-type=2&max-keys=1000&prefix=' . urlencode('tours/');
+                if ($continuation_token) {
+                    $query_string .= '&continuation-token=' . urlencode($continuation_token);
+                }
+
+            error_log('H3TM S3: Canonical query string: ' . $canonical_querystring);
+            error_log('H3TM S3: Request URL will be: https://' . $host . $uri . '?' . $query_string);
+
+            // Create date/time strings
+            $datetime = gmdate('Ymd\THis\Z');
+            $date = gmdate('Ymd');
+
+            // Build canonical request
+            $canonical_uri = $uri;
+            $payload_hash = hash('sha256', ''); // Empty payload for GET request
+            $canonical_headers = 'host:' . $host . "\n" .
+                               'x-amz-content-sha256:' . $payload_hash . "\n" .
+                               'x-amz-date:' . $datetime . "\n";
+            $signed_headers = 'host;x-amz-content-sha256;x-amz-date';
+
+            $canonical_request = $method . "\n" .
+                                $canonical_uri . "\n" .
+                                $canonical_querystring . "\n" .
+                                $canonical_headers . "\n" .
+                                $signed_headers . "\n" .
+                                $payload_hash;
+
+            // Debug logging for signature calculation
+            error_log('H3TM S3: Debug - Method: ' . $method);
+            error_log('H3TM S3: Debug - Canonical URI: ' . $canonical_uri);
+            error_log('H3TM S3: Debug - Canonical Query String: ' . $canonical_querystring);
+            error_log('H3TM S3: Debug - Signed Headers: ' . $signed_headers);
+            error_log('H3TM S3: Debug - Canonical Request (first 500 chars): ' . substr($canonical_request, 0, 500));
+
+            // Create string to sign
+            $algorithm = 'AWS4-HMAC-SHA256';
+            $credential_scope = $date . '/' . $config['region'] . '/' . $service . '/aws4_request';
+            $string_to_sign = $algorithm . "\n" .
+                             $datetime . "\n" .
+                             $credential_scope . "\n" .
+                             hash('sha256', $canonical_request);
+
+            // Calculate signature
+            $signing_key = $this->getSignatureKey($config['secret_key'], $date, $config['region'], $service);
+            $signature = hash_hmac('sha256', $string_to_sign, $signing_key);
+
+            // Build authorization header
+            $authorization_header = $algorithm . ' ' .
+                                  'Credential=' . $config['access_key'] . '/' . $credential_scope . ', ' .
+                                  'SignedHeaders=' . $signed_headers . ', ' .
+                                  'Signature=' . $signature;
+
+            // Make the request
+            $url = 'https://' . $host . $uri . '?' . $query_string;
+
+            error_log('H3TM S3: Making request to: ' . $url);
+            error_log('H3TM S3: Authorization header: ' . substr($authorization_header, 0, 100) . '...');
+
+            $response = wp_remote_get($url, array(
+                'timeout' => 10,
+                'headers' => array(
+                    'x-amz-date' => $datetime,
+                    'x-amz-content-sha256' => $payload_hash,
+                    'Authorization' => $authorization_header
+                )
+            ));
+
+            if (is_wp_error($response)) {
+                error_log('H3TM S3: List request error: ' . $response->get_error_message());
+                return array();
+            }
+
+            $body = wp_remote_retrieve_body($response);
+            $status = wp_remote_retrieve_response_code($response);
+
+            error_log('H3TM S3: Response status: ' . $status);
+            error_log('H3TM S3: Response body (first 1000 chars): ' . substr($body, 0, 1000));
+
+            if ($status !== 200) {
+                error_log('H3TM S3: List returned status ' . $status . ': ' . substr($body, 0, 500));
+                return array();
+            }
+
+            // Parse XML response
+            $tours = array();
+            if (!empty($body)) {
+                // Try to parse XML
+                libxml_use_internal_errors(true);
+                $xml = simplexml_load_string($body);
+
+                if ($xml === false) {
+                    $errors = libxml_get_errors();
+                    error_log('H3TM S3: XML parsing error: ' . print_r($errors, true));
+                    libxml_clear_errors();
+                    return array();
+                }
+
+                // Check for NextContinuationToken for pagination
+                $has_more = false;
+                if (isset($xml->IsTruncated) && (string)$xml->IsTruncated === 'true') {
+                    $has_more = true;
+                    if (isset($xml->NextContinuationToken)) {
+                        $continuation_token = (string)$xml->NextContinuationToken;
+                        error_log('H3TM S3: Page ' . $page_count . ' has more results, continuation token received');
+                    } else {
+                        $has_more = false; // No continuation token even though truncated
+                        error_log('H3TM S3: Truncated but no continuation token found');
+                    }
+                } else {
+                    $has_more = false;
+                    error_log('H3TM S3: Page ' . $page_count . ' is the last page');
+                }
+
+                // Check for Contents (individual files)
+                if (isset($xml->Contents)) {
+                    error_log('H3TM S3: Found ' . count($xml->Contents) . ' objects on page ' . $page_count);
+
+                    foreach ($xml->Contents as $content) {
+                        $key = (string)$content->Key;
+                        // Skip the tours/ directory itself
+                        if ($key === 'tours/') continue;
+
+                        // Extract tour folder from file paths like "tours/Tour-Name/index.html"
+                        if (preg_match('/^tours\/([^\/]+)\//', $key, $matches)) {
+                            $tour_folder = $matches[1];
+                            // Add to overall collection if not already present
+                            if (!in_array($tour_folder, $all_tour_folders)) {
+                                $all_tour_folders[] = $tour_folder;
+                                error_log('H3TM S3: Found tour folder: ' . $tour_folder);
+                            }
+                        }
+                    }
+
+                } else {
+                    error_log('H3TM S3: No Contents found on page ' . $page_count);
+                }
+            } else {
+                error_log('H3TM S3: Response body is empty on page ' . $page_count);
+            }
+
+            } while ($has_more && $page_count < $max_pages);
+
+            // Convert folder names to display names after collecting all pages
+            $tours = array();
+            foreach ($all_tour_folders as $tour_folder) {
+                // Convert dashes back to spaces for display
+                // AWS/Lambda converts spaces to dashes when uploading
+                // e.g., "Bee Cave.zip" becomes "Bee-Cave/" in S3
+                // But "Onion Creek" stays as "Onion Creek" (no dash conversion if originally uploaded that way)
+                $tour_display_name = str_replace('-', ' ', $tour_folder);
+                $tours[] = $tour_display_name;
+                error_log('H3TM S3: Added tour: ' . $tour_display_name . ' (S3 folder: ' . $tour_folder . ')');
+            }
+
+            error_log('H3TM S3: Total unique tours found across ' . $page_count . ' page(s): ' . count($tours));
+            error_log('H3TM S3: Successfully listed ' . count($tours) . ' tours');
+            return $tours;
+
+        } catch (Exception $e) {
+            error_log('H3TM S3: Exception listing tours: ' . $e->getMessage());
+            return array();
+        }
+    }
+
+    /**
+     * AJAX handler to list all tours (local + S3)
+     */
+    public function handle_list_s3_tours() {
+        check_ajax_referer('h3tm_ajax_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+
+        $all_tours = array();
+        $errors = array();
+
+        // Get local tours from h3panos directory (check both h3panos and h3-tours)
+        $upload_dir = wp_upload_dir();
+        $possible_dirs = array(
+            $upload_dir['basedir'] . '/h3panos',
+            $upload_dir['basedir'] . '/h3-tours'
+        );
+
+        foreach ($possible_dirs as $tours_dir) {
+            if (is_dir($tours_dir)) {
+                error_log('H3TM: Checking directory: ' . $tours_dir);
+                $local_dirs = scandir($tours_dir);
+                foreach ($local_dirs as $dir) {
+                    if ($dir === '.' || $dir === '..') continue;
+                    $full_path = $tours_dir . '/' . $dir;
+                    if (is_dir($full_path)) {
+                        $all_tours[] = $dir;
+                        error_log('H3TM: Found local tour directory: ' . $dir);
+                    } elseif (preg_match('/\.zip$/i', $dir)) {
+                        // Also count ZIP files as tours (remove .zip extension)
+                        $tour_name = preg_replace('/\.zip$/i', '', $dir);
+                        // Keep original name with spaces (e.g., "Bee Cave")
+                        // Don't convert to dashes here as this is the local file
+                        $all_tours[] = $tour_name;
+                        error_log('H3TM: Found local tour ZIP: ' . $tour_name);
+                    }
+                }
+                break; // Stop after finding first valid directory
+            }
+        }
+
+        // Check S3 configuration first
+        $config = $this->get_s3_credentials();
+        if (!$config['configured']) {
+            error_log('H3TM: S3 not configured - Access Key: ' .
+                     (empty($config['access_key']) ? 'MISSING' : 'SET') .
+                     ', Secret Key: ' . (empty($config['secret_key']) ? 'MISSING' : 'SET') .
+                     ', Bucket: ' . $config['bucket']);
+            $errors[] = 'S3 credentials not configured';
+        } else {
+            // Get S3 tours
+            try {
+                $s3_tours = $this->list_s3_tours();
+                if (is_array($s3_tours)) {
+                    foreach ($s3_tours as $tour) {
+                        // S3 tours already have spaces (converted from dashes)
+                        // Check if tour already exists (case-insensitive)
+                        $tour_exists = false;
+                        foreach ($all_tours as $existing_tour) {
+                            if (strcasecmp($existing_tour, $tour) === 0) {
+                                $tour_exists = true;
+                                break;
+                            }
+                        }
+                        if (!$tour_exists) {
+                            $all_tours[] = $tour;
+                        }
+                    }
+                    error_log('H3TM: Successfully retrieved ' . count($s3_tours) . ' tours from S3');
+                }
+            } catch (Exception $e) {
+                error_log('H3TM: Error listing S3 tours: ' . $e->getMessage());
+                $errors[] = 'S3 connection error: ' . $e->getMessage();
+            }
+        }
+
+        // Also check database for registered tours
+        $db_tours = get_option('h3tm_s3_tours', array());
+        foreach (array_keys($db_tours) as $tour) {
+            if (!in_array($tour, $all_tours)) {
+                $all_tours[] = $tour;
+            }
+        }
+
+        sort($all_tours);
+
+        // Send response with any errors
+        if (!empty($errors)) {
+            wp_send_json_success(array(
+                'tours' => $all_tours,
+                'errors' => $errors,
+                'partial' => true
+            ));
+        } else {
+            wp_send_json_success($all_tours);
+        }
+    }
+
 
     /**
      * Test S3 connection by attempting to list bucket
@@ -456,6 +786,9 @@ class H3TM_S3_Simple {
         $config = $this->get_s3_credentials();
         $tour_s3_name = sanitize_file_name($tour_name);
 
+        // Fix HTML files before uploading
+        $this->fix_html_references($temp_extract_dir, $tour_s3_name);
+
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($temp_extract_dir, RecursiveDirectoryIterator::SKIP_DOTS)
         );
@@ -552,10 +885,38 @@ class H3TM_S3_Simple {
         return isset($types[$ext]) ? $types[$ext] : 'application/octet-stream';
     }
 
+    /**
+     * Fix HTML file references for S3 hosting
+     */
+    private function fix_html_references($temp_extract_dir, $tour_s3_name) {
+        // Note: Analytics injection is now handled by Lambda function
+        // This method can be used for other HTML fixes if needed in the future
+        // For now, we'll just log that files are ready for Lambda processing
+        error_log('H3TM S3: Tour files ready for Lambda processing with analytics injection');
+    }
+
     private function register_s3_tour($tour_name, $s3_tour_url) {
         $tours = get_option('h3tm_s3_tours', array());
-        $tours[$tour_name] = array('url' => $s3_tour_url, 'created' => current_time('mysql'));
+        $tours[$tour_name] = array(
+            'url' => $s3_tour_url,
+            'created' => current_time('mysql'),
+            'original_name' => sanitize_file_name($tour_name),
+            'type' => 's3_direct'
+        );
         update_option('h3tm_s3_tours', $tours);
+
+        // Also add to recent uploads transient for immediate visibility
+        $recent_uploads = get_transient('h3tm_recent_uploads') ?: array();
+        if (!in_array($tour_name, $recent_uploads)) {
+            $recent_uploads[] = $tour_name;
+            // Keep only the last 10 recent uploads
+            if (count($recent_uploads) > 10) {
+                array_shift($recent_uploads);
+            }
+            set_transient('h3tm_recent_uploads', $recent_uploads, DAY_IN_SECONDS * 7);
+        }
+
+        error_log('H3TM: Tour registered successfully - ' . $tour_name . ' at ' . $s3_tour_url);
     }
 
     private function cleanup_temp_files($temp_zip_path, $temp_extract_dir) {
@@ -567,5 +928,66 @@ class H3TM_S3_Simple {
         $config = $this->get_s3_credentials();
         $delete_url = 'https://' . $config['bucket'] . '.s3.' . $config['region'] . '.amazonaws.com/' . $s3_key;
         wp_remote_request($delete_url, array('method' => 'DELETE', 'timeout' => 30));
+    }
+
+    /**
+     * Public method to upload a file to S3
+     * Used by migration handler
+     */
+    public function upload_file($local_file, $s3_key, $content_type = null) {
+        $config = $this->get_s3_credentials();
+
+        if (!$config['configured']) {
+            error_log('H3TM S3: Not configured for upload');
+            return false;
+        }
+
+        // Auto-detect content type if not provided
+        if (!$content_type) {
+            $content_type = $this->get_content_type($local_file);
+        }
+
+        try {
+            // Generate presigned URL for PUT (method already defaults to PUT)
+            $presigned_url = $this->generate_simple_presigned_url($config, $s3_key);
+
+            // Read file content
+            $content = file_get_contents($local_file);
+            if ($content === false) {
+                error_log('H3TM S3: Failed to read file: ' . $local_file);
+                return false;
+            }
+
+            // Upload to S3
+            $content_hash = hash('sha256', $content);
+            $response = wp_remote_request($presigned_url, array(
+                'method' => 'PUT',
+                'body' => $content,
+                'timeout' => 60,
+                'headers' => array(
+                    'Content-Type' => $content_type,
+                    'Content-Length' => strlen($content),
+                    'x-amz-content-sha256' => $content_hash
+                )
+            ));
+
+            if (is_wp_error($response)) {
+                error_log('H3TM S3: Upload error - ' . $response->get_error_message());
+                return false;
+            }
+
+            $response_code = wp_remote_retrieve_response_code($response);
+            if ($response_code >= 200 && $response_code < 300) {
+                error_log('H3TM S3: Successfully uploaded ' . basename($local_file) . ' to ' . $s3_key);
+                return true;
+            } else {
+                error_log('H3TM S3: Upload failed with code ' . $response_code . ' for ' . $s3_key);
+                return false;
+            }
+
+        } catch (Exception $e) {
+            error_log('H3TM S3: Upload exception - ' . $e->getMessage());
+            return false;
+        }
     }
 }

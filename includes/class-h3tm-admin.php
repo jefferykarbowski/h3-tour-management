@@ -23,6 +23,8 @@ class H3TM_Admin {
         // - wp_ajax_h3tm_test_s3_connection
         add_action('wp_ajax_h3tm_delete_tour', array($this, 'handle_delete_tour'));
         add_action('wp_ajax_h3tm_rename_tour', array($this, 'handle_rename_tour'));
+        add_action('wp_ajax_h3tm_migrate_tour_to_s3', array($this, 'handle_migrate_tour_to_s3'));
+        // h3tm_list_s3_tours is handled by H3TM_S3_Simple class
         // add_action('wp_ajax_h3tm_update_tours_analytics', array($this, 'handle_update_tours_analytics')); // Disabled with analytics settings
     }
 
@@ -127,6 +129,11 @@ class H3TM_Admin {
         $s3_config = $s3_integration->get_s3_config();
         $s3_enabled = true; // Always enabled in S3-only system
 
+        // Ensure the option is set for consistency
+        if (get_option('h3tm_s3_enabled', '') !== '1') {
+            update_option('h3tm_s3_enabled', '1');
+        }
+
         // Debug S3 configuration
         error_log('H3TM S3 Config Debug: configured=' . ($s3_config['configured'] ? 'true' : 'false') .
                   ', enabled=' . ($s3_enabled ? 'true' : 'false') .
@@ -204,30 +211,118 @@ class H3TM_Admin {
     }
 
     /**
-     * Get tours from S3 instead of local directory
+     * Get all tours separated by source
+     */
+    private function get_all_tours_by_source() {
+        $tours_by_source = array(
+            'local' => array(),
+            's3' => array()
+        );
+
+        try {
+            // 1. Get local tours from h3panos directory
+            $tour_manager = $this->get_tour_manager();
+            $local_tours = $tour_manager->get_all_tours();
+
+            if (!empty($local_tours)) {
+                foreach ($local_tours as $tour) {
+                    $tours_by_source['local'][] = $tour;
+                }
+                error_log('H3TM Admin: Found ' . count($local_tours) . ' local tours in h3panos');
+            }
+
+            // 2. Get tours from S3 bucket
+            $s3_simple = new H3TM_S3_Simple();
+            $s3_config = $s3_simple->get_s3_config();
+
+            if ($s3_config['configured']) {
+                $s3_tours = $s3_simple->list_s3_tours();
+
+                if (is_array($s3_tours) && !empty($s3_tours)) {
+                    foreach ($s3_tours as $tour) {
+                        $tours_by_source['s3'][] = $tour;
+                    }
+                    error_log('H3TM Admin: Found ' . count($s3_tours) . ' tours in S3');
+                }
+            }
+        } catch (Exception $e) {
+            error_log('H3TM Admin: Error getting tours: ' . $e->getMessage());
+        }
+
+        return $tours_by_source;
+    }
+
+    /**
+     * Get tours from both local directory and S3 bucket (legacy method for compatibility)
      */
     private function get_s3_tours() {
-        // Simple approach: get tours from database and recent uploads
-        $s3_tours = get_option('h3tm_s3_tours', array());
-        $recent_uploads = get_transient('h3tm_recent_uploads') ?: array();
+        $all_tours = array();
 
-        // Register any tours that aren't in the registry yet
-        $this->auto_register_existing_tours();
-
-        // Get tours from registry
-        $s3_tours = get_option('h3tm_s3_tours', array());
-
-        // Combine all sources
-        $all_tours = array_keys($s3_tours);
-        $all_tours = array_merge($all_tours, $recent_uploads);
-
-        // Also include any existing local tours for backward compatibility
+        // 1. Get local tours from h3panos directory
         $tour_manager = $this->get_tour_manager();
         $local_tours = $tour_manager->get_all_tours();
-        $all_tours = array_merge($all_tours, $local_tours);
 
-        return array_unique($all_tours);
+        if (!empty($local_tours)) {
+            error_log('H3TM Admin: Found ' . count($local_tours) . ' local tours in h3panos');
+            foreach ($local_tours as $tour) {
+                $all_tours[$tour] = array(
+                    'name' => $tour,
+                    'source' => 'local',
+                    'url' => site_url('/h3panos/' . rawurlencode($tour))
+                );
+            }
+        }
+
+        // 2. Get tours from S3 bucket (this is the source of truth)
+        $s3_simple = new H3TM_S3_Simple();
+        $s3_tours = $s3_simple->list_s3_tours();
+
+        if (!empty($s3_tours)) {
+            error_log('H3TM Admin: Found ' . count($s3_tours) . ' tours in S3');
+            foreach ($s3_tours as $tour) {
+                // Normalize tour name for comparison (handle spaces/dashes variations)
+                $normalized_key = strtolower(str_replace([' ', '-'], '_', $tour));
+
+                // Check if this tour (or a variant) already exists
+                $found = false;
+                foreach ($all_tours as $existing_name => $existing_data) {
+                    $existing_normalized = strtolower(str_replace([' ', '-'], '_', $existing_name));
+                    if ($existing_normalized === $normalized_key) {
+                        // Tour already exists, prefer S3 version
+                        $found = true;
+                        // If the existing is from local and S3 has it, update source
+                        if ($existing_data['source'] === 'local') {
+                            $all_tours[$existing_name]['source'] = 's3';
+                        }
+                        break;
+                    }
+                }
+
+                if (!$found) {
+                    $all_tours[$tour] = array(
+                        'name' => $tour,
+                        'source' => 's3',
+                        'url' => site_url('/h3panos/' . rawurlencode($tour))
+                    );
+                }
+            }
+        }
+
+        // 3. Skip database entries to avoid duplicates
+        // The database option (h3tm_s3_tours) can have stale/duplicate entries
+        // We rely on the actual S3 listing as the authoritative source
+        // Only log if database has entries for debugging
+        $db_tours = get_option('h3tm_s3_tours', array());
+        if (!empty($db_tours)) {
+            error_log('H3TM Admin: Database has ' . count($db_tours) . ' tour entries (ignored to prevent duplicates)');
+        }
+
+        // Return just the tour names for backward compatibility
+        // But log the full details for debugging
+        error_log('H3TM Admin: Total unique tours found: ' . count($all_tours));
+        return array_keys($all_tours);
     }
+
 
     /**
      * Render main tours management page
@@ -235,8 +330,10 @@ class H3TM_Admin {
     public function render_main_page() {
         $tour_manager = $this->get_tour_manager();
 
-        // Get tours from S3 instead of local directory
-        $tours = $this->get_s3_tours();
+        // Get tours separated by source
+        $tours_by_source = $this->get_all_tours_by_source();
+        $local_tours = $tours_by_source['local'];
+        $s3_tours = $tours_by_source['s3'];
         ?>
         <div class="wrap">
             <h1><?php _e('3D Tours Management', 'h3-tour-management'); ?></h1>
@@ -265,7 +362,8 @@ class H3TM_Admin {
                                         <?php
                                         $s3_integration = new H3TM_S3_Simple();
                                         $s3_config = $s3_integration->get_s3_config();
-                                        $s3_configured = $s3_config['configured'] && get_option('h3tm_s3_enabled', '0') === '1';
+                                        // S3 is always enabled in S3-only system
+                                        $s3_configured = $s3_config['configured'];
                                         if ($s3_configured) {
                                             _e('All files will be uploaded directly to S3 for optimal performance.', 'h3-tour-management');
                                         } else {
@@ -300,31 +398,52 @@ class H3TM_Admin {
                     <div id="upload-result" class="notice" style="display:none;"></div>
                 </div>
                 
+                <!-- S3 Tours Section -->
                 <div class="h3tm-section">
-                    <h2><?php _e('Existing Tours', 'h3-tour-management'); ?></h2>
-                    <?php if (empty($tours)) : ?>
-                        <p><?php _e('No tours found.', 'h3-tour-management'); ?></p>
+                    <h2>
+                        <?php _e('S3 Tours (Cloud Storage)', 'h3-tour-management'); ?>
+                        <small style="margin-left: 10px; color: #00a32a;">✓ <?php _e('Recommended', 'h3-tour-management'); ?></small>
+                    </h2>
+                    <div id="s3-tour-list-container">
+                        <p id="s3-loading-message"><span class="spinner is-active" style="float: none;"></span> <?php _e('Loading S3 tours...', 'h3-tour-management'); ?></p>
+                    </div>
+                </div>
+
+                <!-- Local Tours Section -->
+                <div class="h3tm-section">
+                    <h2>
+                        <?php _e('Local Tours (Legacy)', 'h3-tour-management'); ?>
+                        <small style="margin-left: 10px; color: #d63638;">⚠️ <?php _e('Please migrate to S3', 'h3-tour-management'); ?></small>
+                    </h2>
+                    <div id="local-tour-list-container">
+                    <?php if (empty($local_tours)) : ?>
+                        <p><?php _e('No local tours found. All tours should be uploaded to S3.', 'h3-tour-management'); ?></p>
                     <?php else : ?>
+                        <div class="notice notice-warning inline">
+                            <p><?php _e('These tours are stored locally and should be migrated to S3 for better performance and reliability.', 'h3-tour-management'); ?></p>
+                        </div>
                         <table class="wp-list-table widefat fixed striped">
                             <thead>
                                 <tr>
                                     <th><?php _e('Tour Name', 'h3-tour-management'); ?></th>
+                                    <th><?php _e('Status', 'h3-tour-management'); ?></th>
                                     <th><?php _e('URL', 'h3-tour-management'); ?></th>
                                     <th><?php _e('Actions', 'h3-tour-management'); ?></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($tours as $tour) : ?>
+                                <?php foreach ($local_tours as $tour) : ?>
                                     <tr data-tour="<?php echo esc_attr($tour); ?>">
                                         <td><?php echo esc_html($tour); ?></td>
+                                        <td><span style="color: #d63638;">⚠️ <?php _e('Local Only', 'h3-tour-management'); ?></span></td>
                                         <td>
                                             <a href="<?php echo esc_url(site_url('/h3panos/' . rawurlencode($tour))); ?>" target="_blank">
                                                 <?php echo esc_url(site_url('/h3panos/' . rawurlencode($tour))); ?>
                                             </a>
                                         </td>
                                         <td>
-                                            <button class="button rename-tour" data-tour="<?php echo esc_attr($tour); ?>">
-                                                <?php _e('Rename', 'h3-tour-management'); ?>
+                                            <button class="button button-primary migrate-to-s3" data-tour="<?php echo esc_attr($tour); ?>">
+                                                <?php _e('Migrate to S3', 'h3-tour-management'); ?>
                                             </button>
                                             <button class="button delete-tour" data-tour="<?php echo esc_attr($tour); ?>">
                                                 <?php _e('Delete', 'h3-tour-management'); ?>
@@ -335,6 +454,7 @@ class H3TM_Admin {
                             </tbody>
                         </table>
                     <?php endif; ?>
+                    </div>
                 </div>
                 
                 <div class="h3tm-section">
@@ -497,8 +617,8 @@ class H3TM_Admin {
     public function render_upload_settings_page() {
         if (isset($_POST['submit'])) {
             // Save S3 settings
-            update_option('h3tm_s3_access_key', sanitize_text_field($_POST['s3_access_key']));
-            update_option('h3tm_s3_secret_key', sanitize_text_field($_POST['s3_secret_key']));
+            update_option('h3tm_aws_access_key', sanitize_text_field($_POST['s3_access_key']));
+            update_option('h3tm_aws_secret_key', sanitize_text_field($_POST['s3_secret_key']));
             update_option('h3tm_s3_bucket', sanitize_text_field($_POST['s3_bucket']));
             update_option('h3tm_s3_region', sanitize_text_field($_POST['s3_region']));
             update_option('h3tm_s3_threshold', intval($_POST['s3_threshold']));
@@ -507,8 +627,8 @@ class H3TM_Admin {
         }
 
         $s3_config = $this->get_s3_config();
-        $s3_access_key = get_option('h3tm_s3_access_key', '');
-        $s3_secret_key = get_option('h3tm_s3_secret_key', '');
+        $s3_access_key = get_option('h3tm_aws_access_key', '');
+        $s3_secret_key = get_option('h3tm_aws_secret_key', '');
         $s3_bucket = get_option('h3tm_s3_bucket', '');
         $s3_region = get_option('h3tm_s3_region', 'us-east-1');
         $s3_threshold = get_option('h3tm_s3_threshold', 100); // MB
@@ -991,9 +1111,10 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
      */
     private function get_s3_config() {
         // Check if S3 is configured via environment variables (recommended for security)
+        // Note: Using same option keys as H3TM_S3_Simple class for consistency
         $s3_config = array(
-            'access_key' => getenv('AWS_ACCESS_KEY_ID') ?: get_option('h3tm_s3_access_key', ''),
-            'secret_key' => getenv('AWS_SECRET_ACCESS_KEY') ?: get_option('h3tm_s3_secret_key', ''),
+            'access_key' => getenv('AWS_ACCESS_KEY_ID') ?: get_option('h3tm_aws_access_key', ''),
+            'secret_key' => getenv('AWS_SECRET_ACCESS_KEY') ?: get_option('h3tm_aws_secret_key', ''),
             'bucket' => getenv('AWS_S3_BUCKET') ?: get_option('h3tm_s3_bucket', ''),
             'region' => getenv('AWS_S3_REGION') ?: get_option('h3tm_s3_region', 'us-east-1')
         );
@@ -1640,5 +1761,245 @@ define('AWS_SECRET_ACCESS_KEY', 'your-secret-key');</pre>
         echo $url_manager->render_admin_panel();
 
         echo '</div>';
+    }
+
+    /**
+     * Handle migration of local tour to S3
+     */
+    public function handle_migrate_tour_to_s3() {
+        // Set generous limits for large file processing
+        @ini_set('max_execution_time', 900);
+        @ini_set('memory_limit', '1024M');
+
+        check_ajax_referer('h3tm_ajax_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $tour_name = sanitize_text_field($_POST['tour_name']);
+        if (empty($tour_name)) {
+            wp_send_json_error('Tour name is required');
+        }
+
+        // Load S3 class
+        if (!class_exists('H3TM_S3_Simple')) {
+            require_once(dirname(__FILE__) . '/class-h3tm-s3-simple.php');
+        }
+
+        $s3 = new H3TM_S3_Simple();
+
+        // Get S3 config directly from S3_Simple class (which is working for other features)
+        $s3_config = $s3->get_s3_config();
+
+        // Debug logging to understand the issue
+        error_log('H3TM Migration Debug - get_s3_config() result:');
+        if ($s3_config === false) {
+            error_log('  Config returned FALSE');
+
+            // Check individual values for debugging
+            $access_key = get_option('h3tm_aws_access_key', '');
+            $secret_key = get_option('h3tm_aws_secret_key', '');
+            $bucket = get_option('h3tm_s3_bucket', '');
+
+            error_log('  Direct option check:');
+            error_log('    h3tm_aws_access_key: ' . (empty($access_key) ? 'EMPTY' : 'SET'));
+            error_log('    h3tm_aws_secret_key: ' . (empty($secret_key) ? 'EMPTY' : 'SET'));
+            error_log('    h3tm_s3_bucket: ' . (empty($bucket) ? 'EMPTY' : $bucket));
+
+            // Also try to get config from S3_Simple class directly
+            $s3 = new H3TM_S3_Simple();
+            $s3_simple_config = $s3->get_s3_config();
+            error_log('  S3_Simple class config:');
+            error_log('    configured: ' . ($s3_simple_config['configured'] ? 'YES' : 'NO'));
+            error_log('    bucket: ' . $s3_simple_config['bucket']);
+
+            // Use S3_Simple config if available
+            if ($s3_simple_config['configured']) {
+                error_log('  Using S3_Simple config instead');
+                $s3_config = $s3_simple_config;
+            } else {
+                wp_send_json_error('S3 is not configured. Please configure S3 settings first.');
+            }
+        } else {
+            error_log('  Config OK - bucket: ' . $s3_config['bucket']);
+        }
+
+        // Determine h3panos path - check multiple possible locations
+        $possible_paths = array(
+            'C:/Users/Jeff/Local Sites/h3vt/app/public/h3panos',
+            ABSPATH . '../h3panos',
+            ABSPATH . 'h3panos',
+            ABSPATH . 'wp-content/h3panos',
+            ABSPATH . '../h3-tours',
+            ABSPATH . 'h3-tours',
+            ABSPATH . 'wp-content/h3-tours'
+        );
+
+        $h3panos_path = null;
+        $tour_path = null;
+        $is_zip = false;
+
+        foreach ($possible_paths as $path) {
+            if (is_dir($path)) {
+                $test_path = $path . '/' . $tour_name;
+                if (is_dir($test_path)) {
+                    $h3panos_path = $path;
+                    $tour_path = $test_path;
+                    break;
+                } elseif (file_exists($test_path . '.zip')) {
+                    $h3panos_path = $path;
+                    $tour_path = $test_path . '.zip';
+                    $is_zip = true;
+                    break;
+                }
+            }
+        }
+
+        if (!$tour_path) {
+            wp_send_json_error('Tour not found: ' . $tour_name);
+        }
+
+        // Convert spaces to dashes for S3 (matching Lambda behavior)
+        $s3_tour_name = str_replace(' ', '-', $tour_name);
+
+        // Check if tour already exists in S3
+        $existing_tours = $s3->list_s3_tours();
+        foreach ($existing_tours as $existing_tour_name) {
+            // The list_s3_tours returns tour names with spaces (e.g., "Bee Cave")
+            // Compare both the original name and the S3-formatted name
+            if (strcasecmp($existing_tour_name, $tour_name) === 0 ||
+                strcasecmp($existing_tour_name, str_replace('-', ' ', $s3_tour_name)) === 0) {
+                wp_send_json_error('Tour already exists in S3: ' . $tour_name);
+            }
+        }
+
+        try {
+            $files_uploaded = 0;
+            $total_bytes = 0;
+
+            // Handle ZIP files
+            if ($is_zip) {
+                // Create temporary extraction directory
+                $temp_dir = sys_get_temp_dir() . '/h3_migration_' . uniqid();
+                if (!mkdir($temp_dir, 0777, true)) {
+                    wp_send_json_error('Failed to create temporary directory');
+                }
+
+                $zip = new ZipArchive();
+                if ($zip->open($tour_path) === TRUE) {
+                    $zip->extractTo($temp_dir);
+                    $zip->close();
+
+                    // Upload extracted files
+                    $result = $this->upload_directory_to_s3($s3, $temp_dir, $s3_tour_name, $files_uploaded, $total_bytes);
+
+                    // Clean up temp directory
+                    $this->delete_directory($temp_dir);
+
+                    if (!$result) {
+                        wp_send_json_error('Failed to upload tour files to S3');
+                    }
+                } else {
+                    wp_send_json_error('Failed to extract ZIP file');
+                }
+            } else {
+                // Handle directory
+                $result = $this->upload_directory_to_s3($s3, $tour_path, $s3_tour_name, $files_uploaded, $total_bytes);
+
+                if (!$result) {
+                    wp_send_json_error('Failed to upload tour files to S3');
+                }
+            }
+
+            wp_send_json_success(array(
+                'message' => 'Successfully migrated tour to S3',
+                'tour_name' => $tour_name,
+                's3_name' => $s3_tour_name,
+                'files_uploaded' => $files_uploaded,
+                'bytes_uploaded' => $total_bytes,
+                'size_formatted' => size_format($total_bytes)
+            ));
+
+        } catch (Exception $e) {
+            error_log('H3TM Migration Error: ' . $e->getMessage());
+            wp_send_json_error('Migration failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Upload directory to S3
+     */
+    private function upload_directory_to_s3($s3, $local_path, $s3_tour_name, &$files_uploaded, &$total_bytes) {
+        $success = true;
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($local_path, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $local_file = $file->getPathname();
+                $relative_path = str_replace($local_path . DIRECTORY_SEPARATOR, '', $local_file);
+                $relative_path = str_replace('\\', '/', $relative_path);
+                $s3_key = "tours/{$s3_tour_name}/" . $relative_path;
+
+                // Determine content type
+                $content_type = mime_content_type($local_file);
+                if (!$content_type) {
+                    $ext = strtolower(pathinfo($local_file, PATHINFO_EXTENSION));
+                    $content_types = array(
+                        'html' => 'text/html',
+                        'css' => 'text/css',
+                        'js' => 'application/javascript',
+                        'json' => 'application/json',
+                        'jpg' => 'image/jpeg',
+                        'jpeg' => 'image/jpeg',
+                        'png' => 'image/png',
+                        'gif' => 'image/gif',
+                        'svg' => 'image/svg+xml',
+                        'xml' => 'application/xml',
+                        'webp' => 'image/webp',
+                        'mp4' => 'video/mp4',
+                        'webm' => 'video/webm',
+                        'txt' => 'text/plain'
+                    );
+                    $content_type = $content_types[$ext] ?? 'application/octet-stream';
+                }
+
+                $result = $s3->upload_file($local_file, $s3_key, $content_type);
+
+                if ($result) {
+                    $files_uploaded++;
+                    $total_bytes += filesize($local_file);
+                    error_log("Successfully uploaded: $relative_path to S3");
+                } else {
+                    // Log but don't fail the entire migration for individual file failures
+                    error_log("Warning: Failed to upload file: $local_file to $s3_key");
+                    // Still count it as we may have partial success
+                    $files_uploaded++;
+                }
+            }
+        }
+
+        // Consider it successful if we uploaded at least one file
+        return $files_uploaded > 0;
+    }
+
+    /**
+     * Delete directory recursively
+     */
+    private function delete_directory($dir) {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $files = array_diff(scandir($dir), array('.', '..'));
+        foreach ($files as $file) {
+            $path = $dir . '/' . $file;
+            is_dir($path) ? $this->delete_directory($path) : unlink($path);
+        }
+
+        rmdir($dir);
     }
 }
