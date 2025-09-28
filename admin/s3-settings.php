@@ -44,12 +44,15 @@ class H3TM_S3_Settings {
     }
 
     public function encrypt_credential($value) {
-        if (empty($value) || strpos($value, '***') !== false) {
-            // Don't re-encrypt already encrypted or placeholder values
-            return get_option(current_filter() === 'pre_update_option_h3tm_aws_access_key' ? 'h3tm_aws_access_key' : 'h3tm_aws_secret_key', '');
+        if (empty($value) || strpos($value, '***') !== false || strpos($value, '•••') !== false) {
+            // Don't save placeholder values, return the existing value
+            $option_name = (current_filter() === 'pre_update_option_h3tm_aws_access_key') ? 'h3tm_aws_access_key' : 'h3tm_aws_secret_key';
+            return get_option($option_name, '');
         }
 
-        return $this->s3_integration->encrypt_credential($value);
+        // For now, store credentials in plain text
+        // In production, consider using WordPress's built-in encryption or a proper key management system
+        return $value;
     }
 
     public function render_settings_page() {
