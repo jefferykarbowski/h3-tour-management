@@ -67,30 +67,46 @@ class H3TM_CDN_Helper {
     public function get_tour_urls($tour_name, $file_path = 'index.htm') {
         $urls = array();
 
-        // Generate URLs for both naming conventions (spaces and dashes)
-        $tour_variants = array(
-            $tour_name,  // Original (e.g., "Cedar Park")
-            str_replace(' ', '-', $tour_name)  // With dashes (e.g., "Cedar-Park")
-        );
+        // Convert spaces to dashes for S3/CloudFront compatibility
+        // S3 stores tours with dashes instead of spaces
+        $tour_name_with_dashes = str_replace(' ', '-', $tour_name);
 
-        foreach ($tour_variants as $variant) {
-            $encoded_variant = rawurlencode($variant);
+        if ($this->use_cloudfront) {
+            // CloudFront URL - Origin path already includes /tours
+            // So we don't add /tours to the URL path
+            $urls[] = sprintf(
+                'https://%s/%s/%s',
+                $this->cloudfront_domain,
+                $tour_name_with_dashes,
+                $file_path
+            );
 
-            if ($this->use_cloudfront) {
-                // CloudFront URL
+            // Try with spaces as fallback (URL encoded)
+            if (strpos($tour_name, ' ') !== false) {
                 $urls[] = sprintf(
-                    'https://%s/tours/%s/%s',
+                    'https://%s/%s/%s',
                     $this->cloudfront_domain,
-                    $encoded_variant,
+                    rawurlencode($tour_name),
                     $file_path
                 );
-            } else {
-                // S3 direct URL
+            }
+        } else {
+            // S3 direct URL - needs /tours in path
+            $urls[] = sprintf(
+                'https://%s.s3.%s.amazonaws.com/tours/%s/%s',
+                $this->s3_bucket,
+                $this->s3_region,
+                $tour_name_with_dashes,
+                $file_path
+            );
+
+            // Try with spaces as fallback (URL encoded)
+            if (strpos($tour_name, ' ') !== false) {
                 $urls[] = sprintf(
                     'https://%s.s3.%s.amazonaws.com/tours/%s/%s',
                     $this->s3_bucket,
                     $this->s3_region,
-                    $encoded_variant,
+                    rawurlencode($tour_name),
                     $file_path
                 );
             }
@@ -106,21 +122,24 @@ class H3TM_CDN_Helper {
      * @return string Tour base URL
      */
     public function get_tour_base_url($tour_name) {
-        // For display purposes, use the configured CDN or S3
+        // Convert spaces to dashes for S3/CloudFront compatibility
         $tour_s3_name = str_replace(' ', '-', $tour_name);
 
         if ($this->use_cloudfront) {
+            // CloudFront URL - Origin path already includes /tours
+            // So we don't add /tours to the URL path
             return sprintf(
-                'https://%s/tours/%s/',
+                'https://%s/%s/',
                 $this->cloudfront_domain,
-                rawurlencode($tour_s3_name)
+                $tour_s3_name
             );
         } else {
+            // S3 direct URL - needs /tours in path
             return sprintf(
                 'https://%s.s3.%s.amazonaws.com/tours/%s/',
                 $this->s3_bucket,
                 $this->s3_region,
-                rawurlencode($tour_s3_name)
+                $tour_s3_name
             );
         }
     }
