@@ -7,6 +7,13 @@ class H3TM_S3_Proxy {
     public function __construct() {
         // Add rewrite rules for tour URLs
         add_action('init', array($this, 'add_rewrite_rules'));
+
+        // Pantheon-specific: Use early hook to catch requests before template_redirect
+        if (defined('PANTHEON_ENVIRONMENT')) {
+            add_action('init', array($this, 'pantheon_early_tour_handler'), 999);
+        }
+
+        // Standard WordPress hook for tour handling
         add_action('template_redirect', array($this, 'handle_tour_requests'));
 
         // Update tour manager to show local URLs
@@ -63,6 +70,57 @@ class H3TM_S3_Proxy {
     }
 
     /**
+     * Pantheon-specific early tour handler
+     * Catches h3panos requests before WordPress fully processes them
+     */
+    public function pantheon_early_tour_handler() {
+        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+
+        // Only process h3panos requests
+        if (strpos($request_uri, '/h3panos/') === false) {
+            return;
+        }
+
+        error_log('H3TM S3 Proxy: Pantheon early handler for: ' . $request_uri);
+
+        // Parse the URL to extract tour name and file
+        if (preg_match('#/h3panos/([^/?\#]+)(/([^?\#]*))?#', $request_uri, $matches)) {
+            $tour_name = urldecode($matches[1]);
+            $file_path = isset($matches[3]) && $matches[3] ? $matches[3] : 'index.htm';
+
+            error_log('H3TM S3 Proxy: Pantheon parsed tour=' . $tour_name . ', file=' . $file_path);
+
+            // Handle trailing slash redirect for index files
+            if ($file_path === 'index.htm' && !preg_match('#/h3panos/[^/]+/$#', $request_uri)) {
+                $redirect_url = site_url('/h3panos/' . rawurlencode($tour_name) . '/');
+                error_log('H3TM S3 Proxy: Pantheon redirecting to: ' . $redirect_url);
+                wp_redirect($redirect_url, 301);
+                die();
+            }
+
+            // Get S3 configuration
+            $s3_simple = new H3TM_S3_Simple();
+            $s3_config = $s3_simple->get_s3_config();
+
+            if (!$s3_config['configured']) {
+                wp_die('S3 not configured for tour delivery', 'Configuration Error', array('response' => 503));
+            }
+
+            // Build S3 URL
+            $tour_s3_folder = str_replace(' ', '-', $tour_name);
+            $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . $tour_s3_folder . '/' . $file_path;
+
+            error_log('H3TM S3 Proxy: Pantheon fetching from S3: ' . $s3_url);
+
+            // Proxy the content
+            $this->proxy_s3_file($s3_url, $file_path);
+
+            // Properly terminate after serving content
+            die();
+        }
+    }
+
+    /**
      * Handle tour file requests and proxy from S3
      */
     public function handle_tour_requests() {
@@ -81,10 +139,15 @@ class H3TM_S3_Proxy {
         error_log('H3TM S3 Proxy: Query vars - tour_name=' . $tour_name . ', file_path=' . $file_path);
 
         if (empty($tour_name)) {
-            if (strpos($request_uri, 'h3panos') !== false) {
-                error_log('H3TM S3 Proxy: h3panos URL detected but no tour_name query var');
+            // Pantheon nginx fallback: Parse URL directly if query vars not set
+            if (strpos($request_uri, 'h3panos') !== false && preg_match('#/h3panos/([^/]+)(/(.*))?#', $request_uri, $matches)) {
+                error_log('H3TM S3 Proxy: Pantheon fallback - parsing URL directly');
+                $tour_name = urldecode($matches[1]);
+                $file_path = isset($matches[3]) && $matches[3] ? $matches[3] : 'index.htm';
+                error_log('H3TM S3 Proxy: Parsed tour_name=' . $tour_name . ', file_path=' . $file_path);
+            } else {
+                return; // Not a tour request
             }
-            return; // Not a tour request
         }
 
         error_log('H3TM S3 Proxy: Processing tour request for=' . $tour_name . ', file=' . $file_path);
@@ -99,7 +162,8 @@ class H3TM_S3_Proxy {
             $redirect_url = site_url('/h3panos/' . rawurlencode($tour_name) . '/');
             error_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
             wp_redirect($redirect_url);
-            exit();
+            // Use WordPress die() instead of exit() for Pantheon compatibility
+            die();
         }
 
         // Get S3 configuration
@@ -121,34 +185,88 @@ class H3TM_S3_Proxy {
 
         // Proxy the file from S3
         $this->proxy_s3_file($s3_url, $file_path);
-        exit();
+
+        // For Pantheon compatibility, use wp_die() instead of exit()
+        wp_die('', '', array('response' => 200));
     }
 
     /**
      * Proxy file content from S3
      */
     private function proxy_s3_file($s3_url, $file_path) {
-        // Get file from S3
-        $response = wp_remote_get($s3_url, array(
-            'timeout' => 30
-        ));
+        // Clear any output buffers to prevent conflicts
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // Check if this is a HEAD request (browser checking availability)
+        $is_head_request = ($_SERVER['REQUEST_METHOD'] ?? '') === 'HEAD';
+
+        // For HEAD requests, use head method to save bandwidth
+        if ($is_head_request) {
+            $response = wp_remote_head($s3_url, array(
+                'timeout' => 10,
+                'headers' => array(
+                    'Accept' => '*/*',
+                    'User-Agent' => 'H3TM S3 Proxy/2.2'
+                )
+            ));
+        } else {
+            // Get file from S3
+            $response = wp_remote_get($s3_url, array(
+                'timeout' => 30,
+                'headers' => array(
+                    'Accept' => '*/*',
+                    'User-Agent' => 'H3TM S3 Proxy/2.2'
+                )
+            ));
+        }
 
         if (is_wp_error($response)) {
             error_log('H3TM S3 Proxy Error: ' . $response->get_error_message());
             status_header(404);
-            wp_die('Tour file not found');
+            wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
         }
 
         $response_code = wp_remote_retrieve_response_code($response);
         if ($response_code !== 200) {
             error_log('H3TM S3 Proxy: S3 returned ' . $response_code . ' for ' . $s3_url);
             status_header(404);
-            wp_die('Tour file not found');
+            wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
         }
 
-        // Get content and content type
-        $content = wp_remote_retrieve_body($response);
+        // Get content type
         $content_type = $this->get_content_type($file_path);
+
+        // For HEAD requests, only send headers
+        if ($is_head_request) {
+            $content_length = wp_remote_retrieve_header($response, 'content-length');
+
+            // Pantheon-compatible: Set proper status code first
+            status_header(200);
+
+            // Set appropriate headers
+            header('Content-Type: ' . $content_type);
+            if ($content_length) {
+                header('Content-Length: ' . $content_length);
+            }
+
+            // Cache headers for better performance
+            header('Cache-Control: public, max-age=3600');
+            header('Expires: ' . gmdate('D, d M Y H:i:s \G\M\T', time() + 3600));
+
+            // Security headers
+            header('X-Content-Type-Options: nosniff');
+
+            // For HEAD requests, no body is sent
+            return;
+        }
+
+        // Get content for GET requests
+        $content = wp_remote_retrieve_body($response);
+
+        // Pantheon-compatible: Set proper status code first
+        status_header(200);
 
         // Set appropriate headers
         header('Content-Type: ' . $content_type);
@@ -158,8 +276,16 @@ class H3TM_S3_Proxy {
         header('Cache-Control: public, max-age=3600');
         header('Expires: ' . gmdate('D, d M Y H:i:s \G\M\T', time() + 3600));
 
-        // Output the content
+        // Security headers
+        header('X-Content-Type-Options: nosniff');
+
+        // Output the content - no exit() to avoid nginx issues
         echo $content;
+
+        // Let WordPress know we've handled the request
+        add_filter('wp_die_handler', function() {
+            return function() { die(); };
+        });
     }
 
     /**
