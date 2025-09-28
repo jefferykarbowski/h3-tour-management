@@ -106,14 +106,17 @@ class H3TM_S3_Proxy {
                 wp_die('S3 not configured for tour delivery', 'Configuration Error', array('response' => 503));
             }
 
-            // Build S3 URL
-            $tour_s3_folder = str_replace(' ', '-', $tour_name);
-            $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . $tour_s3_folder . '/' . $file_path;
+            // Build S3 URL - try with spaces first (Cedar Park), then with dashes (Bee-Cave)
+            $s3_url_with_spaces = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($tour_name) . '/' . $file_path;
+            $s3_url_with_dashes = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode(str_replace(' ', '-', $tour_name)) . '/' . $file_path;
 
-            error_log('H3TM S3 Proxy: Pantheon fetching from S3: ' . $s3_url);
+            error_log('H3TM S3 Proxy: Trying S3 URLs - spaces: ' . $s3_url_with_spaces . ', dashes: ' . $s3_url_with_dashes);
 
-            // Proxy the content
-            $this->proxy_s3_file($s3_url, $file_path);
+            // Try with spaces first, then with dashes if that fails
+            if (!$this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
+                error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
+                $this->proxy_s3_file($s3_url_with_dashes, $file_path);
+            }
 
             // Properly terminate after serving content
             die();
@@ -174,24 +177,119 @@ class H3TM_S3_Proxy {
             wp_die('S3 not configured for tour delivery');
         }
 
-        // Build S3 URL for the tour file
-        // Convert tour name (with spaces) to S3 folder name (with dashes)
-        $tour_s3_folder = str_replace(' ', '-', $tour_name);
-        $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . $tour_s3_folder . '/' . $file_path;
+        // Build S3 URL - try with spaces first (Cedar Park), then with dashes (Bee-Cave)
+        $s3_url_with_spaces = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($tour_name) . '/' . $file_path;
+        $s3_url_with_dashes = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode(str_replace(' ', '-', $tour_name)) . '/' . $file_path;
 
-        error_log('H3TM S3 Proxy: Tour "' . $tour_name . '" → S3 folder "' . $tour_s3_folder . '"');
+        error_log('H3TM S3 Proxy: Trying both naming conventions for "' . $tour_name . '"');
+        error_log('H3TM S3 Proxy: URL with spaces: ' . $s3_url_with_spaces);
+        error_log('H3TM S3 Proxy: URL with dashes: ' . $s3_url_with_dashes);
 
-        error_log('H3TM S3 Proxy: Serving from S3: ' . $s3_url);
-
-        // Proxy the file from S3
-        $this->proxy_s3_file($s3_url, $file_path);
+        // Try with spaces first, then with dashes if that fails
+        if (!$this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
+            error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
+            $this->proxy_s3_file($s3_url_with_dashes, $file_path);
+        }
 
         // For Pantheon compatibility, use wp_die() instead of exit()
         wp_die('', '', array('response' => 200));
     }
 
     /**
-     * Proxy file content from S3
+     * Try to proxy file content from S3 (returns true on success, false on failure)
+     */
+    private function try_proxy_s3_file($s3_url, $file_path) {
+        // Clear any output buffers to prevent conflicts
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // Check if this is a HEAD request (browser checking availability)
+        $is_head_request = ($_SERVER['REQUEST_METHOD'] ?? '') === 'HEAD';
+
+        // For HEAD requests, use head method to save bandwidth
+        if ($is_head_request) {
+            $response = wp_remote_head($s3_url, array(
+                'timeout' => 10,
+                'headers' => array(
+                    'Accept' => '*/*',
+                    'User-Agent' => 'H3TM S3 Proxy/2.2'
+                )
+            ));
+        } else {
+            // Get file from S3
+            $response = wp_remote_get($s3_url, array(
+                'timeout' => 30,
+                'headers' => array(
+                    'Accept' => '*/*',
+                    'User-Agent' => 'H3TM S3 Proxy/2.2'
+                )
+            ));
+        }
+
+        if (is_wp_error($response)) {
+            error_log('H3TM S3 Proxy: Try failed - ' . $response->get_error_message());
+            return false;
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        if ($response_code !== 200) {
+            error_log('H3TM S3 Proxy: Try failed - S3 returned ' . $response_code);
+            return false;
+        }
+
+        // Success! Send the content
+        $content_type = $this->get_content_type($file_path);
+
+        // For HEAD requests, only send headers
+        if ($is_head_request) {
+            $content_length = wp_remote_retrieve_header($response, 'content-length');
+
+            // Pantheon-compatible: Set proper status code first
+            status_header(200);
+
+            // Set appropriate headers
+            header('Content-Type: ' . $content_type);
+            if ($content_length) {
+                header('Content-Length: ' . $content_length);
+            }
+
+            // Cache headers for better performance
+            header('Cache-Control: public, max-age=3600');
+            header('Expires: ' . gmdate('D, d M Y H:i:s \G\M\T', time() + 3600));
+
+            // Security headers
+            header('X-Content-Type-Options: nosniff');
+
+            // For HEAD requests, no body is sent
+            return true;
+        }
+
+        // Get content for GET requests
+        $content = wp_remote_retrieve_body($response);
+
+        // Pantheon-compatible: Set proper status code first
+        status_header(200);
+
+        // Set appropriate headers
+        header('Content-Type: ' . $content_type);
+        header('Content-Length: ' . strlen($content));
+
+        // Cache headers for better performance
+        header('Cache-Control: public, max-age=3600');
+        header('Expires: ' . gmdate('D, d M Y H:i:s \G\M\T', time() + 3600));
+
+        // Security headers
+        header('X-Content-Type-Options: nosniff');
+
+        // Output the content
+        echo $content;
+
+        return true;
+    }
+
+    /**
+     * Proxy file content from S3 (dies with error if not found)
      */
     private function proxy_s3_file($s3_url, $file_path) {
         // Clear any output buffers to prevent conflicts
