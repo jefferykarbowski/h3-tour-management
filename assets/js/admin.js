@@ -1064,24 +1064,27 @@ jQuery(document).ready(function($) {
     }
 
     // Auto-load tours from S3
-    function loadToursFromS3() {
+    function loadToursFromS3(forceRefresh) {
         var $container = $('#s3-tour-list-container');
 
         if ($container.length === 0) return;
 
         // Show loading state
-        $container.html('<p><span class="spinner is-active" style="float: none;"></span> Loading tours...</p>');
+        var loadingMsg = forceRefresh ? 'Refreshing tour list from S3...' : 'Loading tours...';
+        $container.html('<p><span class="spinner is-active" style="float: none;"></span> ' + loadingMsg + '</p>');
 
         // Load tours from S3
         console.log('Loading S3 tours from:', h3tm_ajax.ajax_url);
         console.log('Using nonce:', h3tm_ajax.nonce);
+        console.log('Force refresh:', forceRefresh ? 'true' : 'false');
 
         $.ajax({
             url: h3tm_ajax.ajax_url,
             type: 'POST',
             data: {
                 action: 'h3tm_list_s3_tours',
-                nonce: h3tm_ajax.nonce
+                nonce: h3tm_ajax.nonce,
+                force_refresh: forceRefresh ? 'true' : 'false'
             },
             timeout: 30000, // 30 second timeout for Pantheon
             success: function(response) {
@@ -1100,6 +1103,11 @@ jQuery(document).ready(function($) {
                     if (tours.length > 0) {
                         // Build the table HTML for tours
                         var tableHtml = '';
+                        // Add refresh button
+                        tableHtml += '<div style="margin-bottom: 10px;">';
+                        tableHtml += '<button id="refresh-tour-list" class="button button-secondary">🔄 Refresh Tour List</button>';
+                        tableHtml += '<span style="margin-left: 10px; color: #666;">(' + tours.length + ' tours found - cached for 2 hours)</span>';
+                        tableHtml += '</div>';
                         tableHtml += '<table class="wp-list-table widefat fixed striped">';
                         tableHtml += '<thead><tr>';
                         tableHtml += '<th>Tour Name</th>';
@@ -1174,9 +1182,14 @@ jQuery(document).ready(function($) {
         }, 500);
     }
 
-    // Optional: Add a manual refresh button (hidden by default)
+    // Handle refresh button click
+    $(document).on('click', '#refresh-tour-list', function() {
+        loadToursFromS3(true); // Force refresh
+    });
+
+    // Handle retry button in error message
     $(document).on('click', '#manual-refresh-tours', function() {
-        loadToursFromS3();
+        loadToursFromS3(true); // Force refresh
     });
 
     // Helper function to escape HTML

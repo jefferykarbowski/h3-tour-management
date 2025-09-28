@@ -70,7 +70,7 @@ class H3TM_S3_Simple {
         $all_tour_folders = array();
         $continuation_token = null;
         $page_count = 0;
-        $max_pages = 10; // Safety limit
+        $max_pages = 100; // Increased to handle more tours (up to 100,000)
 
         try {
             do {
@@ -278,6 +278,14 @@ class H3TM_S3_Simple {
     }
 
     /**
+     * Clear the tour list cache
+     */
+    public function clear_tour_cache() {
+        delete_transient('h3tm_s3_tours_cache');
+        error_log('H3TM S3: Tour list cache cleared');
+    }
+
+    /**
      * AJAX handler to list S3 tours ONLY
      */
     public function handle_list_s3_tours() {
@@ -302,13 +310,27 @@ class H3TM_S3_Simple {
                      ', Bucket: ' . $config['bucket']);
             $errors[] = 'S3 credentials not configured';
         } else {
-            // Try to get cached S3 tours first (for Pantheon performance)
-            $cached_tours = get_transient('h3tm_s3_tours_cache');
+            // Check if force refresh is requested
+            $force_refresh = isset($_POST['force_refresh']) && $_POST['force_refresh'] === 'true';
 
-            if ($cached_tours !== false) {
-                error_log('H3TM: Using cached S3 tours list (' . count($cached_tours) . ' tours)');
-                $s3_tours = $cached_tours;
+            // Try to get cached S3 tours first (2 hour cache for better performance)
+            $cache_key = 'h3tm_s3_tours_cache';
+            $cache_duration = 2 * HOUR_IN_SECONDS; // 2 hours
+
+            if (!$force_refresh) {
+                $cached_tours = get_transient($cache_key);
+                if ($cached_tours !== false) {
+                    error_log('H3TM: Using cached S3 tours list (' . count($cached_tours) . ' tours)');
+                    $s3_tours = $cached_tours;
+                } else {
+                    $s3_tours = false;
+                }
             } else {
+                error_log('H3TM: Force refresh requested - bypassing cache');
+                $s3_tours = false;
+            }
+
+            if ($s3_tours === false) {
                 // Get S3 tours with timeout handling
                 try {
                     // Set a shorter execution time limit for this operation
@@ -317,10 +339,10 @@ class H3TM_S3_Simple {
 
                     $s3_tours = $this->list_s3_tours();
 
-                    // Cache the results for 5 minutes to reduce API calls
+                    // Cache the results for 2 hours to reduce API calls
                     if (is_array($s3_tours) && !empty($s3_tours)) {
-                        set_transient('h3tm_s3_tours_cache', $s3_tours, 300);
-                        error_log('H3TM: Cached ' . count($s3_tours) . ' S3 tours for 5 minutes');
+                        set_transient($cache_key, $s3_tours, $cache_duration);
+                        error_log('H3TM: Cached ' . count($s3_tours) . ' S3 tours for ' . ($cache_duration / 3600) . ' hours');
                     }
 
                     // Restore original time limit
@@ -568,6 +590,9 @@ class H3TM_S3_Simple {
             // Step 5: Cleanup temporary files and S3 upload
             $this->cleanup_temp_files($temp_zip_path, $temp_extract_dir);
             $this->delete_s3_upload($s3_key);
+
+            // Step 6: Clear the tour list cache so the new tour appears immediately
+            $this->clear_tour_cache();
 
             error_log('H3TM S3-to-S3: SUCCESS - Tour available at: ' . $s3_tour_url);
             wp_send_json_success('Tour uploaded and processed successfully! Available at: ' . $s3_tour_url);
