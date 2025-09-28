@@ -1062,4 +1062,183 @@ jQuery(document).ready(function($) {
             $(window).off('beforeunload.h3tm-processing');
         }, maxPolls * 5000);
     }
+
+    // Auto-load tours from S3
+    function loadToursFromS3() {
+        var $container = $('#s3-tour-list-container');
+
+        if ($container.length === 0) return;
+
+        // Show loading state
+        $container.html('<p><span class="spinner is-active" style="float: none;"></span> Loading tours from S3...</p>');
+
+        // Load tours from S3
+        console.log('Loading S3 tours from:', h3tm_ajax.ajax_url);
+        console.log('Using nonce:', h3tm_ajax.nonce);
+
+        $.ajax({
+            url: h3tm_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'h3tm_list_s3_tours',
+                nonce: h3tm_ajax.nonce
+            },
+            timeout: 30000, // 30 second timeout for Pantheon
+            success: function(response) {
+                console.log('S3 tours response:', response);
+                if (response.success && response.data) {
+                    var tours = Array.isArray(response.data) ? response.data : (response.data.tours || []);
+                    var errors = response.data.errors || [];
+
+                    // Show any errors/warnings
+                    if (errors.length > 0) {
+                        var warningHtml = '<div class="notice notice-warning"><p><strong>Warning:</strong> ';
+                        warningHtml += errors.join(', ') + '</p></div>';
+                        $container.html(warningHtml);
+                    }
+
+                    if (tours.length > 0) {
+                        // Build the table HTML for S3 tours
+                        var tableHtml = '<div class="notice notice-success inline">';
+                        tableHtml += '<p>✅ Found ' + tours.length + ' tour(s) in S3 cloud storage.</p>';
+                        tableHtml += '</div>';
+                        tableHtml += '<table class="wp-list-table widefat fixed striped">';
+                        tableHtml += '<thead><tr>';
+                        tableHtml += '<th>Tour Name</th>';
+                        tableHtml += '<th>Status</th>';
+                        tableHtml += '<th>URL</th>';
+                        tableHtml += '<th>Actions</th>';
+                        tableHtml += '</tr></thead><tbody>';
+
+                        tours.forEach(function(tour) {
+                            var encodedTour = encodeURIComponent(tour);
+                            var tourUrl = window.location.origin + '/h3panos/' + encodedTour;
+
+                            tableHtml += '<tr data-tour="' + escapeHtml(tour) + '">';
+                            tableHtml += '<td>' + escapeHtml(tour) + '</td>';
+                            tableHtml += '<td><span style="color: #00a32a;">☁️ S3</span></td>';
+                            tableHtml += '<td><a href="' + tourUrl + '" target="_blank">' + tourUrl + '</a></td>';
+                            tableHtml += '<td>';
+                            tableHtml += '<button class="button rename-tour" data-tour="' + escapeHtml(tour) + '">Rename</button> ';
+                            tableHtml += '<button class="button delete-tour" data-tour="' + escapeHtml(tour) + '">Delete</button>';
+                            tableHtml += '</td>';
+                            tableHtml += '</tr>';
+                        });
+
+                        tableHtml += '</tbody></table>';
+                        $container.html(tableHtml);
+
+                        // Re-initialize rename and delete handlers
+                        if (typeof H3TM_Admin_Rename !== 'undefined') {
+                            H3TM_Admin_Rename.init();
+                        }
+
+                        // Show success message
+                        var successMsg = $('<div class="notice notice-success is-dismissible" style="margin: 10px 0;"></div>');
+                        successMsg.html('<p>✅ Successfully loaded ' + tours.length + ' tour(s) from S3.</p>');
+                        $container.prepend(successMsg);
+
+                        setTimeout(function() {
+                            successMsg.fadeOut();
+                        }, 3000);
+                    } else {
+                        $container.html('<div class="notice notice-info inline"><p>No tours found in S3 bucket. Upload new tours using the form above.</p></div>');
+                    }
+                } else {
+                    // Show error
+                    $container.html('<p class="error">Failed to load tours from S3. Please check your configuration.</p>');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('S3 tours AJAX error:', status, error);
+                console.error('Response:', xhr.responseText);
+
+                var errorMsg = 'Error loading S3 tours: ';
+
+                if (status === 'timeout') {
+                    errorMsg += 'Request timed out. This can happen on Pantheon with large S3 buckets. Please refresh the page.';
+                } else if (xhr.status === 403) {
+                    errorMsg += 'Permission denied. Please check your nonce/authentication.';
+                } else if (xhr.status === 500) {
+                    errorMsg += 'Server error. Check PHP error logs for details.';
+                } else if (xhr.status === 0) {
+                    errorMsg += 'Network error or CORS issue. Check browser console for details.';
+                } else {
+                    errorMsg += status + ' - ' + error;
+                }
+
+                $container.html('<div class="notice notice-error"><p>' + errorMsg + '</p><p><button id="manual-refresh-tours" class="button">Try Again</button></p></div>');
+            },
+            complete: function() {
+                // Loading complete
+            }
+        });
+    }
+
+    // Auto-load tours on page load if we're on the main tours page
+    if ($('#s3-tour-list-container').length > 0) {
+        // Wait a moment for page to fully load
+        setTimeout(function() {
+            loadToursFromS3();
+        }, 500);
+    }
+
+    // Optional: Add a manual refresh button (hidden by default)
+    $(document).on('click', '#manual-refresh-tours', function() {
+        loadToursFromS3();
+    });
+
+    // Helper function to escape HTML
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Handle Migrate to S3 button clicks
+    $(document).on('click', '.migrate-to-s3', function(e) {
+        e.preventDefault();
+
+        var $button = $(this);
+        var tourName = $button.data('tour');
+        var $row = $button.closest('tr');
+
+        if (!confirm('Migrate "' + tourName + '" to S3? This will upload the tour to cloud storage.')) {
+            return;
+        }
+
+        // Show progress
+        $button.prop('disabled', true).text('Migrating...');
+
+        // Call migration endpoint
+        $.ajax({
+            url: h3tm_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'h3tm_migrate_tour_to_s3',
+                tour_name: tourName,
+                nonce: h3tm_ajax.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Show success message
+                    $row.fadeOut(function() {
+                        $row.after('<tr><td colspan="4" class="notice notice-success">✅ ' + tourName + ' successfully migrated to S3!</td></tr>');
+
+                        // Reload S3 tours
+                        setTimeout(function() {
+                            loadToursFromS3();
+                        }, 2000);
+                    });
+                } else {
+                    alert('Migration failed: ' + (response.data || 'Unknown error'));
+                    $button.prop('disabled', false).text('Migrate to S3');
+                }
+            },
+            error: function() {
+                alert('Migration failed: Network error');
+                $button.prop('disabled', false).text('Migrate to S3');
+            }
+        });
+    });
 });

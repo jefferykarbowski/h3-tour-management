@@ -164,12 +164,14 @@ class H3TM_S3_Simple {
             error_log('H3TM S3: Authorization header: ' . substr($authorization_header, 0, 100) . '...');
 
             $response = wp_remote_get($url, array(
-                'timeout' => 10,
+                'timeout' => 30, // Increased timeout for Pantheon environment
                 'headers' => array(
                     'x-amz-date' => $datetime,
                     'x-amz-content-sha256' => $payload_hash,
                     'Authorization' => $authorization_header
-                )
+                ),
+                'sslverify' => true, // Ensure SSL verification for security
+                'httpversion' => '1.1' // Use HTTP/1.1 for better compatibility
             ));
 
             if (is_wp_error($response)) {
@@ -321,29 +323,63 @@ class H3TM_S3_Simple {
                      ', Bucket: ' . $config['bucket']);
             $errors[] = 'S3 credentials not configured';
         } else {
-            // Get S3 tours
-            try {
-                $s3_tours = $this->list_s3_tours();
-                if (is_array($s3_tours)) {
-                    foreach ($s3_tours as $tour) {
-                        // S3 tours already have spaces (converted from dashes)
-                        // Check if tour already exists (case-insensitive)
-                        $tour_exists = false;
-                        foreach ($all_tours as $existing_tour) {
-                            if (strcasecmp($existing_tour, $tour) === 0) {
-                                $tour_exists = true;
-                                break;
-                            }
-                        }
-                        if (!$tour_exists) {
-                            $all_tours[] = $tour;
+            // Try to get cached S3 tours first (for Pantheon performance)
+            $cached_tours = get_transient('h3tm_s3_tours_cache');
+
+            if ($cached_tours !== false) {
+                error_log('H3TM: Using cached S3 tours list (' . count($cached_tours) . ' tours)');
+                $s3_tours = $cached_tours;
+            } else {
+                // Get S3 tours with timeout handling
+                try {
+                    // Set a shorter execution time limit for this operation
+                    $original_time_limit = ini_get('max_execution_time');
+                    @set_time_limit(45); // 45 seconds should be enough
+
+                    $s3_tours = $this->list_s3_tours();
+
+                    // Cache the results for 5 minutes to reduce API calls
+                    if (is_array($s3_tours) && !empty($s3_tours)) {
+                        set_transient('h3tm_s3_tours_cache', $s3_tours, 300);
+                        error_log('H3TM: Cached ' . count($s3_tours) . ' S3 tours for 5 minutes');
+                    }
+
+                    // Restore original time limit
+                    @set_time_limit($original_time_limit);
+
+                } catch (Exception $e) {
+                    error_log('H3TM: Error listing S3 tours: ' . $e->getMessage());
+                    $errors[] = 'S3 connection error: ' . $e->getMessage();
+
+                    // Fall back to database records if S3 API fails
+                    $db_tours = get_option('h3tm_s3_tours', array());
+                    if (!empty($db_tours)) {
+                        $s3_tours = array_keys($db_tours);
+                        error_log('H3TM: Falling back to database records (' . count($s3_tours) . ' tours)');
+                        $errors[] = 'Using cached tour list (S3 API timeout)';
+                    } else {
+                        $s3_tours = array();
+                    }
+                }
+            }
+
+            // Add S3 tours to the list
+            if (is_array($s3_tours)) {
+                foreach ($s3_tours as $tour) {
+                    // S3 tours already have spaces (converted from dashes)
+                    // Check if tour already exists (case-insensitive)
+                    $tour_exists = false;
+                    foreach ($all_tours as $existing_tour) {
+                        if (strcasecmp($existing_tour, $tour) === 0) {
+                            $tour_exists = true;
+                            break;
                         }
                     }
-                    error_log('H3TM: Successfully retrieved ' . count($s3_tours) . ' tours from S3');
+                    if (!$tour_exists) {
+                        $all_tours[] = $tour;
+                    }
                 }
-            } catch (Exception $e) {
-                error_log('H3TM: Error listing S3 tours: ' . $e->getMessage());
-                $errors[] = 'S3 connection error: ' . $e->getMessage();
+                error_log('H3TM: Successfully retrieved ' . count($s3_tours) . ' tours from S3');
             }
         }
 
