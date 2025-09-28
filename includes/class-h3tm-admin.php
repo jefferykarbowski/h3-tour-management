@@ -88,14 +88,15 @@ class H3TM_Admin {
             array($this, 'render_s3_settings_page')
         );
 
-        add_submenu_page(
-            'h3-tour-management',
-            __('URL Handler Settings', 'h3-tour-management'),
-            __('URL Handlers', 'h3-tour-management'),
-            'manage_options',
-            'h3tm-url-handlers',
-            array($this, 'render_url_handlers_page')
-        );
+        // URL Handlers submenu removed - functionality integrated into main page
+        // add_submenu_page(
+        //     'h3-tour-management',
+        //     __('URL Handler Settings', 'h3-tour-management'),
+        //     __('URL Handlers', 'h3-tour-management'),
+        //     'manage_options',
+        //     'h3tm-url-handlers',
+        //     array($this, 'render_url_handlers_page')
+        // );
 
         // Analytics Settings page removed - not needed without PHP index files
         // add_submenu_page(
@@ -268,6 +269,36 @@ class H3TM_Admin {
             <h1><?php _e('Tours Management', 'h3-tour-management'); ?></h1>
 
             <div class="h3tm-admin-container">
+                <!-- Upload Section -->
+                <div class="h3tm-section">
+                    <h2><?php _e('Upload New Tour', 'h3-tour-management'); ?></h2>
+                    <form id="h3tm-upload-form" enctype="multipart/form-data">
+                        <table class="form-table">
+                            <tr>
+                                <th scope="row">
+                                    <label for="tour_name"><?php _e('Tour Name', 'h3-tour-management'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="text" id="tour_name" name="tour_name" class="regular-text" required />
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">
+                                    <label for="tour_file"><?php _e('Tour ZIP File', 'h3-tour-management'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="file" id="tour_file" name="tour_file" accept=".zip" required />
+                                    <p class="description"><?php _e('Select a ZIP file containing your tour files', 'h3-tour-management'); ?></p>
+                                </td>
+                            </tr>
+                        </table>
+                        <p class="submit">
+                            <input type="submit" class="button button-primary" value="<?php _e('Upload Tour', 'h3-tour-management'); ?>" />
+                        </p>
+                    </form>
+                    <div id="upload-result" class="notice" style="display:none;"></div>
+                </div>
+
                 <!-- Tours Section -->
                 <div class="h3tm-section">
                     <h2><?php _e('Available Tours', 'h3-tour-management'); ?></h2>

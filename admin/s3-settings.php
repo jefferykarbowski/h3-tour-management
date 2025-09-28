@@ -10,10 +10,13 @@ if (!defined('ABSPATH')) {
 class H3TM_S3_Settings {
 
     public function __construct() {
-        add_action('admin_menu', array($this, 'add_settings_page'));
+        // Menu registration commented out - already registered in class-h3tm-admin.php
+        // add_action('admin_menu', array($this, 'add_settings_page'));
         add_action('admin_init', array($this, 'init_settings'));
     }
 
+    // Commented out to prevent duplicate menu - menu is registered in class-h3tm-admin.php
+    /*
     public function add_settings_page() {
         add_submenu_page(
             'h3-tour-management',
@@ -24,6 +27,7 @@ class H3TM_S3_Settings {
             array($this, 'render_settings_page')
         );
     }
+    */
 
     public function init_settings() {
         register_setting('h3tm_s3_settings', 'h3tm_s3_bucket_name');
