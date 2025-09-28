@@ -4,7 +4,13 @@
  */
 class H3TM_S3_Simple {
 
+    private $cdn_helper = null;
+
     public function __construct() {
+        // Initialize CDN helper for CloudFront support
+        if (class_exists('H3TM_CDN_Helper')) {
+            $this->cdn_helper = H3TM_CDN_Helper::get_instance();
+        }
         // Add AJAX handlers
         add_action('wp_ajax_h3tm_get_s3_presigned_url', array($this, 'handle_get_presigned_url'));
         add_action('wp_ajax_h3tm_process_s3_upload', array($this, 'handle_process_s3_upload'));
@@ -797,7 +803,12 @@ class H3TM_S3_Simple {
         }
 
         if ($uploaded_count > 0) {
-            return 'https://' . $config['bucket'] . '.s3.' . $config['region'] . '.amazonaws.com/tours/' . $tour_s3_name . '/';
+            // Use CDN helper if available for tour URL generation
+            if ($this->cdn_helper) {
+                return $this->cdn_helper->get_tour_base_url($tour_name);
+            } else {
+                return 'https://' . $config['bucket'] . '.s3.' . $config['region'] . '.amazonaws.com/tours/' . $tour_s3_name . '/';
+            }
         }
         return false;
     }

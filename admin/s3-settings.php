@@ -36,6 +36,11 @@ class H3TM_S3_Settings {
         register_setting('h3tm_s3_settings', 'h3tm_aws_region');
         register_setting('h3tm_s3_settings', 'h3tm_aws_access_key');
         register_setting('h3tm_s3_settings', 'h3tm_aws_secret_key');
+
+        // CloudFront settings
+        register_setting('h3tm_s3_settings', 'h3tm_cloudfront_enabled');
+        register_setting('h3tm_s3_settings', 'h3tm_cloudfront_domain');
+        register_setting('h3tm_s3_settings', 'h3tm_cloudfront_distribution_id');
         register_setting('h3tm_s3_settings', 'h3tm_s3_threshold');
         register_setting('h3tm_s3_settings', 'h3tm_s3_enabled');
 
@@ -227,6 +232,69 @@ class H3TM_S3_Settings {
                                 </td>
                             </tr>
                         </table>
+                    </div>
+
+                    <div class="card">
+                        <h2><?php _e('CloudFront CDN Settings', 'h3-tour-management'); ?></h2>
+                        <p class="description">
+                            <?php _e('Optional: Use CloudFront CDN for faster global tour delivery and reduced S3 costs.', 'h3-tour-management'); ?>
+                        </p>
+
+                        <table class="form-table">
+                            <tr>
+                                <th scope="row">
+                                    <label for="h3tm_cloudfront_enabled"><?php _e('Enable CloudFront', 'h3-tour-management'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="checkbox" id="h3tm_cloudfront_enabled" name="h3tm_cloudfront_enabled" value="1"
+                                           <?php checked(get_option('h3tm_cloudfront_enabled', false)); ?> />
+                                    <label for="h3tm_cloudfront_enabled">
+                                        <?php _e('Use CloudFront CDN for tour delivery', 'h3-tour-management'); ?>
+                                    </label>
+                                    <p class="description">
+                                        <?php _e('CloudFront provides faster loading times through global edge locations.', 'h3-tour-management'); ?>
+                                    </p>
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <th scope="row">
+                                    <label for="h3tm_cloudfront_domain"><?php _e('CloudFront Domain', 'h3-tour-management'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="text" id="h3tm_cloudfront_domain" name="h3tm_cloudfront_domain"
+                                           value="<?php echo esc_attr(get_option('h3tm_cloudfront_domain', '')); ?>"
+                                           class="regular-text" placeholder="d1234abcd.cloudfront.net" />
+                                    <p class="description">
+                                        <?php _e('Your CloudFront distribution domain (without https://)', 'h3-tour-management'); ?>
+                                    </p>
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <th scope="row">
+                                    <label for="h3tm_cloudfront_distribution_id"><?php _e('Distribution ID', 'h3-tour-management'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="text" id="h3tm_cloudfront_distribution_id" name="h3tm_cloudfront_distribution_id"
+                                           value="<?php echo esc_attr(get_option('h3tm_cloudfront_distribution_id', '')); ?>"
+                                           class="regular-text" placeholder="E1234ABCD5678" />
+                                    <p class="description">
+                                        <?php _e('CloudFront distribution ID for cache invalidation (optional)', 'h3-tour-management'); ?>
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div class="cloudfront-notice" style="background: #e7f3ff; border-left: 4px solid #2271b1; padding: 12px; margin: 15px 0;">
+                            <h4 style="margin-top: 0;"><?php _e('CloudFront Setup Requirements', 'h3-tour-management'); ?></h4>
+                            <ol style="margin-bottom: 0;">
+                                <li><?php _e('Create a CloudFront distribution in AWS Console', 'h3-tour-management'); ?></li>
+                                <li><?php _e('Set your S3 bucket as the origin', 'h3-tour-management'); ?></li>
+                                <li><?php _e('Configure cache behaviors for /tours/* path', 'h3-tour-management'); ?></li>
+                                <li><?php _e('Copy the distribution domain name here', 'h3-tour-management'); ?></li>
+                            </ol>
+                        </div>
                     </div>
 
                     <div class="card">
