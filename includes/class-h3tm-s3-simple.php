@@ -70,13 +70,27 @@ class H3TM_S3_Simple {
         $all_tour_folders = array();
         $continuation_token = null;
         $page_count = 0;
-        $max_pages = 100; // Increased to handle more tours (up to 100,000)
+        $max_pages = 20; // Limit to 20 pages to prevent timeouts
+        $start_time = time();
+        $max_execution_time = 50; // Stop after 50 seconds to fit in 60s AJAX timeout
 
         try {
             do {
                 $page_count++;
+
+                // Check time limit
+                if ((time() - $start_time) > $max_execution_time) {
+                    error_log('H3TM S3: Stopping due to time limit (50 seconds)');
+                    error_log('H3TM S3: Retrieved ' . count($all_tour_folders) . ' tours in ' . $page_count . ' pages');
+                    $hit_time_limit = true;
+                    break;
+                }
+
                 if ($page_count > $max_pages) {
-                    error_log('H3TM S3: Reached maximum pages limit');
+                    error_log('H3TM S3: Reached maximum pages limit of ' . $max_pages);
+                    error_log('H3TM S3: Total tours found so far: ' . count($all_tour_folders));
+                    // Add a flag that we hit the limit
+                    $hit_page_limit = true;
                     break;
                 }
 
@@ -269,6 +283,15 @@ class H3TM_S3_Simple {
 
             error_log('H3TM S3: Total unique tours found across ' . $page_count . ' page(s): ' . count($tours));
             error_log('H3TM S3: Successfully listed ' . count($tours) . ' tours');
+
+            // If we hit limits, add a notice
+            if (isset($hit_page_limit) && $hit_page_limit) {
+                error_log('H3TM S3: NOTE: Stopped at page limit. More tours may exist beyond the ' . ($max_pages * 1000) . ' objects scanned');
+            }
+            if (isset($hit_time_limit) && $hit_time_limit) {
+                error_log('H3TM S3: NOTE: Stopped due to time limit. More tours may exist.');
+            }
+
             return $tours;
 
         } catch (Exception $e) {

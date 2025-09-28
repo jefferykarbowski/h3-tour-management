@@ -1086,7 +1086,7 @@ jQuery(document).ready(function($) {
                 nonce: h3tm_ajax.nonce,
                 force_refresh: forceRefresh ? 'true' : 'false'
             },
-            timeout: 30000, // 30 second timeout for Pantheon
+            timeout: 60000, // 60 second timeout for large tour lists
             success: function(response) {
                 console.log('S3 tours response:', response);
                 if (response.success && response.data) {
