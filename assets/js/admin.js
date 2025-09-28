@@ -186,7 +186,7 @@ jQuery(document).ready(function($) {
                 if (timeRemaining) {
                     statusText += '<span class="time-remaining">' + timeRemaining + '</span>';
                 }
-                statusText += ' <span class="upload-method">(S3 Direct)</span>';
+                statusText += '%';
                 $progressText.html(statusText);
             }
         });
@@ -246,7 +246,7 @@ jQuery(document).ready(function($) {
 
                 // Update progress text (using direct selector to ensure it works)
                 var statusText = progress + '%';
-                statusText += ' <span class="upload-method">(S3 Direct)</span>';
+                statusText += '%';
 
                 // Update both ways to ensure it works
                 $progressText.html(statusText);
@@ -1070,7 +1070,7 @@ jQuery(document).ready(function($) {
         if ($container.length === 0) return;
 
         // Show loading state
-        $container.html('<p><span class="spinner is-active" style="float: none;"></span> Loading tours from S3...</p>');
+        $container.html('<p><span class="spinner is-active" style="float: none;"></span> Loading tours...</p>');
 
         // Load tours from S3
         console.log('Loading S3 tours from:', h3tm_ajax.ajax_url);
@@ -1098,10 +1098,8 @@ jQuery(document).ready(function($) {
                     }
 
                     if (tours.length > 0) {
-                        // Build the table HTML for S3 tours
-                        var tableHtml = '<div class="notice notice-success inline">';
-                        tableHtml += '<p>✅ Found ' + tours.length + ' tour(s) in S3 cloud storage.</p>';
-                        tableHtml += '</div>';
+                        // Build the table HTML for tours
+                        var tableHtml = '';
                         tableHtml += '<table class="wp-list-table widefat fixed striped">';
                         tableHtml += '<thead><tr>';
                         tableHtml += '<th>Tour Name</th>';
@@ -1116,7 +1114,7 @@ jQuery(document).ready(function($) {
 
                             tableHtml += '<tr data-tour="' + escapeHtml(tour) + '">';
                             tableHtml += '<td>' + escapeHtml(tour) + '</td>';
-                            tableHtml += '<td><span style="color: #00a32a;">☁️ S3</span></td>';
+                            tableHtml += '<td><span style="color: #00a32a;">✅ Available</span></td>';
                             tableHtml += '<td><a href="' + tourUrl + '" target="_blank">' + tourUrl + '</a></td>';
                             tableHtml += '<td>';
                             tableHtml += '<button class="button rename-tour" data-tour="' + escapeHtml(tour) + '">Rename</button> ';
@@ -1133,30 +1131,23 @@ jQuery(document).ready(function($) {
                             H3TM_Admin_Rename.init();
                         }
 
-                        // Show success message
-                        var successMsg = $('<div class="notice notice-success is-dismissible" style="margin: 10px 0;"></div>');
-                        successMsg.html('<p>✅ Successfully loaded ' + tours.length + ' tour(s) from S3.</p>');
-                        $container.prepend(successMsg);
-
-                        setTimeout(function() {
-                            successMsg.fadeOut();
-                        }, 3000);
+                        // Tours loaded successfully
                     } else {
-                        $container.html('<div class="notice notice-info inline"><p>No tours found in S3 bucket. Upload new tours using the form above.</p></div>');
+                        $container.html('<div class="notice notice-info inline"><p>No tours available.</p></div>');
                     }
                 } else {
                     // Show error
-                    $container.html('<p class="error">Failed to load tours from S3. Please check your configuration.</p>');
+                    $container.html('<p class="error">Failed to load tours. Please check your configuration.</p>');
                 }
             },
             error: function(xhr, status, error) {
                 console.error('S3 tours AJAX error:', status, error);
                 console.error('Response:', xhr.responseText);
 
-                var errorMsg = 'Error loading S3 tours: ';
+                var errorMsg = 'Error loading tours: ';
 
                 if (status === 'timeout') {
-                    errorMsg += 'Request timed out. This can happen on Pantheon with large S3 buckets. Please refresh the page.';
+                    errorMsg += 'Request timed out. Please refresh the page.';
                 } else if (xhr.status === 403) {
                     errorMsg += 'Permission denied. Please check your nonce/authentication.';
                 } else if (xhr.status === 500) {
@@ -1195,50 +1186,5 @@ jQuery(document).ready(function($) {
         return div.innerHTML;
     }
 
-    // Handle Migrate to S3 button clicks
-    $(document).on('click', '.migrate-to-s3', function(e) {
-        e.preventDefault();
-
-        var $button = $(this);
-        var tourName = $button.data('tour');
-        var $row = $button.closest('tr');
-
-        if (!confirm('Migrate "' + tourName + '" to S3? This will upload the tour to cloud storage.')) {
-            return;
-        }
-
-        // Show progress
-        $button.prop('disabled', true).text('Migrating...');
-
-        // Call migration endpoint
-        $.ajax({
-            url: h3tm_ajax.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'h3tm_migrate_tour_to_s3',
-                tour_name: tourName,
-                nonce: h3tm_ajax.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    // Show success message
-                    $row.fadeOut(function() {
-                        $row.after('<tr><td colspan="4" class="notice notice-success">✅ ' + tourName + ' successfully migrated to S3!</td></tr>');
-
-                        // Reload S3 tours
-                        setTimeout(function() {
-                            loadToursFromS3();
-                        }, 2000);
-                    });
-                } else {
-                    alert('Migration failed: ' + (response.data || 'Unknown error'));
-                    $button.prop('disabled', false).text('Migrate to S3');
-                }
-            },
-            error: function() {
-                alert('Migration failed: Network error');
-                $button.prop('disabled', false).text('Migrate to S3');
-            }
-        });
-    });
+    // Migration functionality removed - S3-only system
 });

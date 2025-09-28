@@ -211,27 +211,13 @@ class H3TM_Admin {
     }
 
     /**
-     * Get all tours separated by source
+     * Get all tours from S3
      */
     private function get_all_tours_by_source() {
-        $tours_by_source = array(
-            'local' => array(),
-            's3' => array()
-        );
+        $tours = array();
 
         try {
-            // 1. Get local tours from h3panos directory
-            $tour_manager = $this->get_tour_manager();
-            $local_tours = $tour_manager->get_all_tours();
-
-            if (!empty($local_tours)) {
-                foreach ($local_tours as $tour) {
-                    $tours_by_source['local'][] = $tour;
-                }
-                error_log('H3TM Admin: Found ' . count($local_tours) . ' local tours in h3panos');
-            }
-
-            // 2. Get tours from S3 bucket
+            // Get tours from S3 bucket via CloudFront
             $s3_simple = new H3TM_S3_Simple();
             $s3_config = $s3_simple->get_s3_config();
 
@@ -240,87 +226,36 @@ class H3TM_Admin {
 
                 if (is_array($s3_tours) && !empty($s3_tours)) {
                     foreach ($s3_tours as $tour) {
-                        $tours_by_source['s3'][] = $tour;
+                        $tours[] = $tour;
                     }
-                    error_log('H3TM Admin: Found ' . count($s3_tours) . ' tours in S3');
+                    error_log('H3TM Admin: Found ' . count($s3_tours) . ' tours');
                 }
             }
         } catch (Exception $e) {
             error_log('H3TM Admin: Error getting tours: ' . $e->getMessage());
         }
 
-        return $tours_by_source;
+        return $tours;
     }
 
     /**
-     * Get tours from both local directory and S3 bucket (legacy method for compatibility)
+     * Get tours from S3 bucket
      */
     private function get_s3_tours() {
         $all_tours = array();
 
-        // 1. Get local tours from h3panos directory
-        $tour_manager = $this->get_tour_manager();
-        $local_tours = $tour_manager->get_all_tours();
-
-        if (!empty($local_tours)) {
-            error_log('H3TM Admin: Found ' . count($local_tours) . ' local tours in h3panos');
-            foreach ($local_tours as $tour) {
-                $all_tours[$tour] = array(
-                    'name' => $tour,
-                    'source' => 'local',
-                    'url' => site_url('/h3panos/' . rawurlencode($tour))
-                );
-            }
-        }
-
-        // 2. Get tours from S3 bucket (this is the source of truth)
+        // Get tours from S3 bucket
         $s3_simple = new H3TM_S3_Simple();
         $s3_tours = $s3_simple->list_s3_tours();
 
         if (!empty($s3_tours)) {
-            error_log('H3TM Admin: Found ' . count($s3_tours) . ' tours in S3');
+            error_log('H3TM Admin: Found ' . count($s3_tours) . ' tours');
             foreach ($s3_tours as $tour) {
-                // Normalize tour name for comparison (handle spaces/dashes variations)
-                $normalized_key = strtolower(str_replace([' ', '-'], '_', $tour));
-
-                // Check if this tour (or a variant) already exists
-                $found = false;
-                foreach ($all_tours as $existing_name => $existing_data) {
-                    $existing_normalized = strtolower(str_replace([' ', '-'], '_', $existing_name));
-                    if ($existing_normalized === $normalized_key) {
-                        // Tour already exists, prefer S3 version
-                        $found = true;
-                        // If the existing is from local and S3 has it, update source
-                        if ($existing_data['source'] === 'local') {
-                            $all_tours[$existing_name]['source'] = 's3';
-                        }
-                        break;
-                    }
-                }
-
-                if (!$found) {
-                    $all_tours[$tour] = array(
-                        'name' => $tour,
-                        'source' => 's3',
-                        'url' => site_url('/h3panos/' . rawurlencode($tour))
-                    );
-                }
+                $all_tours[] = $tour;
             }
         }
 
-        // 3. Skip database entries to avoid duplicates
-        // The database option (h3tm_s3_tours) can have stale/duplicate entries
-        // We rely on the actual S3 listing as the authoritative source
-        // Only log if database has entries for debugging
-        $db_tours = get_option('h3tm_s3_tours', array());
-        if (!empty($db_tours)) {
-            error_log('H3TM Admin: Database has ' . count($db_tours) . ' tour entries (ignored to prevent duplicates)');
-        }
-
-        // Return just the tour names for backward compatibility
-        // But log the full details for debugging
-        error_log('H3TM Admin: Total unique tours found: ' . count($all_tours));
-        return array_keys($all_tours);
+        return $all_tours;
     }
 
 
@@ -328,132 +263,16 @@ class H3TM_Admin {
      * Render main tours management page
      */
     public function render_main_page() {
-        $tour_manager = $this->get_tour_manager();
-
-        // Get tours separated by source
-        $tours_by_source = $this->get_all_tours_by_source();
-        $local_tours = $tours_by_source['local'];
-        $s3_tours = $tours_by_source['s3'];
         ?>
         <div class="wrap">
-            <h1><?php _e('3D Tours Management', 'h3-tour-management'); ?></h1>
-            
-            <div class="h3tm-admin-container">
-                <div class="h3tm-section">
-                    <h2><?php _e('Upload New Tour', 'h3-tour-management'); ?></h2>
-                    <form id="h3tm-upload-form" enctype="multipart/form-data">
-                        <table class="form-table">
-                            <tr>
-                                <th scope="row">
-                                    <label for="tour_name"><?php _e('Tour Name', 'h3-tour-management'); ?></label>
-                                </th>
-                                <td>
-                                    <input type="text" id="tour_name" name="tour_name" class="regular-text" required />
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="tour_file"><?php _e('Tour ZIP File', 'h3-tour-management'); ?></label>
-                                </th>
-                                <td>
-                                    <input type="file" id="tour_file" name="tour_file" accept=".zip" required />
-                                    <p class="description">
-                                        <?php _e('Upload a ZIP file containing the tour files.', 'h3-tour-management'); ?><br>
-                                        <?php
-                                        $s3_integration = new H3TM_S3_Simple();
-                                        $s3_config = $s3_integration->get_s3_config();
-                                        // S3 is always enabled in S3-only system
-                                        $s3_configured = $s3_config['configured'];
-                                        if ($s3_configured) {
-                                            _e('All files will be uploaded directly to S3 for optimal performance.', 'h3-tour-management');
-                                        } else {
-                                            _e('S3 Direct Upload must be configured to upload tour files.', 'h3-tour-management');
-                                        }
-                                        ?>
-                                    </p>
-                                    <?php if ($s3_configured): ?>
-                                        <p class="description" style="color: #0073aa; font-weight: 500;">
-                                            <span class="dashicons dashicons-yes-alt" style="color: #00a32a;"></span>
-                                            <?php _e('AWS S3 is configured and ready for all tour uploads.', 'h3-tour-management'); ?>
-                                        </p>
-                                    <?php else: ?>
-                                        <p class="description" style="color: #d63384;">
-                                            <span class="dashicons dashicons-warning"></span>
-                                            <?php _e('S3 Direct Upload is required for file uploads.', 'h3-tour-management'); ?>
-                                            <a href="<?php echo esc_url(admin_url('admin.php?page=h3tm-upload-settings')); ?>"> <?php _e('Configure S3 Now', 'h3-tour-management'); ?></a>
-                                        </p>
-                                    <?php endif; ?>
-                                    <div id="file-info" style="margin-top: 5px; display: none;">
-                                        <strong><?php _e('File:', 'h3-tour-management'); ?></strong> <span id="file-name"></span><br>
-                                        <strong><?php _e('Size:', 'h3-tour-management'); ?></strong> <span id="file-size"></span>
-                                    </div>
-                                </td>
-                            </tr>
-                        </table>
-                        <p class="submit">
-                            <button type="submit" class="button button-primary"><?php _e('Upload Tour', 'h3-tour-management'); ?></button>
-                            <span class="spinner"></span>
-                        </p>
-                    </form>
-                    <div id="upload-result" class="notice" style="display:none;"></div>
-                </div>
-                
-                <!-- S3 Tours Section -->
-                <div class="h3tm-section">
-                    <h2>
-                        <?php _e('S3 Tours (Cloud Storage)', 'h3-tour-management'); ?>
-                        <small style="margin-left: 10px; color: #00a32a;">✓ <?php _e('Recommended', 'h3-tour-management'); ?></small>
-                    </h2>
-                    <div id="s3-tour-list-container">
-                        <p id="s3-loading-message"><span class="spinner is-active" style="float: none;"></span> <?php _e('Loading S3 tours...', 'h3-tour-management'); ?></p>
-                    </div>
-                </div>
+            <h1><?php _e('Tours Management', 'h3-tour-management'); ?></h1>
 
-                <!-- Local Tours Section -->
+            <div class="h3tm-admin-container">
+                <!-- Tours Section -->
                 <div class="h3tm-section">
-                    <h2>
-                        <?php _e('Local Tours (Legacy)', 'h3-tour-management'); ?>
-                        <small style="margin-left: 10px; color: #d63638;">⚠️ <?php _e('Please migrate to S3', 'h3-tour-management'); ?></small>
-                    </h2>
-                    <div id="local-tour-list-container">
-                    <?php if (empty($local_tours)) : ?>
-                        <p><?php _e('No local tours found. All tours should be uploaded to S3.', 'h3-tour-management'); ?></p>
-                    <?php else : ?>
-                        <div class="notice notice-warning inline">
-                            <p><?php _e('These tours are stored locally and should be migrated to S3 for better performance and reliability.', 'h3-tour-management'); ?></p>
-                        </div>
-                        <table class="wp-list-table widefat fixed striped">
-                            <thead>
-                                <tr>
-                                    <th><?php _e('Tour Name', 'h3-tour-management'); ?></th>
-                                    <th><?php _e('Status', 'h3-tour-management'); ?></th>
-                                    <th><?php _e('URL', 'h3-tour-management'); ?></th>
-                                    <th><?php _e('Actions', 'h3-tour-management'); ?></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($local_tours as $tour) : ?>
-                                    <tr data-tour="<?php echo esc_attr($tour); ?>">
-                                        <td><?php echo esc_html($tour); ?></td>
-                                        <td><span style="color: #d63638;">⚠️ <?php _e('Local Only', 'h3-tour-management'); ?></span></td>
-                                        <td>
-                                            <a href="<?php echo esc_url(site_url('/h3panos/' . rawurlencode($tour))); ?>" target="_blank">
-                                                <?php echo esc_url(site_url('/h3panos/' . rawurlencode($tour))); ?>
-                                            </a>
-                                        </td>
-                                        <td>
-                                            <button class="button button-primary migrate-to-s3" data-tour="<?php echo esc_attr($tour); ?>">
-                                                <?php _e('Migrate to S3', 'h3-tour-management'); ?>
-                                            </button>
-                                            <button class="button delete-tour" data-tour="<?php echo esc_attr($tour); ?>">
-                                                <?php _e('Delete', 'h3-tour-management'); ?>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    <?php endif; ?>
+                    <h2><?php _e('Available Tours', 'h3-tour-management'); ?></h2>
+                    <div id="s3-tour-list-container">
+                        <p id="s3-loading-message"><span class="spinner is-active" style="float: none;"></span> <?php _e('Loading tours...', 'h3-tour-management'); ?></p>
                     </div>
                 </div>
                 

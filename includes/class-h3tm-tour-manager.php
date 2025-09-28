@@ -1,863 +1,72 @@
 <?php
-/**
- * Tour management functionality
- */
 class H3TM_Tour_Manager {
     
-    private $tour_dir;
-    
+    /**
+     * Constructor - Simplified for S3-only operation
+     */
     public function __construct() {
-        $this->tour_dir = H3TM_Pantheon_Helper::get_h3panos_path();
-        
-        // Ensure tour directory exists (Pantheon-aware)
-        H3TM_Pantheon_Helper::ensure_h3panos_directory();
+        // No local tour directory needed
     }
     
     /**
-     * Get all tours
+     * Get all tours - Now only returns S3 tours
+     * @deprecated Use H3TM_S3_Simple::list_s3_tours() directly
      */
     public function get_all_tours() {
-        $tours = array();
+        $s3_simple = new H3TM_S3_Simple();
+        $s3_tours = $s3_simple->list_s3_tours();
         
-        if (!is_dir($this->tour_dir)) {
-            return $tours;
+        if (is_array($s3_tours) && !empty($s3_tours)) {
+            return $s3_tours;
         }
         
-        $dir = new DirectoryIterator($this->tour_dir);
-        foreach ($dir as $fileinfo) {
-            if ($fileinfo->isDir() && !$fileinfo->isDot()) {
-                $tours[] = $fileinfo->getFilename();
-            }
-        }
-        
-        sort($tours);
-        return $tours;
+        return array();
     }
     
     /**
-     * Upload a new tour
+     * Upload tour - Redirects to S3 upload
+     * @deprecated Tours are managed directly in S3
      */
-    public function upload_tour($tour_name, $file, $is_pre_uploaded = false) {
-        $result = array('success' => false, 'message' => '');
-        
-        // Sanitize tour name
-        $tour_name = sanitize_file_name($tour_name);
-        $tour_path = $this->tour_dir . '/' . $tour_name;
-        
-        // Check if tour already exists
-        if (file_exists($tour_path)) {
-            $result['message'] = __('A tour with this name already exists.', 'h3-tour-management');
-            return $result;
-        }
-        
-        // Check file type
-        $file_type = wp_check_filetype($file['name']);
-        if ($file_type['ext'] !== 'zip') {
-            $result['message'] = __('Please upload a ZIP file.', 'h3-tour-management');
-            return $result;
-        }
-        
-        // Create tour directory
-        if (!wp_mkdir_p($tour_path)) {
-            $result['message'] = __('Failed to create tour directory.', 'h3-tour-management');
-            return $result;
-        }
-        
-        // Handle file movement - ensure target directory exists first
-        $upload_dir = wp_upload_dir();
-        $temp_file = $upload_dir['basedir'] . '/h3-tours/' . basename($file['name']);
-
-        // Create h3-tours directory if it doesn't exist (like upload handlers)
-        $h3_tours_dir = $upload_dir['basedir'] . '/h3-tours';
-        if (!file_exists($h3_tours_dir)) {
-            if (!wp_mkdir_p($h3_tours_dir)) {
-                rmdir($tour_path);
-                $result['message'] = __('Failed to create upload directory.', 'h3-tour-management');
-                error_log('H3TM Upload Error: Failed to create h3-tours directory: ' . $h3_tours_dir);
-                return $result;
-            }
-        }
-
-        // Verify directory is writable
-        if (!is_writeable($h3_tours_dir)) {
-            rmdir($tour_path);
-            $result['message'] = __('Upload directory is not writable.', 'h3-tour-management');
-            error_log('H3TM Upload Error: h3-tours directory not writable: ' . $h3_tours_dir);
-            return $result;
-        }
-
-        // Add debug information for troubleshooting
-        $debug_info = array(
-            'source_file' => $file['tmp_name'],
-            'target_file' => $temp_file,
-            'source_exists' => file_exists($file['tmp_name']),
-            'target_dir' => $h3_tours_dir,
-            'target_dir_exists' => file_exists($h3_tours_dir),
-            'target_dir_writable' => is_writeable($h3_tours_dir),
-            'is_pre_uploaded' => $is_pre_uploaded,
-            'is_pantheon' => (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0),
-            'abspath' => ABSPATH,
-            'paths_identical' => ($file['tmp_name'] === $temp_file)
+    public function upload_tour($tour_name, $file) {
+        return array(
+            'success' => false,
+            'message' => __('Direct uploads are no longer supported. Tours are managed through S3.', 'h3-tour-management')
         );
-
-        if ($is_pre_uploaded) {
-            // Check if file is already in correct location (chunked upload case)
-            if ($file['tmp_name'] === $temp_file) {
-                // File is already in the correct location, no need to move
-                error_log('H3TM Upload Info: File already in correct location, skipping move | Debug: ' . json_encode($debug_info));
-            } else {
-                // File needs to be moved to correct location
-                if (!rename($file['tmp_name'], $temp_file)) {
-                    rmdir($tour_path);
-                    $error_msg = __('Failed to move uploaded file.', 'h3-tour-management');
-                    error_log('H3TM Upload Error: Failed to rename chunked file | Debug: ' . json_encode($debug_info));
-                    $result['message'] = $error_msg;
-                    return $result;
-                }
-            }
-        } else {
-            // Traditional upload
-            if (!move_uploaded_file($file['tmp_name'], $temp_file)) {
-                rmdir($tour_path);
-                $error_msg = __('Failed to move uploaded file.', 'h3-tour-management');
-                error_log('H3TM Upload Error: Failed to move uploaded file | Debug: ' . json_encode($debug_info));
-                $result['message'] = $error_msg;
-                return $result;
-            }
-        }
-        
-        // Extract ZIP file with Pantheon-compatible streaming
-        $zip = new ZipArchive();
-        if ($zip->open($temp_file) === TRUE) {
-            // Use streaming extraction for Pantheon compatibility
-            if ($this->extract_zip_streaming($zip, $tour_path)) {
-                $zip->close();
-                unlink($temp_file);
-            } else {
-                $zip->close();
-                unlink($temp_file);
-                $this->delete_directory($tour_path);
-                $result['message'] = __('Failed to extract ZIP file (memory limit exceeded).', 'h3-tour-management');
-                error_log('H3TM Upload Error: ZIP extraction failed, likely memory limit | Debug: ' . json_encode($debug_info));
-                return $result;
-            }
-            
-            // Check if files are in a subdirectory and move them up
-            $structure_fixed = $this->fix_tour_directory_structure($tour_path);
-            error_log('H3TM: Structure fix result: ' . ($structure_fixed ? 'SUCCESS' : 'FAILED'));
-
-            // List what's actually in the tour directory after structure fix
-            if (is_dir($tour_path)) {
-                $final_contents = scandir($tour_path);
-                error_log('H3TM: Final tour directory contents: ' . implode(', ', array_filter($final_contents, function($item) {
-                    return $item !== '.' && $item !== '..';
-                })));
-            }
-
-            // Verify index file exists at top level
-            $index_exists = file_exists($tour_path . '/index.html') ||
-                           file_exists($tour_path . '/index.htm');
-
-            error_log('H3TM: Index file check - HTML: ' . (file_exists($tour_path . '/index.html') ? 'EXISTS' : 'NOT FOUND') .
-                     ', HTM: ' . (file_exists($tour_path . '/index.htm') ? 'EXISTS' : 'NOT FOUND'));
-
-            if (!$index_exists) {
-                $this->delete_directory($tour_path);
-                $result['message'] = __('Invalid tour structure: No index.html found at root level.', 'h3-tour-management');
-                return $result;
-            }
-            
-            // Skip PHP index file creation - just use original index.html
-            // if ($this->create_php_index($tour_path, $tour_name)) {
-            //     $result['success'] = true;
-            //     $result['message'] = __('Tour uploaded successfully.', 'h3-tour-management');
-            // } else {
-            //     $this->delete_directory($tour_path);
-            //     $result['message'] = __('Failed to create PHP index file.', 'h3-tour-management');
-            // }
-            
-            // Success without PHP index creation
-            $result['success'] = true;
-            $result['message'] = __('Tour uploaded successfully.', 'h3-tour-management');
-        } else {
-            unlink($temp_file);
-            $this->delete_directory($tour_path);
-            $result['message'] = __('Failed to extract ZIP file.', 'h3-tour-management');
-        }
-
-        return $result;
     }
-
+    
     /**
-     * Memory-efficient ZIP extraction for Pantheon compatibility
-     */
-    private function extract_zip_streaming($zip, $extract_to) {
-        $is_pantheon = defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0;
-
-        // Set reasonable limits for S3 downloaded files
-        $original_memory = ini_get('memory_limit');
-        $original_time = ini_get('max_execution_time');
-
-        @ini_set('memory_limit', '512M');
-        @ini_set('max_execution_time', 300); // 5 minutes should be sufficient
-
-        $memory_limit = $is_pantheon ? 300000000 : 800000000; // Higher limits for large files
-        $extracted_count = 0;
-        $total_files = $zip->numFiles;
-
-        try {
-            for ($i = 0; $i < $total_files; $i++) {
-                // More aggressive memory checking for large files
-                $current_memory = memory_get_usage(true);
-                if ($current_memory > $memory_limit) {
-                    error_log('H3TM Upload Error: Memory limit exceeded (' . round($current_memory/1024/1024) . 'MB) at file ' . $i . '/' . $total_files);
-                    return false;
-                }
-
-                $filename = $zip->getNameIndex($i);
-                if ($filename === false) continue;
-
-                // Skip hidden/system files and directories
-                if (strpos($filename, '__MACOSX') !== false ||
-                    strpos($filename, '.DS_Store') !== false ||
-                    strpos($filename, '.Spotlight-V100') !== false ||
-                    strpos($filename, '.Trashes') !== false ||
-                    substr($filename, -1) === '/') {
-                    continue;
-                }
-
-                // Get file info before extracting
-                $stat = $zip->statIndex($i);
-                if ($stat === false) {
-                    continue;
-                }
-
-                // Skip very large individual files that might cause memory issues
-                // Exception: Allow Web.zip files up to 1GB and Web/ content files up to 500MB
-                $is_web_zip = (basename($filename) === 'Web.zip');
-                $is_web_content = (strpos($filename, 'Web/') === 0); // Files inside Web/ directory
-
-                if ($is_web_zip) {
-                    $size_limit = 1073741824; // 1GB for Web.zip files
-                } elseif ($is_web_content) {
-                    $size_limit = 524288000; // 500MB for files inside Web/ directory
-                } else {
-                    $size_limit = 100000000; // 100MB for other files
-                }
-
-                if ($stat['size'] > $size_limit) {
-                    $limit_desc = $is_web_zip ? '1GB' : ($is_web_content ? '500MB' : '100MB');
-                    error_log('H3TM Upload Warning: Skipping large file: ' . $filename . ' (' . round($stat['size']/1024/1024) . 'MB) - exceeds ' . $limit_desc . ' limit');
-                    continue;
-                }
-
-                // Extract file using stream for large files
-                if ($stat['size'] > 10000000) { // 10MB+, use stream
-                    if (!$this->extract_large_file_streaming($zip, $i, $extract_to . '/' . $filename)) {
-                        error_log('H3TM Upload Error: Failed to extract large file: ' . $filename);
-                        continue;
-                    }
-                } else {
-                    // Small files - extract normally
-                    $content = $zip->getFromIndex($i);
-                    if ($content === false) {
-                        error_log('H3TM Upload Warning: Could not extract file: ' . $filename);
-                        continue;
-                    }
-
-                    // Prepare target path
-                    $target_path = $extract_to . '/' . $filename;
-                    $target_dir = dirname($target_path);
-
-                    // Create directory if needed
-                    if (!file_exists($target_dir)) {
-                        if (!wp_mkdir_p($target_dir)) {
-                            error_log('H3TM Upload Error: Failed to create directory: ' . $target_dir);
-                            unset($content);
-                            return false;
-                        }
-                    }
-
-                    // Write file content
-                    if (file_put_contents($target_path, $content) === false) {
-                        error_log('H3TM Upload Error: Failed to write file: ' . $target_path);
-                        unset($content);
-                        return false;
-                    }
-
-                    // Clear content from memory immediately
-                    unset($content);
-                }
-
-                $extracted_count++;
-
-                // More frequent garbage collection for large files
-                if ($extracted_count % 5 === 0) {
-                    if (function_exists('gc_collect_cycles')) {
-                        gc_collect_cycles();
-                    }
-
-                    // Log progress for very large archives
-                    if ($total_files > 1000) {
-                        error_log('H3TM Upload Progress: Extracted ' . $extracted_count . '/' . $total_files . ' files');
-                    }
-                }
-            }
-
-            return true;
-
-        } finally {
-            // Restore original settings
-            @ini_set('memory_limit', $original_memory);
-            @ini_set('max_execution_time', $original_time);
-        }
-    }
-
-    /**
-     * Extract large files using streaming to avoid memory issues
-     */
-    private function extract_large_file_streaming($zip, $index, $target_path) {
-        $target_dir = dirname($target_path);
-
-        // Create directory if needed
-        if (!file_exists($target_dir)) {
-            if (!wp_mkdir_p($target_dir)) {
-                return false;
-            }
-        }
-
-        // Use stream for large files
-        $stream = $zip->getStream($zip->getNameIndex($index));
-        if ($stream === false) {
-            return false;
-        }
-
-        $target_file = fopen($target_path, 'wb');
-        if ($target_file === false) {
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
-            return false;
-        }
-
-        // Stream the file in chunks
-        $chunk_size = 8192; // 8KB chunks
-        while (!feof($stream)) {
-            $chunk = fread($stream, $chunk_size);
-            if ($chunk === false) {
-                break;
-            }
-
-            if (fwrite($target_file, $chunk) === false) {
-                fclose($target_file);
-                if (is_resource($stream)) {
-                    fclose($stream);
-                }
-                return false;
-            }
-        }
-
-        fclose($target_file);
-        if (is_resource($stream)) {
-            fclose($stream);
-        }
-
-        return true;
-    }
-
-    /**
-     * Delete a tour
+     * Delete tour - Removes from S3
+     * @deprecated Use S3 management directly
      */
     public function delete_tour($tour_name) {
-        $result = array('success' => false, 'message' => '');
-        
-        $tour_path = $this->tour_dir . '/' . $tour_name;
-        
-        if (!file_exists($tour_path)) {
-            $result['message'] = __('Tour not found.', 'h3-tour-management');
-            return $result;
-        }
-        
-        if ($this->delete_directory($tour_path)) {
-            // Remove tour from all users
-            $this->remove_tour_from_users($tour_name);
-            
-            $result['success'] = true;
-            $result['message'] = __('Tour deleted successfully.', 'h3-tour-management');
-        } else {
-            $result['message'] = __('Failed to delete tour.', 'h3-tour-management');
-        }
-        
-        return $result;
+        return array(
+            'success' => false,
+            'message' => __('Tour deletion should be managed through S3 directly.', 'h3-tour-management')
+        );
     }
     
     /**
-     * Rename a tour
+     * Rename tour - Not supported for S3 tours
+     * @deprecated S3 tours cannot be renamed directly
      */
     public function rename_tour($old_name, $new_name) {
-        $result = array('success' => false, 'message' => '');
-        
-        $new_name = sanitize_file_name($new_name);
-        $old_path = $this->tour_dir . '/' . $old_name;
-        $new_path = $this->tour_dir . '/' . $new_name;
-        
-        if (!file_exists($old_path)) {
-            $result['message'] = __('Tour not found.', 'h3-tour-management');
-            return $result;
-        }
-        
-        if (file_exists($new_path)) {
-            $result['message'] = __('A tour with the new name already exists.', 'h3-tour-management');
-            return $result;
-        }
-        
-        // Add debug info for rename operation
-        $debug_info = array(
-            'old_path' => $old_path,
-            'new_path' => $new_path,
-            'old_exists' => file_exists($old_path),
-            'new_exists' => file_exists($new_path),
-            'parent_writeable' => is_writeable(dirname($old_path)),
-            'is_pantheon' => (defined('PANTHEON_ENVIRONMENT') || strpos(ABSPATH, '/code/') === 0)
+        return array(
+            'success' => false,
+            'message' => __('Tour renaming is not supported for S3 tours.', 'h3-tour-management')
         );
-        
-        // Use copy-and-delete approach like upload process (Pantheon-compatible)
-        $rename_success = false;
-        $debug_info['attempts'] = array();
-        
-        try {
-            // Set reasonable execution time for S3 operations
-            if (function_exists('set_time_limit')) {
-                set_time_limit(300); // 5 minutes for tour operations
-            }
-            
-            // Method 1: Fast copy-and-delete approach (same as upload process)
-            // Create new directory
-            if (!wp_mkdir_p($new_path)) {
-                throw new Exception('Failed to create new directory');
-            }
-            
-            // Copy all files with optimization
-            $copy_success = $this->copy_directory_optimized($old_path, $new_path);
-            if (!$copy_success) {
-                throw new Exception('Failed to copy files to new directory');
-            }
-            
-            // Verify copy worked
-            if (!file_exists($new_path . '/index.htm') && !file_exists($new_path . '/index.html')) {
-                throw new Exception('Copy verification failed - no index file found');
-            }
-            
-            // Delete old directory
-            if (!$this->delete_directory($old_path)) {
-                // Copy succeeded but cleanup failed - this is acceptable
-                $debug_info['cleanup_warning'] = 'Old directory not fully deleted';
-            }
-            
-            $rename_success = true;
-            $debug_info['method'] = 'copy_and_delete_optimized';
-            $debug_info['attempts'][] = 'copy_and_delete_success';
-            
-        } catch (Exception $e) {
-            $debug_info['attempts'][] = array(
-                'method' => 'copy_and_delete_failed',
-                'error' => $e->getMessage()
-            );
-            
-            // Clean up partial copy if it exists
-            if (file_exists($new_path)) {
-                $this->delete_directory($new_path);
-            }
-        }
-        
-        // Fallback: Try shell command
-        if (!$rename_success && function_exists('exec')) {
-            $old_escaped = escapeshellarg($old_path);
-            $new_escaped = escapeshellarg($new_path);
-            $command = "mv $old_escaped $new_escaped 2>&1";
-            
-            $output = array();
-            $return_code = 0;
-            exec($command, $output, $return_code);
-            
-            if ($return_code === 0 && file_exists($new_path) && !file_exists($old_path)) {
-                $rename_success = true;
-                $debug_info['method'] = 'shell_mv';
-                $debug_info['attempts'][] = 'shell_mv_success';
-            } else {
-                $debug_info['attempts'][] = array(
-                    'method' => 'shell_mv_failed',
-                    'return_code' => $return_code,
-                    'output' => implode(' ', $output)
-                );
-            }
-        }
-        
-        if ($rename_success) {
-            // Update tour name for all users
-            $this->update_tour_name_for_users($old_name, $new_name);
-            
-            $result['success'] = true;
-            $result['message'] = __('Tour renamed successfully.', 'h3-tour-management');
-        } else {
-            $result['message'] = __('Failed to rename tour using all methods.', 'h3-tour-management') . ' Debug: ' . json_encode($debug_info);
-        }
-        
-        return $result;
     }
     
     /**
-     * Create PHP index file
-     */
-    private function create_php_index($tour_path, $tour_name) {
-        $html_file = $tour_path . '/index.html';
-        $htm_file = $tour_path . '/index.htm';
-        $php_file = $tour_path . '/index.php';
-        
-        // Determine which HTML file exists
-        $source_file = '';
-        if (file_exists($html_file)) {
-            $source_file = $html_file;
-        } elseif (file_exists($htm_file)) {
-            $source_file = $htm_file;
-        } else {
-            return false;
-        }
-        
-        // Read the original HTML content
-        $html_content = file_get_contents($source_file);
-        if ($html_content === false) {
-            return false;
-        }
-        
-        // Extract the title
-        $title = $tour_name;
-        if (preg_match('/<title>(.*?)<\/title>/i', $html_content, $matches)) {
-            $title = trim($matches[1]);
-        }
-        
-        // Create PHP index file with analytics code
-        $php_content = '<?php
-/**
- * H3 Tour Index File
- * Tour: ' . esc_html($tour_name) . '
- * Generated by H3 Tour Management Plugin
- */
-
-// WordPress environment (optional - remove if not needed)
-// require_once($_SERVER["DOCUMENT_ROOT"] . "/wp-load.php");
-
-// Get tour name from directory
-$tour_name = basename(__DIR__);
-
-// Analytics configuration from plugin settings
-$ga_measurement_id = "' . get_option('h3tm_ga_measurement_id', 'G-08Q1M637NJ') . '";
-$analytics_enabled = ' . (get_option('h3tm_analytics_enabled', '1') ? 'true' : 'false') . ';
-$track_interactions = ' . (get_option('h3tm_track_interactions', '1') ? 'true' : 'false') . ';
-$track_time_spent = ' . (get_option('h3tm_track_time_spent', '1') ? 'true' : 'false') . ';
-
-// Custom analytics parameters (modify as needed)
-$custom_dimensions = array();
-$custom_events = array();
-
-// Start output
-?>
-<!DOCTYPE html>
-' . substr($html_content, strpos($html_content, '<html'));
-        
-        // Insert Google Analytics code before </head>
-        $analytics_code = '
-<!-- Google Analytics -->
-<?php if ($analytics_enabled && !empty($ga_measurement_id)) : ?>
-<script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo $ga_measurement_id; ?>"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag(\'js\', new Date());
-  
-  gtag(\'config\', \'<?php echo $ga_measurement_id; ?>\', {
-    \'page_title\': \'' . addslashes($title) . '\',
-    \'page_path\': \'/\' + \'<?php echo H3TM_TOUR_DIR; ?>\' + \'/\' + \'<?php echo $tour_name; ?>\' + \'/\'
-  });
-  
-  // Track tour view event
-  gtag(\'event\', \'tour_view\', {
-    \'tour_name\': \'<?php echo $tour_name; ?>\',
-    \'tour_title\': \'' . addslashes($title) . '\'
-  });
-</script>
-
-<!-- Custom Analytics Tracking -->
-<script>
-  // Track tour engagement
-  document.addEventListener(\'DOMContentLoaded\', function() {
-    <?php if ($track_interactions) : ?>
-    // Track panorama interactions
-    if (typeof tour !== \'undefined\' && tour.on) {
-      tour.on(\'view-change\', function(e) {
-        if (typeof gtag !== \'undefined\') {
-          gtag(\'event\', \'panorama_interaction\', {
-            \'event_category\': \'Tour Engagement\',
-            \'event_label\': e.view || \'unknown\',
-            \'tour_name\': \'<?php echo $tour_name; ?>\'
-          });
-        }
-      });
-    }
-    <?php endif; ?>
-    
-    <?php if ($track_time_spent) : ?>
-    // Track time on page
-    let startTime = Date.now();
-    window.addEventListener(\'beforeunload\', function() {
-      let timeSpent = Math.round((Date.now() - startTime) / 1000);
-      if (typeof gtag !== \'undefined\') {
-        gtag(\'event\', \'timing_complete\', {
-          \'name\': \'tour_session\',
-          \'value\': timeSpent,
-          \'event_category\': \'Tour Engagement\',
-          \'event_label\': \'<?php echo $tour_name; ?>\'
-        });
-      }
-    });
-    <?php endif; ?>
-  });
-</script>
-
-<?php 
-// Insert custom analytics code if provided
-$custom_code = get_option(\'h3tm_custom_analytics_code\', \'\');
-if (!empty($custom_code)) {
-    echo "<!-- Custom Analytics Code -->\n";
-    echo "<script>\n" . $custom_code . "\n</script>\n";
-    echo "<!-- End Custom Analytics Code -->\n";
-}
-?>
-
-<?php endif; ?>
-<!-- End Google Analytics -->
-
-</head>';
-        
-        // Replace </head> with analytics code + </head>
-        $php_content = str_replace('</head>', $analytics_code, $php_content);
-        
-        // Add custom PHP tracking at the end of body
-        $tracking_code = '
-<!-- Additional PHP Tracking -->
-<?php
-// You can add custom PHP tracking code here
-// For example, log visits to a database, send notifications, etc.
-
-// Example: Custom event tracking
-if ($analytics_enabled) {
-    // Add any server-side tracking logic here
-}
-?>
-</body>';
-        
-        // Replace </body> with tracking code
-        $php_content = str_replace('</body>', $tracking_code, $php_content);
-        
-        // Write the PHP file
-        if (file_put_contents($php_file, $php_content) === false) {
-            return false;
-        }
-        
-        // Delete the original HTML file
-        unlink($source_file);
-        
-        // Create .htaccess to ensure index.php is used
-        $htaccess_content = '# H3 Tour Management - Use PHP index
-DirectoryIndex index.php index.html index.htm
-
-# Optional: Prevent direct access to media files from outside
-# <FilesMatch "\.(jpg|jpeg|png|gif|mp4|webm)$">
-#     Order Allow,Deny
-#     Allow from all
-# </FilesMatch>';
-        
-        file_put_contents($tour_path . '/.htaccess', $htaccess_content);
-        
-        return true;
-    }
-    
-    /**
-     * Get tour title
-     */
-    public function get_tour_title($tour_name) {
-        // Try PHP file first, then HTML files
-        $files = array(
-            '/' . H3TM_TOUR_DIR . '/' . rawurlencode($tour_name) . '/index.php',
-            '/' . H3TM_TOUR_DIR . '/' . rawurlencode($tour_name) . '/index.html',
-            '/' . H3TM_TOUR_DIR . '/' . rawurlencode($tour_name) . '/index.htm'
-        );
-        
-        foreach ($files as $file) {
-            $url = site_url($file);
-            $response = wp_remote_get($url);
-            
-            if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
-                $body = wp_remote_retrieve_body($response);
-                if (preg_match('/<title>(.*?)<\/title>/i', $body, $matches)) {
-                    return trim($matches[1]);
-                }
-            }
-        }
-        
-        return $tour_name;
-    }
-    
-    /**
-     * Get tour media
-     */
-    public function get_tour_media($tour_name) {
-        $url = site_url('/' . H3TM_TOUR_DIR . '/' . rawurlencode($tour_name) . '/locale/en.txt');
-        $response = wp_remote_get($url);
-        
-        if (is_wp_error($response)) {
-            return array();
-        }
-        
-        $body = wp_remote_retrieve_body($response);
-        $media = array();
-        $lines = explode("\n", $body);
-        
-        foreach ($lines as $i => $line) {
-            $parts = explode(' = ', $line);
-            if (count($parts) == 2) {
-                $media[$i] = $parts;
-            }
-        }
-        
-        return $media;
-    }
-    
-    /**
-     * Copy directory optimized for large files (prevents timeout)
-     */
-    private function copy_directory_optimized($source, $destination) {
-        if (!is_dir($source)) {
-            return false;
-        }
-        
-        // Ensure destination exists
-        if (!wp_mkdir_p($destination)) {
-            return false;
-        }
-        
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::SELF_FIRST
-        );
-        
-        $file_count = 0;
-        foreach ($iterator as $item) {
-            $target_path = $destination . DIRECTORY_SEPARATOR . $iterator->getSubPathName();
-            
-            if ($item->isDir()) {
-                if (!wp_mkdir_p($target_path)) {
-                    return false;
-                }
-            } else {
-                // Copy file with memory optimization
-                if (!$this->copy_file_chunked($item->getPathname(), $target_path)) {
-                    return false;
-                }
-                $file_count++;
-                
-                // Prevent timeout on large operations
-                if ($file_count % 50 === 0) {
-                    // Flush output and reset timeout every 50 files
-                    if (function_exists('fastcgi_finish_request')) {
-                        fastcgi_finish_request();
-                    }
-                }
-            }
-        }
-        
-        return true;
-    }
-    
-    /**
-     * Copy file in chunks to handle large files
-     */
-    private function copy_file_chunked($source, $destination) {
-        $chunk_size = 1024 * 1024; // 1MB chunks
-        
-        $source_handle = fopen($source, 'rb');
-        if (!$source_handle) {
-            return false;
-        }
-        
-        $dest_handle = fopen($destination, 'wb');
-        if (!$dest_handle) {
-            fclose($source_handle);
-            return false;
-        }
-        
-        while (!feof($source_handle)) {
-            $chunk = fread($source_handle, $chunk_size);
-            if ($chunk === false || fwrite($dest_handle, $chunk) === false) {
-                fclose($source_handle);
-                fclose($dest_handle);
-                unlink($destination);
-                return false;
-            }
-        }
-        
-        fclose($source_handle);
-        fclose($dest_handle);
-        
-        // Preserve file permissions
-        $perms = fileperms($source);
-        if ($perms !== false) {
-            chmod($destination, $perms);
-        }
-        
-        return true;
-    }
-    
-    /**
-     * Delete directory recursively
-     */
-    private function delete_directory($dir) {
-        if (!file_exists($dir)) {
-            return true;
-        }
-        
-        if (!is_dir($dir)) {
-            return unlink($dir);
-        }
-        
-        foreach (scandir($dir) as $item) {
-            if ($item == '.' || $item == '..') {
-                continue;
-            }
-            
-            if (!$this->delete_directory($dir . DIRECTORY_SEPARATOR . $item)) {
-                return false;
-            }
-        }
-        
-        return rmdir($dir);
-    }
-    
-    /**
-     * Remove tour from all users
+     * Remove tour from users - Still needed for user management
      */
     private function remove_tour_from_users($tour_name) {
         $users = get_users();
-        
         foreach ($users as $user) {
             $user_tours = get_user_meta($user->ID, 'h3tm_tours', true);
-            
-            if (is_array($user_tours) && in_array($tour_name, $user_tours)) {
-                $user_tours = array_diff($user_tours, array($tour_name));
-                
-                if (empty($user_tours)) {
-                    delete_user_meta($user->ID, 'h3tm_tours');
-                } else {
+            if (!empty($user_tours) && is_array($user_tours)) {
+                $key = array_search($tour_name, $user_tours);
+                if ($key !== false) {
+                    unset($user_tours[$key]);
                     update_user_meta($user->ID, 'h3tm_tours', array_values($user_tours));
                 }
             }
@@ -865,265 +74,50 @@ DirectoryIndex index.php index.html index.htm
     }
     
     /**
-     * Update tour name for all users
+     * Update tour name for users
      */
     private function update_tour_name_for_users($old_name, $new_name) {
         $users = get_users();
-        
         foreach ($users as $user) {
             $user_tours = get_user_meta($user->ID, 'h3tm_tours', true);
-            
-            if (is_array($user_tours) && in_array($old_name, $user_tours)) {
+            if (!empty($user_tours) && is_array($user_tours)) {
                 $key = array_search($old_name, $user_tours);
-                $user_tours[$key] = $new_name;
-                update_user_meta($user->ID, 'h3tm_tours', array_values($user_tours));
-            }
-        }
-    }
-    
-    /**
-     * Fix tour directory structure by moving files from subdirectory to root
-     * Now handles new nested structure: TOURNAME.zip/TOURNAME/Web.zip/Web/ -> tour files
-     */
-    private function fix_tour_directory_structure($tour_path) {
-        // Get all items in the tour directory
-        $items = scandir($tour_path);
-        $directories = array();
-        $files = array();
-        $has_index_at_root = false;
-
-        // Check current structure
-        foreach ($items as $item) {
-            if ($item == '.' || $item == '..') {
-                continue;
-            }
-
-            $item_path = $tour_path . '/' . $item;
-
-            // Check if index file exists at root
-            if ($item === 'index.html' || $item === 'index.htm') {
-                $has_index_at_root = true;
-            }
-
-            // Collect directories and files
-            if (is_dir($item_path)) {
-                $directories[] = $item;
-            } else {
-                $files[] = $item;
-            }
-        }
-
-        // If index already at root, nothing to do
-        if ($has_index_at_root) {
-            return true;
-        }
-
-        // NEW: Check for nested zip structure (TOURNAME/Web.zip/Web/)
-        // Look for any directory that contains Web.zip, regardless of other files
-        error_log('H3TM: Checking for nested structure - found ' . count($directories) . ' directories: ' . implode(', ', $directories));
-
-        foreach ($directories as $directory) {
-            $subdir = $tour_path . '/' . $directory;
-            $web_zip_path = $subdir . '/Web.zip';
-
-            error_log('H3TM: Checking directory "' . $directory . '" for Web.zip at: ' . $web_zip_path);
-
-            // Check if this directory contains Web.zip (new nested structure)
-            if (file_exists($web_zip_path)) {
-                error_log('H3TM: ✓ Detected new nested zip structure with Web.zip at: ' . $web_zip_path);
-
-                // Extract Web.zip to a temporary location
-                $temp_extract_path = $subdir . '/temp_web_extract';
-                if (!wp_mkdir_p($temp_extract_path)) {
-                    error_log('H3TM: Failed to create temp extraction directory: ' . $temp_extract_path);
-                    return false;
-                }
-
-                // Extract the Web.zip file
-                $zip = new ZipArchive();
-                if ($zip->open($web_zip_path) === TRUE) {
-                    // Use streaming extraction for the nested zip too
-                    if ($this->extract_zip_streaming($zip, $temp_extract_path)) {
-                        $zip->close();
-
-                        // Check if Web/ directory was created and contains tour files
-                        $web_dir = $temp_extract_path . '/Web';
-                        if (is_dir($web_dir) &&
-                            (file_exists($web_dir . '/index.html') || file_exists($web_dir . '/index.htm'))) {
-
-                            error_log('H3TM: Found tour files in Web/ directory, moving to root');
-
-                            // List Web/ directory contents before moving
-                            $web_contents = scandir($web_dir);
-                            error_log('H3TM: Web/ directory contents before move: ' . implode(', ', array_filter($web_contents, function($item) {
-                                return $item !== '.' && $item !== '..';
-                            })));
-
-                            // Move contents from Web/ directory to tour root
-                            $move_result = $this->move_directory_contents($web_dir, $tour_path);
-                            error_log('H3TM: Move operation completed');
-
-                            // List tour root contents after moving
-                            $root_contents = scandir($tour_path);
-                            error_log('H3TM: Tour root contents after move: ' . implode(', ', array_filter($root_contents, function($item) {
-                                return $item !== '.' && $item !== '..';
-                            })));
-
-                            // Clean up temporary extraction and original subdirectory
-                            $this->delete_directory($temp_extract_path);
-                            $this->delete_directory($subdir);
-
-                            return true;
-                        } else {
-                            error_log('H3TM: No tour files found in extracted Web/ directory');
-                        }
-                    } else {
-                        $zip->close();
-                        error_log('H3TM: Failed to extract Web.zip file');
-                    }
-
-                    // Clean up on failure
-                    $this->delete_directory($temp_extract_path);
-                } else {
-                    error_log('H3TM: Failed to open Web.zip file: ' . $web_zip_path);
-                }
-
-                // Found and processed Web.zip, exit loop
-                break;
-            }
-        }
-
-        // EXISTING: If there's exactly one directory, check if it contains the tour files
-        if (count($directories) === 1) {
-            $subdir = $tour_path . '/' . $directories[0];
-
-            // Check if this subdirectory contains index.html/index.htm
-            if (file_exists($subdir . '/index.html') || file_exists($subdir . '/index.htm')) {
-                // Move all files from subdirectory to parent
-                $this->move_directory_contents($subdir, $tour_path);
-
-                // Remove the now-empty subdirectory
-                rmdir($subdir);
-            }
-        }
-
-        return true;
-    }
-    
-    /**
-     * Move all contents from source directory to destination
-     */
-    private function move_directory_contents($source, $destination) {
-        $items = scandir($source);
-        
-        foreach ($items as $item) {
-            if ($item == '.' || $item == '..') {
-                continue;
-            }
-            
-            $source_path = $source . '/' . $item;
-            $dest_path = $destination . '/' . $item;
-            
-            // If destination already exists, we need to handle it
-            if (file_exists($dest_path)) {
-                // If both are directories, merge them
-                if (is_dir($source_path) && is_dir($dest_path)) {
-                    $this->move_directory_contents($source_path, $dest_path);
-                    rmdir($source_path);
-                } else {
-                    // For files, skip if destination exists (don't overwrite)
-                    continue;
-                }
-            } else {
-                // Move the file or directory (Pantheon-compatible)
-                if (is_dir($source_path)) {
-                    // For directories, copy recursively then delete
-                    if ($this->copy_directory_optimized($source_path, $dest_path)) {
-                        $this->delete_directory($source_path);
-                    }
-                } else {
-                    // For files, copy then delete
-                    if (copy($source_path, $dest_path)) {
-                        unlink($source_path);
-                    }
+                if ($key !== false) {
+                    $user_tours[$key] = $new_name;
+                    update_user_meta($user->ID, 'h3tm_tours', $user_tours);
                 }
             }
         }
     }
     
     /**
-     * Update analytics code in existing tour
+     * Update tour analytics
      */
-    public function update_tour_analytics($tour_name) {
-        // Skip analytics update since we're not using PHP index files
-        return true;
-        
-        /* Disabled PHP index creation
-        $tour_path = $this->tour_dir . '/' . $tour_name;
-        $php_file = $tour_path . '/index.php';
-        
-        // Check if PHP file exists
-        if (!file_exists($php_file)) {
-            // If no PHP file, check for HTML file and convert it
-            $html_file = $tour_path . '/index.html';
-            $htm_file = $tour_path . '/index.htm';
-            
-            if (file_exists($html_file) || file_exists($htm_file)) {
-                return $this->create_php_index($tour_path, $tour_name);
-            }
-            return false;
-        }
-        */
-        
-        // Read existing PHP file
-        $content = file_get_contents($php_file);
-        if ($content === false) {
+    public function update_tour_analytics($tour_name, $analytics_data) {
+        if (!is_array($analytics_data)) {
             return false;
         }
         
-        // Update GA measurement ID
-        $ga_measurement_id = get_option('h3tm_ga_measurement_id', 'G-08Q1M637NJ');
-        $content = preg_replace(
-            '/\$ga_measurement_id = "[^"]*";/',
-            '$ga_measurement_id = "' . $ga_measurement_id . '";',
-            $content
-        );
+        // Store analytics in database
+        $option_key = 'h3tm_analytics_' . md5($tour_name);
+        $existing_data = get_option($option_key, array());
         
-        // Update analytics settings
-        $analytics_enabled = get_option('h3tm_analytics_enabled', '1') ? 'true' : 'false';
-        $content = preg_replace(
-            '/\$analytics_enabled = (true|false);/',
-            '$analytics_enabled = ' . $analytics_enabled . ';',
-            $content
-        );
-        
-        // Update tracking options
-        $track_interactions = get_option('h3tm_track_interactions', '1') ? 'true' : 'false';
-        $track_time_spent = get_option('h3tm_track_time_spent', '1') ? 'true' : 'false';
-        
-        // Add tracking variables if they don't exist
-        if (strpos($content, '$track_interactions') === false) {
-            $content = str_replace(
-                '$analytics_enabled = ' . $analytics_enabled . ';',
-                '$analytics_enabled = ' . $analytics_enabled . ';' . "\n" .
-                '$track_interactions = ' . $track_interactions . ';' . "\n" .
-                '$track_time_spent = ' . $track_time_spent . ';',
-                $content
-            );
-        } else {
-            $content = preg_replace(
-                '/\$track_interactions = (true|false);/',
-                '$track_interactions = ' . $track_interactions . ';',
-                $content
-            );
-            $content = preg_replace(
-                '/\$track_time_spent = (true|false);/',
-                '$track_time_spent = ' . $track_time_spent . ';',
-                $content
-            );
+        if (!is_array($existing_data)) {
+            $existing_data = array();
         }
         
-        // Write updated content back to file
-        return file_put_contents($php_file, $content) !== false;
+        // Merge new analytics with existing
+        $merged_data = array_merge($existing_data, $analytics_data);
+        
+        // Keep only last 30 days of data
+        $cutoff_time = strtotime('-30 days');
+        foreach ($merged_data as $timestamp => $data) {
+            if (is_numeric($timestamp) && $timestamp < $cutoff_time) {
+                unset($merged_data[$timestamp]);
+            }
+        }
+        
+        update_option($option_key, $merged_data);
+        return true;
     }
 }

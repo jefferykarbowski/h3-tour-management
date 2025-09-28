@@ -3,6 +3,16 @@
     margin: 20px 0;
 }
 
+/* Spinning animation for refresh button */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.dashicons.spinning {
+    animation: spin 1s linear infinite;
+}
+
 .h3tm-section {
     background: #fff;
     border: 1px solid #ccd0d4;

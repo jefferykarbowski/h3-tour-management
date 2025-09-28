@@ -172,20 +172,45 @@ function injectAnalyticsScript(htmlContent, tourName) {
             return htmlContent; // Return original if no </head> found
         }
 
-        // Create base tag for relative URLs + analytics script
+        // Fix any incorrect paths in the HTML
         const tourFolderName = tourName.replace(/ /g, '-');
-        const scriptTag = `
-<!-- H3 Tour Base URL -->
-<base href="/h3panos/${tourFolderName}/">
-<!-- H3 Tour Analytics -->
-<script src="/h3-analytics.js" data-tour-name="${tourName}"></script>
+
+        // Replace incorrect media paths (if any exist)
+        // Change /h3panos/Tour-Name/media/ to just ./media/
+        htmlContent = htmlContent.replace(new RegExp(`/h3panos/${tourFolderName}/media/`, 'g'), './media/');
+
+        // Also fix any references to h3panos in general
+        htmlContent = htmlContent.replace(new RegExp(`/h3panos/${tourFolderName}/`, 'g'), './');
+
+        // Inject external analytics script from WordPress site
+        // This allows centralized management of analytics code
+        const WORDPRESS_SITE = process.env.WORDPRESS_SITE || 'https://h3vt.com'; // Can be configured via environment variable
+
+        // Get the page title from the HTML if it exists
+        let pageTitle = tourName; // Default to tour name
+        const titleMatch = htmlContent.match(/<title>([^<]*)<\/title>/i);
+        if (titleMatch && titleMatch[1]) {
+            pageTitle = titleMatch[1].trim();
+        }
+
+        // Build the analytics script URL with all parameters
+        const analyticsParams = new URLSearchParams({
+            tour: tourName,
+            folder: tourFolderName,
+            title: pageTitle,
+            path: `/tours/${tourFolderName}/`
+        });
+
+        const analyticsTag = `
+<!-- H3 Tour Analytics - Managed by WordPress -->
+<script async src="${WORDPRESS_SITE}/h3-tour-analytics.js?${analyticsParams.toString()}"></script>
 <!-- End H3 Tour Analytics -->
 </head>`;
 
-        // Replace </head> with script tag + </head>
-        const updatedHtml = htmlContent.replace('</head>', scriptTag);
+        // Replace </head> with analytics tag + </head>
+        const updatedHtml = htmlContent.replace('</head>', analyticsTag);
 
-        console.log('✅ Analytics script injected successfully');
+        console.log('✅ External analytics script reference injected successfully');
         console.log('📏 Original HTML length:', htmlContent.length, '→ Updated:', updatedHtml.length);
 
         return updatedHtml;

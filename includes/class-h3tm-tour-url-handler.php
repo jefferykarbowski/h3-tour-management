@@ -379,12 +379,16 @@ class H3TM_Tour_URL_Handler {
     private function build_s3_url($tour_name, $file_path) {
         $bucket = $this->s3_config['bucket'];
         $region = $this->s3_config['region'];
-        
+
+        // Convert spaces to dashes for S3 path
+        // AWS/Lambda converts "Bee Cave" to "Bee-Cave" when uploading
+        $s3_tour_folder = str_replace(' ', '-', $tour_name);
+
         return sprintf(
             'https://%s.s3.%s.amazonaws.com/tours/%s/%s',
             $bucket,
             $region,
-            rawurlencode($tour_name),
+            rawurlencode($s3_tour_folder),
             $file_path
         );
     }
