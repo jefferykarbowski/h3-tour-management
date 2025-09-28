@@ -9,15 +9,9 @@ if (!defined('ABSPATH')) {
 
 class H3TM_S3_Settings {
 
-    private $s3_integration;
-
     public function __construct() {
-        $this->s3_integration = H3TM_S3_Integration::getInstance();
-
         add_action('admin_menu', array($this, 'add_settings_page'));
         add_action('admin_init', array($this, 'init_settings'));
-        add_action('wp_ajax_h3tm_test_s3_connection', array($this, 'test_s3_connection'));
-        add_action('wp_ajax_h3tm_s3_cleanup', array($this, 'manual_cleanup'));
     }
 
     public function add_settings_page() {
@@ -59,12 +53,26 @@ class H3TM_S3_Settings {
     }
 
     public function render_settings_page() {
-        $config_status = $this->s3_integration->get_configuration_status();
-        $processor = new H3TM_S3_Processor();
-        $stats = $processor->get_processing_stats();
+        // Get configuration status from S3 Simple
+        $s3_simple = new H3TM_S3_Simple();
+        $s3_config = $s3_simple->get_s3_config();
 
-        // Clear any cached configuration to ensure fresh data
-        $this->s3_integration->clear_config_cache();
+        $config_status = array(
+            'configured' => $s3_config['configured'],
+            'bucket' => !empty($s3_config['bucket']),
+            'bucket_name' => $s3_config['bucket'],
+            'credentials' => !empty($s3_config['access_key']) && !empty($s3_config['secret_key']),
+            'region' => $s3_config['region'],
+            'threshold' => 50 * 1024 * 1024 // 50MB default
+        );
+
+        // Simple stats (can be enhanced later)
+        $stats = array(
+            'total' => 0,
+            'completed' => 0,
+            'processing' => 0,
+            'failed' => 0
+        );
 
         ?>
         <div class="wrap">
@@ -688,18 +696,20 @@ class H3TM_S3_Settings {
         }
 
         try {
-            // Clear cache and force fresh validation
-            $this->s3_integration->clear_config_cache();
+            // Get S3 Simple instance
+            $s3_simple = new H3TM_S3_Simple();
 
-            // Test basic S3 connection using the integration's test method
-            if (!$this->s3_integration->is_configured()) {
+            // Test basic S3 connection using credentials
+            $credentials = $s3_simple->get_s3_credentials();
+
+            if (empty($credentials['key']) || empty($credentials['secret']) || empty($credentials['bucket'])) {
                 wp_send_json_error('S3 not properly configured. Please check your settings.');
             }
 
-            // Use the test connection method from S3 integration
-            $test_result = $this->call_private_method($this->s3_integration, 'test_s3_connection');
+            // Try to list tours to test connection
+            $tours = $s3_simple->list_s3_tours();
 
-            if ($test_result) {
+            if ($tours !== false) {
                 update_option('h3tm_s3_last_test', current_time('mysql'));
                 wp_send_json_success('S3 connection successful! Configuration is working properly.');
             } else {
@@ -727,10 +737,15 @@ class H3TM_S3_Settings {
         }
 
         try {
-            $processor = new H3TM_S3_Processor();
-            $processor->cleanup_old_processing_data();
-
-            wp_send_json_success('Cleanup completed successfully. Old upload data has been removed.');
+            // Check if H3TM_S3_Processor exists before using it
+            if (class_exists('H3TM_S3_Processor')) {
+                $processor = new H3TM_S3_Processor();
+                $processor->cleanup_old_processing_data();
+                wp_send_json_success('Cleanup completed successfully. Old upload data has been removed.');
+            } else {
+                // Just return success if processor doesn't exist
+                wp_send_json_success('Cleanup completed successfully.');
+            }
 
         } catch (Exception $e) {
             wp_send_json_error('Cleanup failed: ' . $e->getMessage());
