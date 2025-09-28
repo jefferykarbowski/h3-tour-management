@@ -1195,7 +1195,9 @@ class H3TM_Admin {
 
     /**
      * Invoke Lambda function to delete S3 tour files via AWS API
+     * DEPRECATED - Now using direct S3 archive method instead
      */
+    /*
     private function invoke_lambda_deletion($tour_name) {
         // Use WordPress HTTP API to invoke Lambda (no AWS CLI needed)
         $lambda_function_url = get_option('h3tm_lambda_function_url', '');
@@ -1259,9 +1261,10 @@ class H3TM_Admin {
             'message' => $response_body
         );
     }
+    */
 
     /**
-     * Handle tour deletion
+     * Handle tour deletion - archives to archive/ folder for 90 days
      */
     public function handle_delete_tour() {
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
@@ -1272,51 +1275,31 @@ class H3TM_Admin {
 
         $tour_name = sanitize_text_field($_POST['tour_name']);
 
-        error_log('H3TM Delete: Attempting to delete: ' . $tour_name);
+        error_log('H3TM Delete: Attempting to archive: ' . $tour_name);
 
-        // For S3 tours, check registry with flexible matching (spaces/dashes)
-        $s3_tours = get_option('h3tm_s3_tours', array());
+        // Use S3 Simple to archive the tour
+        $s3 = new H3TM_S3_Simple();
 
-        // Try to find the tour (check exact match, with dashes, and with spaces)
-        $found_key = null;
-        if (isset($s3_tours[$tour_name])) {
-            $found_key = $tour_name;
-        } elseif (isset($s3_tours[str_replace(' ', '-', $tour_name)])) {
-            $found_key = str_replace(' ', '-', $tour_name);
-        } elseif (isset($s3_tours[str_replace('-', ' ', $tour_name)])) {
-            $found_key = str_replace('-', ' ', $tour_name);
-        }
+        // Archive the tour to the archive/ folder
+        $archive_result = $s3->archive_tour($tour_name);
 
-        error_log('H3TM Delete: S3 registry search - Found key: ' . ($found_key ?? 'NOT FOUND'));
+        if ($archive_result['success']) {
+            // Clear the cache so the tour list updates
+            delete_transient('h3tm_s3_tour_list');
 
-        if ($found_key) {
-            // Call Lambda to archive S3 files
-            $deletion_result = $this->invoke_lambda_deletion($found_key);
-
-            // Remove from WordPress registry using the found key
-            unset($s3_tours[$found_key]);
-            update_option('h3tm_s3_tours', $s3_tours);
-
-            if ($deletion_result['success']) {
-                wp_send_json_success('Tour deleted successfully from S3 and WordPress');
-            } else {
-                wp_send_json_success('Tour removed from WordPress (S3 deletion may have failed - check manually)');
-            }
+            wp_send_json_success('Tour archived successfully. It will be permanently deleted after 90 days.');
         } else {
-            // Try local tour delete
-            $tour_manager = $this->get_tour_manager();
-            $result = $tour_manager->delete_tour($tour_name);
-
-            if ($result['success']) {
-                wp_send_json_success($result['message']);
+            // Check if it's a configuration issue or tour not found
+            if (strpos($archive_result['message'], 'not configured') !== false) {
+                wp_send_json_error('S3 is not configured. Please configure S3 settings first.');
             } else {
-                wp_send_json_error($result['message']);
+                wp_send_json_error($archive_result['message']);
             }
         }
     }
     
     /**
-     * Handle tour rename with enhanced error handling and Pantheon optimizations
+     * Handle tour rename - actually renames the S3 folder
      */
     public function handle_rename_tour() {
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
@@ -1328,26 +1311,28 @@ class H3TM_Admin {
         $old_name = sanitize_text_field($_POST['old_name']);
         $new_name = sanitize_text_field($_POST['new_name']);
 
-        // For S3 tours, update the registry and track original S3 folder name
-        $s3_tours = get_option('h3tm_s3_tours', array());
-        if (isset($s3_tours[$old_name])) {
-            // Copy tour data to new name
-            $tour_data = $s3_tours[$old_name];
+        error_log('H3TM Rename: "' . $old_name . '" → "' . $new_name . '"');
 
-            // Store original S3 folder name for URL mapping
-            if (!isset($tour_data['original_name'])) {
-                $tour_data['original_name'] = str_replace(' ', '-', $old_name);
-            }
+        // Use S3 Simple to rename the tour
+        $s3 = new H3TM_S3_Simple();
 
-            $s3_tours[$new_name] = $tour_data;
-            unset($s3_tours[$old_name]);
-            update_option('h3tm_s3_tours', $s3_tours);
+        // Rename the tour in S3
+        $rename_result = $s3->rename_tour($old_name, $new_name);
 
-            error_log('H3TM Rename: "' . $old_name . '" → "' . $new_name . '" (S3 folder: ' . $tour_data['original_name'] . ')');
+        if ($rename_result['success']) {
+            // Clear the cache so the tour list updates
+            delete_transient('h3tm_s3_tour_list');
 
             wp_send_json_success('Tour renamed successfully');
-            return;
+        } else {
+            // Check if it's a configuration issue or tour not found
+            if (strpos($rename_result['message'], 'not configured') !== false) {
+                wp_send_json_error('S3 is not configured. Please configure S3 settings first.');
+            } else {
+                wp_send_json_error($rename_result['message']);
+            }
         }
+        return;
 
         // Try local tour rename
         @ini_set('max_execution_time', 900);

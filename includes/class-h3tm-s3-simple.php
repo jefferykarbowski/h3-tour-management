@@ -1040,4 +1040,246 @@ class H3TM_S3_Simple {
             return false;
         }
     }
+
+    /**
+     * Archive a tour to the archive/ folder in S3
+     *
+     * @param string $tour_name Tour name to archive
+     * @return array Result with success status and message
+     */
+    public function archive_tour($tour_name) {
+        if (!$this->is_configured) {
+            return array('success' => false, 'message' => 'S3 not configured');
+        }
+
+        try {
+            $tour_s3_name = str_replace(' ', '-', $tour_name);
+            $source_prefix = 'tours/' . $tour_s3_name . '/';
+            $archive_prefix = 'archive/' . $tour_s3_name . '_' . date('Ymd_His') . '/';
+
+            error_log('H3TM S3 Archive: Moving ' . $source_prefix . ' to ' . $archive_prefix);
+
+            // List all files in the tour
+            $files = $this->list_tour_files($tour_s3_name);
+
+            if (empty($files)) {
+                return array('success' => false, 'message' => 'Tour not found in S3');
+            }
+
+            $moved = 0;
+            $errors = 0;
+
+            // Copy each file to archive location
+            foreach ($files as $file) {
+                $source_key = 'tours/' . $tour_s3_name . '/' . $file;
+                $dest_key = 'archive/' . $tour_s3_name . '_' . date('Ymd_His') . '/' . $file;
+
+                if ($this->copy_s3_object($source_key, $dest_key)) {
+                    // Delete the original after successful copy
+                    if ($this->delete_s3_object($source_key)) {
+                        $moved++;
+                    } else {
+                        $errors++;
+                        error_log('H3TM S3 Archive: Failed to delete ' . $source_key);
+                    }
+                } else {
+                    $errors++;
+                    error_log('H3TM S3 Archive: Failed to copy ' . $source_key . ' to ' . $dest_key);
+                }
+            }
+
+            error_log('H3TM S3 Archive: Moved ' . $moved . ' files, ' . $errors . ' errors');
+
+            if ($errors === 0) {
+                return array('success' => true, 'message' => 'Tour archived successfully');
+            } else {
+                return array('success' => false, 'message' => 'Partial archive: ' . $moved . ' files moved, ' . $errors . ' errors');
+            }
+
+        } catch (Exception $e) {
+            error_log('H3TM S3 Archive Error: ' . $e->getMessage());
+            return array('success' => false, 'message' => 'Archive failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * List all files in a tour
+     */
+    private function list_tour_files($tour_s3_name) {
+        $files = array();
+        $continuation_token = null;
+
+        do {
+            $query_params = array(
+                'list-type' => '2',
+                'max-keys' => '1000',
+                'prefix' => 'tours/' . $tour_s3_name . '/'
+            );
+
+            if ($continuation_token) {
+                $query_params['continuation-token'] = $continuation_token;
+            }
+
+            $request_uri = '/?' . http_build_query($query_params);
+            $url = 'https://' . $this->s3_bucket . '.s3.' . $this->s3_region . '.amazonaws.com' . $request_uri;
+
+            $headers = $this->create_auth_headers('GET', $request_uri);
+
+            $response = wp_remote_get($url, array(
+                'timeout' => 30,
+                'headers' => $headers
+            ));
+
+            if (is_wp_error($response)) {
+                error_log('H3TM S3: List files error - ' . $response->get_error_message());
+                break;
+            }
+
+            $body = wp_remote_retrieve_body($response);
+            $xml = simplexml_load_string($body);
+
+            if (isset($xml->Contents)) {
+                foreach ($xml->Contents as $content) {
+                    $key = (string)$content->Key;
+                    // Extract relative path from the key
+                    $relative_path = str_replace('tours/' . $tour_s3_name . '/', '', $key);
+                    if (!empty($relative_path)) {
+                        $files[] = $relative_path;
+                    }
+                }
+            }
+
+            $continuation_token = isset($xml->NextContinuationToken) ? (string)$xml->NextContinuationToken : null;
+
+        } while ($continuation_token);
+
+        return $files;
+    }
+
+    /**
+     * Copy an S3 object
+     */
+    private function copy_s3_object($source_key, $dest_key) {
+        try {
+            $copy_source = '/' . $this->s3_bucket . '/' . $source_key;
+            $request_uri = '/' . $dest_key;
+            $url = 'https://' . $this->s3_bucket . '.s3.' . $this->s3_region . '.amazonaws.com' . $request_uri;
+
+            $headers = $this->create_auth_headers('PUT', $request_uri);
+            $headers['x-amz-copy-source'] = $copy_source;
+
+            $response = wp_remote_request($url, array(
+                'method' => 'PUT',
+                'timeout' => 30,
+                'headers' => $headers
+            ));
+
+            if (is_wp_error($response)) {
+                error_log('H3TM S3: Copy error - ' . $response->get_error_message());
+                return false;
+            }
+
+            $response_code = wp_remote_retrieve_response_code($response);
+            return $response_code >= 200 && $response_code < 300;
+
+        } catch (Exception $e) {
+            error_log('H3TM S3: Copy exception - ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Delete an S3 object
+     */
+    private function delete_s3_object($key) {
+        try {
+            $request_uri = '/' . $key;
+            $url = 'https://' . $this->s3_bucket . '.s3.' . $this->s3_region . '.amazonaws.com' . $request_uri;
+
+            $headers = $this->create_auth_headers('DELETE', $request_uri);
+
+            $response = wp_remote_request($url, array(
+                'method' => 'DELETE',
+                'timeout' => 30,
+                'headers' => $headers
+            ));
+
+            if (is_wp_error($response)) {
+                error_log('H3TM S3: Delete error - ' . $response->get_error_message());
+                return false;
+            }
+
+            $response_code = wp_remote_retrieve_response_code($response);
+            return $response_code >= 200 && $response_code < 300;
+
+        } catch (Exception $e) {
+            error_log('H3TM S3: Delete exception - ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Rename a tour in S3 (actually copies to new location and deletes old)
+     *
+     * @param string $old_name Current tour name
+     * @param string $new_name New tour name
+     * @return array Result with success status and message
+     */
+    public function rename_tour($old_name, $new_name) {
+        if (!$this->is_configured) {
+            return array('success' => false, 'message' => 'S3 not configured');
+        }
+
+        try {
+            $old_s3_name = str_replace(' ', '-', $old_name);
+            $new_s3_name = str_replace(' ', '-', $new_name);
+
+            error_log('H3TM S3 Rename: ' . $old_s3_name . ' to ' . $new_s3_name);
+
+            // List all files in the old tour
+            $files = $this->list_tour_files($old_s3_name);
+
+            if (empty($files)) {
+                return array('success' => false, 'message' => 'Tour not found in S3');
+            }
+
+            $copied = 0;
+            $errors = 0;
+
+            // Copy each file to new location
+            foreach ($files as $file) {
+                $source_key = 'tours/' . $old_s3_name . '/' . $file;
+                $dest_key = 'tours/' . $new_s3_name . '/' . $file;
+
+                if ($this->copy_s3_object($source_key, $dest_key)) {
+                    $copied++;
+                } else {
+                    $errors++;
+                    error_log('H3TM S3 Rename: Failed to copy ' . $source_key . ' to ' . $dest_key);
+                }
+            }
+
+            // If all files copied successfully, delete the old ones
+            if ($errors === 0) {
+                foreach ($files as $file) {
+                    $old_key = 'tours/' . $old_s3_name . '/' . $file;
+                    $this->delete_s3_object($old_key);
+                }
+
+                return array('success' => true, 'message' => 'Tour renamed successfully');
+            } else {
+                // Clean up any partial copies
+                foreach ($files as $file) {
+                    $new_key = 'tours/' . $new_s3_name . '/' . $file;
+                    $this->delete_s3_object($new_key);
+                }
+
+                return array('success' => false, 'message' => 'Rename failed: ' . $errors . ' copy errors');
+            }
+
+        } catch (Exception $e) {
+            error_log('H3TM S3 Rename Error: ' . $e->getMessage());
+            return array('success' => false, 'message' => 'Rename failed: ' . $e->getMessage());
+        }
+    }
 }
