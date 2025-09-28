@@ -70,17 +70,17 @@ class H3TM_S3_Simple {
         $all_tour_folders = array();
         $continuation_token = null;
         $page_count = 0;
-        $max_pages = 20; // Limit to 20 pages to prevent timeouts
+        $max_pages = 5; // Should only need 1 page for directories, but allow a few more for safety
         $start_time = time();
-        $max_execution_time = 50; // Stop after 50 seconds to fit in 60s AJAX timeout
+        $max_execution_time = 30; // 30 seconds should be plenty for listing directories
 
         try {
             do {
                 $page_count++;
 
-                // Check time limit
+                // Check time limit (shouldn't happen with delimiter)
                 if ((time() - $start_time) > $max_execution_time) {
-                    error_log('H3TM S3: Stopping due to time limit (50 seconds)');
+                    error_log('H3TM S3: Stopping due to time limit (' . $max_execution_time . ' seconds)');
                     error_log('H3TM S3: Retrieved ' . count($all_tour_folders) . ' tours in ' . $page_count . ' pages');
                     $hit_time_limit = true;
                     break;
@@ -102,10 +102,12 @@ class H3TM_S3_Simple {
 
                 // Build query parameters properly for canonical request
                 // AWS requires parameters to be URL encoded and sorted alphabetically
+                // IMPORTANT: Use delimiter to get only 'folders', not all files
                 $query_params = array(
                     'list-type' => '2',
                     'max-keys' => '1000',
-                    'prefix' => 'tours/'
+                    'prefix' => 'tours/',
+                    'delimiter' => '/'  // This makes S3 return only 'directories'
                 );
 
                 // Add continuation token if this is not the first page
@@ -125,7 +127,7 @@ class H3TM_S3_Simple {
             $canonical_querystring = implode('&', $canonical_querystring_parts);
 
                 // Build regular query string for the URL
-                $query_string = 'list-type=2&max-keys=1000&prefix=' . urlencode('tours/');
+                $query_string = 'list-type=2&max-keys=1000&prefix=' . urlencode('tours/') . '&delimiter=' . urlencode('/');
                 if ($continuation_token) {
                     $query_string .= '&continuation-token=' . urlencode($continuation_token);
                 }
@@ -240,28 +242,26 @@ class H3TM_S3_Simple {
                     error_log('H3TM S3: Page ' . $page_count . ' is the last page');
                 }
 
-                // Check for Contents (individual files)
-                if (isset($xml->Contents)) {
-                    error_log('H3TM S3: Found ' . count($xml->Contents) . ' objects on page ' . $page_count);
+                // When using delimiter, S3 returns CommonPrefixes for 'directories'
+                if (isset($xml->CommonPrefixes)) {
+                    error_log('H3TM S3: Found ' . count($xml->CommonPrefixes) . ' tour folders on page ' . $page_count);
 
-                    foreach ($xml->Contents as $content) {
-                        $key = (string)$content->Key;
-                        // Skip the tours/ directory itself
-                        if ($key === 'tours/') continue;
-
-                        // Extract tour folder from file paths like "tours/Tour-Name/index.html"
-                        if (preg_match('/^tours\/([^\/]+)\//', $key, $matches)) {
+                    foreach ($xml->CommonPrefixes as $prefix) {
+                        $prefix_str = (string)$prefix->Prefix;
+                        // Extract tour folder name from "tours/Tour-Name/"
+                        if (preg_match('/^tours\/([^\/]+)\/$/', $prefix_str, $matches)) {
                             $tour_folder = $matches[1];
-                            // Add to overall collection if not already present
-                            if (!in_array($tour_folder, $all_tour_folders)) {
-                                $all_tour_folders[] = $tour_folder;
-                                error_log('H3TM S3: Found tour folder: ' . $tour_folder);
-                            }
+                            $all_tour_folders[] = $tour_folder;
+                            error_log('H3TM S3: Found tour folder: ' . $tour_folder);
                         }
                     }
-
                 } else {
-                    error_log('H3TM S3: No Contents found on page ' . $page_count);
+                    error_log('H3TM S3: No CommonPrefixes found on page ' . $page_count);
+                }
+
+                // Also check Contents in case there are files directly in tours/ (shouldn't be any)
+                if (isset($xml->Contents)) {
+                    error_log('H3TM S3: Found ' . count($xml->Contents) . ' files in tours/ root (unusual)');
                 }
             } else {
                 error_log('H3TM S3: Response body is empty on page ' . $page_count);
