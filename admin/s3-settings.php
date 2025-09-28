@@ -35,7 +35,7 @@ class H3TM_S3_Settings {
         register_setting('h3tm_s3_settings', 'h3tm_cloudfront_enabled');
         register_setting('h3tm_s3_settings', 'h3tm_cloudfront_domain');
         register_setting('h3tm_s3_settings', 'h3tm_cloudfront_distribution_id');
-        register_setting('h3tm_s3_settings', 'h3tm_s3_threshold');
+        // Threshold removed - all tours use S3/CloudFront
         register_setting('h3tm_s3_settings', 'h3tm_s3_enabled');
 
         // Encrypt credentials on save
@@ -65,8 +65,7 @@ class H3TM_S3_Settings {
             'bucket' => !empty($s3_config['bucket']),
             'bucket_name' => $s3_config['bucket'],
             'credentials' => !empty($s3_config['access_key']) && !empty($s3_config['secret_key']),
-            'region' => $s3_config['region'],
-            'threshold' => 50 * 1024 * 1024 // 50MB default
+            'region' => $s3_config['region']
         );
 
         // Simple stats (can be enhanced later)
@@ -115,10 +114,6 @@ class H3TM_S3_Settings {
                         <tr>
                             <th><?php _e('AWS Region', 'h3-tour-management'); ?></th>
                             <td><?php echo esc_html($config_status['region']); ?></td>
-                        </tr>
-                        <tr>
-                            <th><?php _e('Upload Threshold', 'h3-tour-management'); ?></th>
-                            <td><?php echo size_format($config_status['threshold']); ?></td>
                         </tr>
                     </table>
 
@@ -228,20 +223,6 @@ class H3TM_S3_Settings {
                                 </td>
                             </tr>
 
-                            <tr>
-                                <th scope="row">
-                                    <label for="h3tm_s3_threshold"><?php _e('S3 Upload Threshold', 'h3-tour-management'); ?></label>
-                                </th>
-                                <td>
-                                    <?php $threshold = get_option('h3tm_s3_threshold', 50 * 1024 * 1024); ?>
-                                    <input type="number" id="h3tm_s3_threshold" name="h3tm_s3_threshold"
-                                           value="<?php echo intval($threshold / 1024 / 1024); ?>"
-                                           min="1" max="1000" /> MB
-                                    <p class="description">
-                                        <?php _e('All files will be uploaded directly to S3 (threshold setting no longer used).', 'h3-tour-management'); ?>
-                                    </p>
-                                </td>
-                            </tr>
                         </table>
                     </div>
 

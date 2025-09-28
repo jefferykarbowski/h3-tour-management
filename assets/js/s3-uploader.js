@@ -6,7 +6,6 @@
 class H3TM_S3_Uploader {
     constructor(options = {}) {
         this.options = {
-            uploadThreshold: 50 * 1024 * 1024, // 50MB
             chunkSize: 10 * 1024 * 1024, // 10MB for S3 multipart
             maxRetries: 3,
             retryDelay: 1000,
@@ -21,9 +20,9 @@ class H3TM_S3_Uploader {
     }
 
     /**
-     * Determine upload method and initiate upload
+     * Upload file to S3 - all files go to S3/CloudFront
      */
-    async uploadFile(file, tourName, method = 'auto') {
+    async uploadFile(file, tourName, method = 's3') {
         if (this.isUploading) {
             throw new Error('Upload already in progress');
         }
@@ -31,33 +30,15 @@ class H3TM_S3_Uploader {
         this.isUploading = true;
 
         try {
-            const useS3 = this.shouldUseS3Upload(file, method);
-
-            if (useS3) {
-                return await this.uploadToS3(file, tourName);
-            } else {
-                return await this.uploadChunked(file, tourName);
-            }
+            // All files upload to S3
+            return await this.uploadToS3(file, tourName);
         } catch (error) {
             this.isUploading = false;
             throw error;
         }
     }
 
-    /**
-     * Determine if S3 upload should be used
-     */
-    shouldUseS3Upload(file, method) {
-        switch (method) {
-            case 's3':
-                return true;
-            case 'chunked':
-                return false;
-            case 'auto':
-            default:
-                return file.size > this.options.uploadThreshold;
-        }
-    }
+    // Method removed - all uploads use S3
 
     /**
      * Upload file directly to S3
