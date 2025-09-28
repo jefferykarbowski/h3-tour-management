@@ -516,11 +516,11 @@ jQuery(document).ready(function($) {
         return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
     }
 
-    // Handle tour deletion
-    $('.delete-tour').on('click', function() {
+    // Handle tour deletion (using event delegation for dynamic elements)
+    $(document).on('click', '.delete-tour', function() {
         var tourName = $(this).data('tour');
 
-        if (!confirm('Are you sure you want to delete the tour "' + tourName + '"? This action cannot be undone.')) {
+        if (!confirm('Are you sure you want to archive the tour "' + tourName + '"? The tour will be moved to the archive folder and permanently deleted after 90 days.')) {
             return;
         }
 
@@ -555,8 +555,8 @@ jQuery(document).ready(function($) {
         });
     });
 
-    // Handle tour rename with professional modal dialog
-    $('.rename-tour').on('click', function() {
+    // Handle tour rename with professional modal dialog (using event delegation for dynamic elements)
+    $(document).on('click', '.rename-tour', function() {
         var oldName = $(this).data('tour');
         var $button = $(this);
         var $row = $button.closest('tr');

@@ -552,6 +552,71 @@ class H3TM_S3_Simple {
     }
 
     /**
+     * Create AWS Signature V4 authentication headers
+     *
+     * @param string $method HTTP method (GET, PUT, DELETE, etc.)
+     * @param string $uri Request URI (e.g., '/tours/tour-name/file.html')
+     * @param string $payload Request payload (empty string for GET/DELETE)
+     * @return array Headers array with Authorization and required headers
+     */
+    private function create_auth_headers($method, $uri, $payload = '') {
+        $config = $this->get_s3_config();
+        if (!$config['configured']) {
+            return array();
+        }
+
+        $host = $this->s3_bucket . '.s3.' . $this->s3_region . '.amazonaws.com';
+        $service = 's3';
+
+        // Create date/time strings
+        $datetime = gmdate('Ymd\THis\Z');
+        $date = gmdate('Ymd');
+
+        // Parse query string from URI if present
+        $uri_parts = parse_url($uri);
+        $canonical_uri = $uri_parts['path'] ?? $uri;
+        $canonical_querystring = $uri_parts['query'] ?? '';
+
+        // Build canonical request
+        $payload_hash = hash('sha256', $payload);
+        $canonical_headers = 'host:' . $host . "\n" .
+                           'x-amz-content-sha256:' . $payload_hash . "\n" .
+                           'x-amz-date:' . $datetime . "\n";
+        $signed_headers = 'host;x-amz-content-sha256;x-amz-date';
+
+        $canonical_request = $method . "\n" .
+                            $canonical_uri . "\n" .
+                            $canonical_querystring . "\n" .
+                            $canonical_headers . "\n" .
+                            $signed_headers . "\n" .
+                            $payload_hash;
+
+        // Create string to sign
+        $algorithm = 'AWS4-HMAC-SHA256';
+        $credential_scope = $date . '/' . $config['region'] . '/' . $service . '/aws4_request';
+        $string_to_sign = $algorithm . "\n" .
+                         $datetime . "\n" .
+                         $credential_scope . "\n" .
+                         hash('sha256', $canonical_request);
+
+        // Calculate signature
+        $signing_key = $this->getSignatureKey($config['secret_key'], $date, $config['region'], $service);
+        $signature = hash_hmac('sha256', $string_to_sign, $signing_key);
+
+        // Build authorization header
+        $authorization_header = $algorithm . ' ' .
+                              'Credential=' . $config['access_key'] . '/' . $credential_scope . ', ' .
+                              'SignedHeaders=' . $signed_headers . ', ' .
+                              'Signature=' . $signature;
+
+        return array(
+            'Authorization' => $authorization_header,
+            'x-amz-date' => $datetime,
+            'x-amz-content-sha256' => $payload_hash
+        );
+    }
+
+    /**
      * Process S3 upload with S3-to-S3 workflow (no local storage)
      */
     public function handle_process_s3_upload() {
