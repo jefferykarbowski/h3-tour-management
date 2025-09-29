@@ -11,9 +11,12 @@ Thumbs.db
 
 # Development
 node_modules/
-vendor/
+/vendor/
 composer.lock
 package-lock.json
+
+# Allow plugin-update-checker vendor files
+!plugin-update-checker/vendor/
 
 # Build files
 *.zip
