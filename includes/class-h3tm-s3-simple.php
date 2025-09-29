@@ -1189,7 +1189,9 @@ class H3TM_S3_Simple {
         try {
             $tour_s3_name = str_replace(' ', '-', $tour_name);
             $source_prefix = 'tours/' . $tour_s3_name . '/';
-            $archive_prefix = 'archive/' . $tour_s3_name . '_' . date('Ymd_His') . '/';
+            // Generate timestamp once for the entire archive operation
+            $archive_timestamp = date('Ymd_His');
+            $archive_prefix = 'archive/' . $tour_s3_name . '_' . $archive_timestamp . '/';
 
             error_log('H3TM S3 Archive: Moving ' . $source_prefix . ' to ' . $archive_prefix);
 
@@ -1206,7 +1208,7 @@ class H3TM_S3_Simple {
             // Copy each file to archive location
             foreach ($files as $file) {
                 $source_key = 'tours/' . $tour_s3_name . '/' . $file;
-                $dest_key = 'archive/' . $tour_s3_name . '_' . date('Ymd_His') . '/' . $file;
+                $dest_key = 'archive/' . $tour_s3_name . '_' . $archive_timestamp . '/' . $file;
 
                 if ($this->copy_s3_object($source_key, $dest_key)) {
                     // Delete the original after successful copy

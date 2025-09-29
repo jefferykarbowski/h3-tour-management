@@ -186,7 +186,6 @@ jQuery(document).ready(function($) {
                 if (timeRemaining) {
                     statusText += '<span class="time-remaining">' + timeRemaining + '</span>';
                 }
-                statusText += '%';
                 $progressText.html(statusText);
             }
         });
@@ -349,7 +348,7 @@ jQuery(document).ready(function($) {
 
         var message = response.data || response.message || 'Tour uploaded successfully via S3!';
         var successHtml = '<div class="h3tm-s3-success">';
-        successHtml += '<h4>✅ Upload Complete</h4>';
+        successHtml += '<h4>Upload Complete</h4>';
         successHtml += '<p>' + message + '</p>';
         successHtml += '<p><strong>Method:</strong> S3 Direct Upload</p>';
         successHtml += '<p>Your tour has been uploaded and processed successfully.</p>';
@@ -981,14 +980,14 @@ jQuery(document).ready(function($) {
         $result.html(
             '<div class="h3tm-processing-status">' +
             '<div class="h3tm-processing-spinner"></div>' +
-            '<h3>🚀 Processing Your Tour</h3>' +
+            '<h3>Processing Your Tour</h3>' +
             '<p class="h3tm-status-message">AWS Lambda is extracting and deploying <strong>' + tourName + '</strong>...</p>' +
             '<p class="h3tm-status-details">This may take 1-2 minutes for large tours. Please wait...</p>' +
-            '<div class="h3tm-processing-dots">' +
-            '<span>⬇️ Downloading</span>' +
-            '<span>📦 Extracting</span>' +
-            '<span>📊 Processing</span>' +
-            '<span>⬆️ Deploying</span>' +
+            '<div class="h3tm-processing-dots" style="text-align: left; margin-top: 15px;">' +
+            '<div style="margin: 5px 0;">• Downloading</div>' +
+            '<div style="margin: 5px 0;">• Extracting</div>' +
+            '<div style="margin: 5px 0;">• Processing</div>' +
+            '<div style="margin: 5px 0;">• Deploying</div>' +
             '</div>' +
             '</div>'
         );
@@ -1018,7 +1017,7 @@ jQuery(document).ready(function($) {
                     $result.removeClass('notice-info').addClass('notice-success');
                     $result.html(
                         '<div class="h3tm-success-status">' +
-                        '<h3>✅ Tour Processed Successfully!</h3>' +
+                        '<h3>Tour Processed Successfully!</h3>' +
                         '<p><strong>' + tourName + '</strong> is now ready to view.</p>' +
                         '<p><a href="' + testUrl + '" target="_blank" class="button button-primary">View Tour</a> ' +
                         '<button type="button" class="button button-secondary" onclick="location.reload();">Refresh Page</button></p>' +
@@ -1105,7 +1104,7 @@ jQuery(document).ready(function($) {
                         var tableHtml = '';
                         // Add refresh button
                         tableHtml += '<div style="margin-bottom: 10px;">';
-                        tableHtml += '<button id="refresh-tour-list" class="button button-secondary">🔄 Refresh Tour List</button>';
+                        tableHtml += '<button id="refresh-tour-list" class="button button-secondary">Refresh Tour List</button>';
                         tableHtml += '<span style="margin-left: 10px; color: #666;">(' + tours.length + ' tours found - cached for 2 hours)</span>';
                         tableHtml += '</div>';
                         tableHtml += '<table class="wp-list-table widefat fixed striped">';
@@ -1122,7 +1121,7 @@ jQuery(document).ready(function($) {
 
                             tableHtml += '<tr data-tour="' + escapeHtml(tour) + '">';
                             tableHtml += '<td>' + escapeHtml(tour) + '</td>';
-                            tableHtml += '<td><span style="color: #00a32a;">✅ Available</span></td>';
+                            tableHtml += '<td><span style="color: #00a32a;">Available</span></td>';
                             tableHtml += '<td><a href="' + tourUrl + '" target="_blank">' + tourUrl + '</a></td>';
                             tableHtml += '<td>';
                             tableHtml += '<button class="button rename-tour" data-tour="' + escapeHtml(tour) + '">Rename</button> ';
