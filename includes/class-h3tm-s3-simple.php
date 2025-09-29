@@ -5,8 +5,16 @@
 class H3TM_S3_Simple {
 
     private $cdn_helper = null;
+    private $is_configured = false;
+    private $s3_bucket = '';
+    private $s3_region = '';
+    private $aws_access_key = '';
+    private $aws_secret_key = '';
 
     public function __construct() {
+        // Initialize S3 configuration
+        $this->init_s3_config();
+
         // Initialize CDN helper for CloudFront support
         if (class_exists('H3TM_CDN_Helper')) {
             $this->cdn_helper = H3TM_CDN_Helper::get_instance();
@@ -16,6 +24,18 @@ class H3TM_S3_Simple {
         add_action('wp_ajax_h3tm_process_s3_upload', array($this, 'handle_process_s3_upload'));
         add_action('wp_ajax_h3tm_test_s3_connection', array($this, 'handle_test_s3_connection'));
         add_action('wp_ajax_h3tm_list_s3_tours', array($this, 'handle_list_s3_tours'));
+    }
+
+    /**
+     * Initialize S3 configuration properties
+     */
+    private function init_s3_config() {
+        $config = $this->get_s3_credentials();
+        $this->s3_bucket = $config['bucket'];
+        $this->s3_region = $config['region'];
+        $this->aws_access_key = $config['access_key'];
+        $this->aws_secret_key = $config['secret_key'];
+        $this->is_configured = $config['configured'];
     }
 
     /**
@@ -552,16 +572,36 @@ class H3TM_S3_Simple {
     }
 
     /**
+     * Encode URI path for AWS Signature Version 4
+     * Each path segment must be URI-encoded separately
+     */
+    private function encode_uri_for_signature($path) {
+        // If path starts with /, remove it temporarily
+        $leading_slash = '';
+        if (substr($path, 0, 1) === '/') {
+            $leading_slash = '/';
+            $path = substr($path, 1);
+        }
+
+        // Split by / and encode each segment
+        $segments = explode('/', $path);
+        $encoded_segments = array_map('rawurlencode', $segments);
+
+        // Rejoin with / and add leading slash back
+        return $leading_slash . implode('/', $encoded_segments);
+    }
+
+    /**
      * Create AWS Signature V4 authentication headers
      *
      * @param string $method HTTP method (GET, PUT, DELETE, etc.)
      * @param string $uri Request URI (e.g., '/tours/tour-name/file.html')
      * @param string $payload Request payload (empty string for GET/DELETE)
+     * @param array $additional_headers Additional headers to sign (e.g., ['x-amz-copy-source' => '/bucket/key'])
      * @return array Headers array with Authorization and required headers
      */
-    private function create_auth_headers($method, $uri, $payload = '') {
-        $config = $this->get_s3_config();
-        if (!$config['configured']) {
+    private function create_auth_headers($method, $uri, $payload = '', $additional_headers = array()) {
+        if (!$this->is_configured) {
             return array();
         }
 
@@ -574,15 +614,36 @@ class H3TM_S3_Simple {
 
         // Parse query string from URI if present
         $uri_parts = parse_url($uri);
-        $canonical_uri = $uri_parts['path'] ?? $uri;
+        $path = $uri_parts['path'] ?? $uri;
         $canonical_querystring = $uri_parts['query'] ?? '';
 
-        // Build canonical request
+        // Encode the URI path for the canonical request
+        $canonical_uri = $this->encode_uri_for_signature($path);
+
+        // Build headers for signing
         $payload_hash = hash('sha256', $payload);
-        $canonical_headers = 'host:' . $host . "\n" .
-                           'x-amz-content-sha256:' . $payload_hash . "\n" .
-                           'x-amz-date:' . $datetime . "\n";
-        $signed_headers = 'host;x-amz-content-sha256;x-amz-date';
+        $headers_to_sign = array(
+            'host' => $host,
+            'x-amz-content-sha256' => $payload_hash,
+            'x-amz-date' => $datetime
+        );
+
+        // Add any additional headers that need to be signed
+        foreach ($additional_headers as $key => $value) {
+            $headers_to_sign[strtolower($key)] = $value;
+        }
+
+        // Sort headers by key for canonical format
+        ksort($headers_to_sign);
+
+        // Build canonical headers string and signed headers list
+        $canonical_headers = '';
+        $signed_headers_array = array();
+        foreach ($headers_to_sign as $key => $value) {
+            $canonical_headers .= $key . ':' . $value . "\n";
+            $signed_headers_array[] = $key;
+        }
+        $signed_headers = implode(';', $signed_headers_array);
 
         $canonical_request = $method . "\n" .
                             $canonical_uri . "\n" .
@@ -593,27 +654,35 @@ class H3TM_S3_Simple {
 
         // Create string to sign
         $algorithm = 'AWS4-HMAC-SHA256';
-        $credential_scope = $date . '/' . $config['region'] . '/' . $service . '/aws4_request';
+        $credential_scope = $date . '/' . $this->s3_region . '/' . $service . '/aws4_request';
         $string_to_sign = $algorithm . "\n" .
                          $datetime . "\n" .
                          $credential_scope . "\n" .
                          hash('sha256', $canonical_request);
 
         // Calculate signature
-        $signing_key = $this->getSignatureKey($config['secret_key'], $date, $config['region'], $service);
+        $signing_key = $this->getSignatureKey($this->aws_secret_key, $date, $this->s3_region, $service);
         $signature = hash_hmac('sha256', $string_to_sign, $signing_key);
 
         // Build authorization header
         $authorization_header = $algorithm . ' ' .
-                              'Credential=' . $config['access_key'] . '/' . $credential_scope . ', ' .
+                              'Credential=' . $this->aws_access_key . '/' . $credential_scope . ', ' .
                               'SignedHeaders=' . $signed_headers . ', ' .
                               'Signature=' . $signature;
 
-        return array(
+        // Build return headers array
+        $return_headers = array(
             'Authorization' => $authorization_header,
             'x-amz-date' => $datetime,
             'x-amz-content-sha256' => $payload_hash
         );
+
+        // Add additional headers to the return array
+        foreach ($additional_headers as $key => $value) {
+            $return_headers[$key] = $value;
+        }
+
+        return $return_headers;
     }
 
     /**
@@ -1226,12 +1295,23 @@ class H3TM_S3_Simple {
      */
     private function copy_s3_object($source_key, $dest_key) {
         try {
-            $copy_source = '/' . $this->s3_bucket . '/' . $source_key;
-            $request_uri = '/' . $dest_key;
-            $url = 'https://' . $this->s3_bucket . '.s3.' . $this->s3_region . '.amazonaws.com' . $request_uri;
+            // URL encode the source path for the copy-source header
+            // AWS requires the bucket and key to be URL encoded but slashes preserved
+            $encoded_source_key = str_replace('%2F', '/', rawurlencode($source_key));
+            $copy_source = '/' . $this->s3_bucket . '/' . $encoded_source_key;
 
-            $headers = $this->create_auth_headers('PUT', $request_uri);
-            $headers['x-amz-copy-source'] = $copy_source;
+            // For the destination, use the raw key for signing
+            $request_uri = '/' . $dest_key;
+
+            // Build the actual request URL with proper encoding
+            $encoded_dest_key = str_replace('%2F', '/', rawurlencode($dest_key));
+            $url = 'https://' . $this->s3_bucket . '.s3.' . $this->s3_region . '.amazonaws.com/' . $encoded_dest_key;
+
+            // Create auth headers with x-amz-copy-source included in the signature
+            $additional_headers = array(
+                'x-amz-copy-source' => $copy_source
+            );
+            $headers = $this->create_auth_headers('PUT', $request_uri, '', $additional_headers);
 
             $response = wp_remote_request($url, array(
                 'method' => 'PUT',
@@ -1245,7 +1325,14 @@ class H3TM_S3_Simple {
             }
 
             $response_code = wp_remote_retrieve_response_code($response);
-            return $response_code >= 200 && $response_code < 300;
+            if ($response_code < 200 || $response_code >= 300) {
+                $body = wp_remote_retrieve_body($response);
+                error_log('H3TM S3: Copy failed with code ' . $response_code . ' for ' . $source_key . ' to ' . $dest_key);
+                error_log('H3TM S3: Response body: ' . $body);
+                return false;
+            }
+
+            return true;
 
         } catch (Exception $e) {
             error_log('H3TM S3: Copy exception - ' . $e->getMessage());
@@ -1258,9 +1345,14 @@ class H3TM_S3_Simple {
      */
     private function delete_s3_object($key) {
         try {
+            // Use raw key for signing
             $request_uri = '/' . $key;
-            $url = 'https://' . $this->s3_bucket . '.s3.' . $this->s3_region . '.amazonaws.com' . $request_uri;
 
+            // Build the actual request URL with proper encoding
+            $encoded_key = str_replace('%2F', '/', rawurlencode($key));
+            $url = 'https://' . $this->s3_bucket . '.s3.' . $this->s3_region . '.amazonaws.com/' . $encoded_key;
+
+            // Create auth headers (encoding will be handled internally)
             $headers = $this->create_auth_headers('DELETE', $request_uri);
 
             $response = wp_remote_request($url, array(
