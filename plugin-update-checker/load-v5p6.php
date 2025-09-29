@@ -9,8 +9,18 @@ require __DIR__ . '/Puc/v5p6/Autoloader.php';
 new Autoloader();
 
 // Explicitly load Parsedown to ensure it's available
+// Try multiple methods to ensure Parsedown is loaded
 if ( !class_exists('Parsedown', false) ) {
-	require_once __DIR__ . '/vendor/Parsedown.php';
+	$parsedownPath = __DIR__ . '/vendor/Parsedown.php';
+	if ( file_exists($parsedownPath) ) {
+		require_once $parsedownPath;
+	} else {
+		// Fallback: Try to load ParsedownModern directly
+		$parsedownModernPath = __DIR__ . '/vendor/ParsedownModern.php';
+		if ( file_exists($parsedownModernPath) ) {
+			require_once $parsedownModernPath;
+		}
+	}
 }
 
 require __DIR__ . '/Puc/v5p6/PucFactory.php';
