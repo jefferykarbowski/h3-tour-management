@@ -8,6 +8,11 @@ use YahnisElsts\PluginUpdateChecker\v5p6\PucFactory as MinorFactory;
 require __DIR__ . '/Puc/v5p6/Autoloader.php';
 new Autoloader();
 
+// Explicitly load Parsedown to ensure it's available
+if ( !class_exists('Parsedown', false) ) {
+	require_once __DIR__ . '/vendor/Parsedown.php';
+}
+
 require __DIR__ . '/Puc/v5p6/PucFactory.php';
 require __DIR__ . '/Puc/v5/PucFactory.php';
 

@@ -67,7 +67,7 @@ if ( !class_exists(Autoloader::class, false) ):
 
 		public function autoload($className) {
 			if ( isset($this->staticMap[$className]) && file_exists($this->libraryDir . $this->staticMap[$className]) ) {
-				include($this->libraryDir . $this->staticMap[$className]);
+				require_once($this->libraryDir . $this->staticMap[$className]);
 				return;
 			}
 
