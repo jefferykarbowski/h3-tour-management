@@ -91,6 +91,15 @@ class H3TM_Tour_Manager {
     }
     
     /**
+     * Get tour title from tour name
+     */
+    public function get_tour_title($tour_name) {
+        // For now, just return the tour name as the title
+        // This can be enhanced later to read from a metadata file if needed
+        return $tour_name;
+    }
+
+    /**
      * Update tour analytics
      */
     public function update_tour_analytics($tour_name, $analytics_data) {
