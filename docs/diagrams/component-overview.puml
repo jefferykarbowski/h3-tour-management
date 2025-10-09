@@ -1,0 +1,69 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title H3 Tour Management Plugin – Component Overview
+
+LAYOUT_WITH_LEGEND()
+
+System_Boundary(wp_system, "WordPress Admin") {
+    Container(wordpress_core, "WordPress Core", "PHP 7.4+", "Provides hooks, admin routing, and option storage")    
+
+    Container_Boundary(h3tm_plugin, "H3TM Plugin") {
+        Component(admin_class, "H3TM_Admin", "PHP", "Registers hooks, orchestrates admin features, composes traits")
+        Component(trait_tour, "Trait · Tour Handlers", "PHP Trait", "AJAX handlers for update, embed, change URL, rebuild metadata")
+        Component(trait_delete, "Trait · Delete & Rename", "PHP Trait", "AJAX handlers for deletion and rename workflows")
+        Component(trait_s3_ops, "Trait · S3 Operations", "PHP Trait", "Generates presigned URLs, triggers uploads, cleans S3 artifacts")
+        Component(trait_migration, "Trait · Migration", "PHP Trait", "Migrates legacy tours into S3, manages directory moves")
+        Component(trait_pages, "Trait · Page Renderers", "PHP Trait", "Renders admin pages, tables, modals, and settings screens")
+        Component(metadata_dao, "H3TM_Tour_Metadata", "PHP", "CRUD for wp_h3tm_tour_metadata; canonical S3 folder & URL history")
+        Component(s3_client, "H3TM_S3_Simple", "PHP + AWS SDK", "Wraps S3 interactions, archives tours, manages presigned operations")
+        Component(redirector, "H3TM_URL_Redirector", "PHP", "Handles 301 redirects using slug history")
+        Component(activator, "H3TM_Activator", "PHP", "Initializes database schema, runs migrations preserving S3 folders")
+        Component(admin_templates, "Admin Templates", "PHP", "Outputs list tables, forms, and modal markup")
+        Component(admin_js, "Admin JavaScript", "jQuery", "Drives modals, AJAX submissions, polling, UI feedback")
+    }
+
+    ContainerDb(meta_table, "wp_h3tm_tour_metadata", "MySQL", "Stores tour slug, display name, canonical S3 folder, and URL history")
+}
+
+System_Ext(aws_s3, "AWS S3", "Tour storage & Lambda status artifacts")
+System_Ext(aws_cf, "AWS CloudFront", "CDN for published tours")
+System_Ext(aws_lambda, "AWS Lambda", "Processes uploaded ZIPs and updates status.json")
+Person(admin_user, "Site Administrator", "Uses WP Admin to manage tours")
+Person(visitor_user, "Site Visitor", "Accesses published tours via public URLs")
+
+Rel(admin_user, admin_js, "Uses", "WP Admin UI")
+Rel(admin_js, admin_class, "AJAX via admin-ajax.php", "JSON")
+Rel(admin_js, admin_templates, "Consumes markup & data bindings")
+Rel(admin_class, trait_tour, "Composes")
+Rel(admin_class, trait_delete, "Composes")
+Rel(admin_class, trait_s3_ops, "Composes")
+Rel(admin_class, trait_migration, "Composes")
+Rel(admin_class, trait_pages, "Composes")
+
+Rel(trait_tour, metadata_dao, "Reads/Writes tour metadata")
+Rel(trait_delete, metadata_dao, "Looks up canonical S3 folders")
+Rel(trait_delete, s3_client, "Archives or deletes tour assets")
+Rel(trait_s3_ops, s3_client, "Delegates S3 operations")
+Rel(trait_migration, s3_client, "Uploads directories to S3")
+Rel(metadata_dao, meta_table, "Reads/Writes", "SQL via $wpdb")
+Rel(s3_client, aws_s3, "Uses AWS SDK", "S3 API")
+Rel(trait_tour, redirector, "Updates URL history")
+Rel(redirector, metadata_dao, "Reads slug history")
+Rel(redirector, wordpress_core, "Hooks into template_redirect")
+Rel(activator, meta_table, "Creates/updates schema", "On activation")
+Rel(admin_templates, trait_pages, "Uses data providers")
+Rel(trait_s3_ops, aws_cf, "Triggers cache invalidations", "CloudFront API")
+Rel(trait_tour, aws_cf, "Requests invalidation after updates")
+Rel(aws_lambda, aws_s3, "Writes processed tours & status")
+Rel(visitor_user, aws_cf, "Requests published tours", "HTTPS")
+
+Rel_Back(admin_class, wordpress_core, "Hooks & filters")
+Rel_Back(admin_js, wordpress_core, "Enqueued scripts/styles")
+
+// Implicit relationships to clarify data/control flow
+Rel(admin_class, metadata_dao, "Coordinates CRUD operations")
+Rel(admin_class, s3_client, "Initiates S3 workflows")
+
+SHOW_LEGEND()
+@enduml

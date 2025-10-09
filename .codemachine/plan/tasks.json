@@ -12,7 +12,7 @@
     "acceptance_criteria": "Document lists all five critical bugs with reproduction + validation steps; includes logging expectations; stored at the specified path with valid Markdown headings.",
     "dependencies": [],
     "parallelizable": false,
-    "done": false
+    "done": true
   },
   {
     "task_id": "I1.T2",
@@ -27,7 +27,7 @@
     "acceptance_criteria": "Diagram aligns with Section 2 descriptions; PlantUML syntax passes validation; references upcoming traits and AWS services.",
     "dependencies": ["I1.T1"],
     "parallelizable": false,
-    "done": false
+    "done": true
   },
   {
     "task_id": "I1.T3",
@@ -400,4 +400,3 @@
     "done": false
   }
 ]
-
