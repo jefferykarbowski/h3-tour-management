@@ -14,11 +14,13 @@
 - Files: `includes/class-h3tm-s3-simple.php` (archive_tour), `includes/class-h3tm-tour-metadata.php`, `includes/class-h3tm-activator.php` (migration preserves spaces).
 - Fix:
   - Use metadata `s3_folder` as canonical source of truth for all S3 ops.
-  - In `archive_tour()`, look up tour by display name/slug, then use `s3_folder` from metadata; do NOT sanitize display name.
-  - Add structured logging for S3 actions (bucket, prefix, op result).
+  - In `archive_tour()`, resolve metadata via display name with slug fallback, require `s3_folder`, and abort when not present (no sanitized fallback).
+  - Add structured logging for S3 actions (bucket, `s3_folder`, counts, op result) so QA can confirm canonical prefix usage.
+  - If metadata lookup fails, return actionable error ("metadata not found") so UI surfaces a meaningful message instead of falsely sanitizing.
 - Tests:
   - Delete tours named with spaces, hyphens, multiple spaces, special chars.
-  - Verify S3 folder removal/archive and DB metadata deletion.
+  - Verify PHP logs include resolved metadata id/slug and canonical `s3_folder` before copying, plus final moved/error counts.
+  - Confirm archive destination contains timestamped folder that matches canonical name and that missing metadata surfaces an error immediately.
 
 ### 2) Change URL Non-Functional
 - Symptoms: Modal submits but URL doesn’t change, no redirect, table doesn’t refresh, embed code stale.
@@ -104,4 +106,3 @@
 ## Logging
 - Add structured logs for S3 ops and DB changes: include tour id/slug, bucket, `s3_folder`, operation, result.
 - Ensure redirector and slug changes log old→new mappings for traceability.
-

@@ -72,6 +72,29 @@ class H3TM_Tour_Metadata {
     }
 
     /**
+     * Resolve a tour record using the human display name, falling back to the current slug.
+     *
+     * @param string $display_name
+     * @return object|null
+     */
+    public function resolve_by_display_name($display_name) {
+        $tour = $this->get_by_display_name($display_name);
+
+        if ($tour) {
+            return $tour;
+        }
+
+        // Fall back to the sanitized slug representation (how URLs are generated)
+        $candidate_slug = sanitize_title($display_name);
+
+        if (!empty($candidate_slug)) {
+            return $this->get_by_slug($candidate_slug);
+        }
+
+        return null;
+    }
+
+    /**
      * Get tour metadata by S3 folder
      *
      * @param string $s3_folder

@@ -1209,43 +1209,75 @@ class H3TM_S3_Simple {
         }
 
         try {
-            // Get actual S3 folder from metadata (Lambda may use spaces!)
-            $tour_s3_name = $tour_name; // Default to name as-is
+            error_log('H3TM S3 Archive: Start request for "' . $tour_name . '"');
 
-            if (class_exists('H3TM_Tour_Metadata')) {
-                $metadata = new H3TM_Tour_Metadata();
-                $tour = $metadata->get_by_display_name($tour_name);
-
-                if ($tour && !empty($tour->s3_folder)) {
-                    // Extract folder name from "tours/Folder Name/"
-                    $tour_s3_name = str_replace('tours/', '', rtrim($tour->s3_folder, '/'));
-                    error_log('H3TM S3 Archive: Using metadata S3 folder: ' . $tour_s3_name);
-                }
+            if (!class_exists('H3TM_Tour_Metadata')) {
+                error_log('H3TM S3 Archive: Metadata class missing, aborting');
+                return array('success' => false, 'message' => 'Tour metadata unavailable');
             }
 
-            $source_prefix = 'tours/' . $tour_s3_name . '/';
+            $metadata = new H3TM_Tour_Metadata();
+            $tour = null;
+
+            if (method_exists($metadata, 'resolve_by_display_name')) {
+                $tour = $metadata->resolve_by_display_name($tour_name);
+            } else {
+                $tour = $metadata->get_by_display_name($tour_name);
+            }
+
+            if (!$tour) {
+                error_log('H3TM S3 Archive: Metadata lookup failed for display name "' . $tour_name . '"');
+                return array('success' => false, 'message' => 'Tour metadata not found');
+            }
+
+            if (empty($tour->s3_folder)) {
+                error_log('H3TM S3 Archive: Metadata missing s3_folder for tour id=' . (isset($tour->id) ? $tour->id : 'unknown'));
+                return array('success' => false, 'message' => 'Tour metadata missing S3 folder');
+            }
+
+            // Extract canonical folder name from stored prefix (e.g., "tours/Jeffs Test/")
+            $canonical_folder = rtrim($tour->s3_folder, '/');
+            if (strpos($canonical_folder, 'tours/') === 0) {
+                $canonical_folder = substr($canonical_folder, strlen('tours/'));
+            }
+
+            if (empty($canonical_folder)) {
+                error_log('H3TM S3 Archive: Canonical folder empty after normalization for tour id=' . (isset($tour->id) ? $tour->id : 'unknown'));
+                return array('success' => false, 'message' => 'Unable to determine S3 folder name');
+            }
+
+            error_log(sprintf(
+                'H3TM S3 Archive: Resolved metadata id=%s slug=%s s3_folder=%s canonical=%s',
+                isset($tour->id) ? $tour->id : 'n/a',
+                isset($tour->tour_slug) ? $tour->tour_slug : 'n/a',
+                $tour->s3_folder,
+                $canonical_folder
+            ));
+
+            $source_prefix = 'tours/' . $canonical_folder . '/';
             // Generate timestamp once for the entire archive operation
             $archive_timestamp = date('Ymd_His');
-            // Use dashes in archive name for cleaner naming
-            $archive_name = str_replace(' ', '-', $tour_s3_name);
-            $archive_prefix = 'archive/' . $archive_name . '_' . $archive_timestamp . '/';
+            $archive_prefix = 'archive/' . $canonical_folder . '_' . $archive_timestamp . '/';
 
             error_log('H3TM S3 Archive: Moving ' . $source_prefix . ' to ' . $archive_prefix);
 
             // List all files in the tour
-            $files = $this->list_tour_files($tour_s3_name);
+            $files = $this->list_tour_files($canonical_folder);
 
             if (empty($files)) {
+                error_log('H3TM S3 Archive: No files found under ' . $source_prefix);
                 return array('success' => false, 'message' => 'Tour not found in S3');
             }
+
+            error_log('H3TM S3 Archive: Found ' . count($files) . ' file(s) to archive from ' . $source_prefix);
 
             $moved = 0;
             $errors = 0;
 
             // Copy each file to archive location
             foreach ($files as $file) {
-                $source_key = 'tours/' . $tour_s3_name . '/' . $file;
-                $dest_key = 'archive/' . $tour_s3_name . '_' . $archive_timestamp . '/' . $file;
+                $source_key = 'tours/' . $canonical_folder . '/' . $file;
+                $dest_key = $archive_prefix . $file;
 
                 if ($this->copy_s3_object($source_key, $dest_key)) {
                     // Delete the original after successful copy
@@ -1253,7 +1285,7 @@ class H3TM_S3_Simple {
                         $moved++;
                     } else {
                         $errors++;
-                        error_log('H3TM S3 Archive: Failed to delete ' . $source_key);
+                        error_log('H3TM S3 Archive: Failed to delete ' . $source_key . ' after copy');
                     }
                 } else {
                     $errors++;
@@ -1261,7 +1293,12 @@ class H3TM_S3_Simple {
                 }
             }
 
-            error_log('H3TM S3 Archive: Moved ' . $moved . ' files, ' . $errors . ' errors');
+            error_log(sprintf(
+                'H3TM S3 Archive: Completed with %d moved, %d errors for tour id=%s',
+                $moved,
+                $errors,
+                isset($tour->id) ? $tour->id : 'n/a'
+            ));
 
             if ($errors === 0) {
                 return array('success' => true, 'message' => 'Tour archived successfully');
