@@ -195,7 +195,24 @@ jQuery(document).ready(function($) {
             console.log('S3 Upload completed. Status:', xhr.status);
 
             if (xhr.status === 200) {
-                console.log('✅ S3 upload successful! Starting Lambda processing monitor...');
+                console.log('✅ S3 upload successful! Marking as processing...');
+
+                // Mark as processing in database
+                $.ajax({
+                    url: h3tm_ajax.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'h3tm_mark_tour_processing',
+                        tour_name: tourName,
+                        nonce: h3tm_ajax.nonce
+                    },
+                    success: function() {
+                        console.log('✅ Tour marked as processing');
+                    },
+                    error: function(xhr, status, error) {
+                        console.log('⚠️ Failed to mark as processing:', error);
+                    }
+                });
 
                 // Show processing status with real-time monitoring
                 showLambdaProcessingStatus(tourName, $form, $spinner, $result, $progressBar, $progressText);
@@ -1002,8 +1019,12 @@ jQuery(document).ready(function($) {
 
             console.log('🔍 Polling attempt', pollAttempts, '/', maxPolls);
 
-            // Check if tour is accessible (index.htm exists)
-            var testUrl = '/h3panos/' + tourName + '/index.htm';
+            // Check if tour is accessible - try slug format (Lambda uses dashes)
+            var tourSlug = tourName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            var tourWithDashes = tourName.replace(/ /g, '-');
+            var testUrl = '/h3panos/' + tourWithDashes + '/index.htm';
+
+            console.log('Testing URL:', testUrl);
 
             $.ajax({
                 url: testUrl,
@@ -1110,22 +1131,33 @@ jQuery(document).ready(function($) {
                         tableHtml += '<table class="wp-list-table widefat fixed striped">';
                         tableHtml += '<thead><tr>';
                         tableHtml += '<th>Tour Name</th>';
-                        tableHtml += '<th>Status</th>';
                         tableHtml += '<th>URL</th>';
                         tableHtml += '<th>Actions</th>';
                         tableHtml += '</tr></thead><tbody>';
 
                         tours.forEach(function(tour) {
-                            var encodedTour = encodeURIComponent(tour);
+                            // Handle both old format (string) and new format (object with status)
+                            var tourName = typeof tour === 'string' ? tour : tour.name;
+                            var tourStatus = typeof tour === 'string' ? 'completed' : tour.status;
+
+                            var encodedTour = encodeURIComponent(tourName);
                             var tourUrl = window.location.origin + '/h3panos/' + encodedTour;
 
-                            tableHtml += '<tr data-tour="' + escapeHtml(tour) + '">';
-                            tableHtml += '<td>' + escapeHtml(tour) + '</td>';
-                            tableHtml += '<td><span style="color: #00a32a;">Available</span></td>';
+                            tableHtml += '<tr data-tour="' + escapeHtml(tourName) + '">';
+                            // Show status inline with name only if NOT completed
+                            tableHtml += '<td>';
+                            tableHtml += escapeHtml(tourName);
+                            if (tourStatus !== 'completed') {
+                                tableHtml += ' ' + getStatusBadgeHtml(tourStatus);
+                            }
+                            tableHtml += '</td>';
                             tableHtml += '<td><a href="' + tourUrl + '" target="_blank">' + tourUrl + '</a></td>';
                             tableHtml += '<td>';
-                            tableHtml += '<button class="button rename-tour" data-tour="' + escapeHtml(tour) + '">Rename</button> ';
-                            tableHtml += '<button class="button delete-tour" data-tour="' + escapeHtml(tour) + '">Delete</button>';
+                            tableHtml += '<button class="button change-url" data-tour="' + escapeHtml(tourName) + '" data-url="' + tourUrl + '">Change URL</button> ';
+                            tableHtml += '<button class="button update-tour" data-tour="' + escapeHtml(tourName) + '">Update</button> ';
+                            tableHtml += '<button class="button rename-tour" data-tour="' + escapeHtml(tourName) + '">Rename</button> ';
+                            tableHtml += '<button class="button get-script" data-tour="' + escapeHtml(tourName) + '">Get Script</button> ';
+                            tableHtml += '<button class="button delete-tour" data-tour="' + escapeHtml(tourName) + '">Delete</button>';
                             tableHtml += '</td>';
                             tableHtml += '</tr>';
                         });
@@ -1137,6 +1169,9 @@ jQuery(document).ready(function($) {
                         if (typeof H3TM_Admin_Rename !== 'undefined') {
                             H3TM_Admin_Rename.init();
                         }
+
+                        // Trigger event for polling
+                        $(document).trigger('tours-loaded');
 
                         // Tours loaded successfully
                     } else {
@@ -1197,6 +1232,48 @@ jQuery(document).ready(function($) {
         div.textContent = text;
         return div.innerHTML;
     }
+
+    // Get status badge HTML
+    function getStatusBadgeHtml(status) {
+        var badges = {
+            'uploading': '<span class="h3tm-status-badge h3tm-status-uploading">⬆️ Uploading</span>',
+            'processing': '<span class="h3tm-status-badge h3tm-status-processing">⚙️ Processing</span>',
+            'completed': '<span class="h3tm-status-badge h3tm-status-completed">✅ Available</span>',
+            'failed': '<span class="h3tm-status-badge h3tm-status-failed">❌ Failed</span>'
+        };
+        return badges[status] || badges['completed'];
+    }
+
+    // Auto-refresh tours that are still processing
+    function startProcessingPolling() {
+        var $toursInProgress = $('.h3tm-status-uploading, .h3tm-status-processing').closest('tr');
+
+        if ($toursInProgress.length > 0) {
+            console.log('Found ' + $toursInProgress.length + ' tours still processing, starting poll...');
+
+            // Poll every 5 seconds
+            var pollInterval = setInterval(function() {
+                console.log('Polling for tour status updates...');
+
+                // Reload tour list
+                loadToursFromS3(true);
+
+                // Check if any tours are still processing
+                setTimeout(function() {
+                    var $stillProcessing = $('.h3tm-status-uploading, .h3tm-status-processing').closest('tr');
+                    if ($stillProcessing.length === 0) {
+                        console.log('All tours completed, stopping poll');
+                        clearInterval(pollInterval);
+                    }
+                }, 1000);
+            }, 5000);
+        }
+    }
+
+    // Start polling after tours are loaded
+    $(document).on('tours-loaded', function() {
+        startProcessingPolling();
+    });
 
     // Migration functionality removed - S3-only system
 });

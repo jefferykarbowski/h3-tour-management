@@ -51,6 +51,8 @@ exports.handler = async (event) => {
             try {
                 const tourName = extractTourName(key);
                 console.log(`🎯 Extracted tour name: ${tourName}`);
+                const tourFolderName = getTourFolderName(tourName);
+                console.log(`📁 S3 folder name: ${tourFolderName}`);
 
                 // Step 1: Download ZIP from S3
                 console.log('⬇️ Step 1: Downloading ZIP from S3...');
@@ -77,13 +79,13 @@ exports.handler = async (event) => {
                 let uploadedCount = 0;
 
                 for (const file of extractedFiles) {
-                    const s3Key = `tours/${tourName}/${file.path}`;
+                    const s3Key = `tours/${tourFolderName}/${file.path}`;
                     let fileData = file.data;
 
                     // Inject analytics script into index.htm files
                     if (file.path === 'index.htm' || file.path === 'index.html') {
                         console.log('📊 Injecting analytics script into index file...');
-                        fileData = injectAnalyticsScript(file.data.toString(), tourName);
+                        fileData = injectAnalyticsScript(file.data.toString(), tourName, tourFolderName);
                     }
 
                     await s3.send(new PutObjectCommand({
@@ -112,11 +114,11 @@ exports.handler = async (event) => {
 
                 console.log(`🧹 Cleaned up original upload: ${key}`);
                 console.log(`🎉 Tour "${tourName}" processed successfully!`);
-                console.log(`🌐 Available at: https://${bucket}.s3.us-east-1.amazonaws.com/tours/${tourName}/index.htm`);
+                console.log(`🌐 Available at: https://${bucket}.s3.us-east-1.amazonaws.com/tours/${tourFolderName}/index.htm`);
 
                 // Step 5: Notify WordPress to register the tour
                 console.log('📞 Step 5: Notifying WordPress...');
-                await notifyWordPress(tourName, bucket);
+                await notifyWordPress(tourName, tourFolderName, bucket, uploadedCount);
 
                 console.log(`✅ Complete! Tour "${tourName}" is ready!`);
 
@@ -132,9 +134,16 @@ exports.handler = async (event) => {
 
 function extractTourName(s3Key) {
     // Extract tour name from uploads/uniqueid/Tour-Name.zip
+    // Keep original name (with spaces) for display
     const parts = s3Key.split('/');
     const fileName = parts[parts.length - 1];
-    return fileName.replace('.zip', '').replace(/-/g, ' ');
+    return fileName.replace('.zip', '');
+}
+
+function getTourFolderName(tourName) {
+    // ALWAYS convert spaces to dashes for S3 folder names
+    // This ensures consistency and prevents duplicates
+    return tourName.replace(/\s+/g, '-');
 }
 
 function getFileName(s3Key) {
@@ -161,19 +170,17 @@ function getContentType(filePath) {
 }
 
 // Inject analytics script tag into HTML
-function injectAnalyticsScript(htmlContent, tourName) {
+function injectAnalyticsScript(htmlContent, tourName, tourFolderName) {
     try {
         console.log('📊 Analytics injection: Processing HTML content, length:', htmlContent.length);
         console.log('📊 Analytics injection: Tour name:', tourName);
+        console.log('📊 Analytics injection: Folder name:', tourFolderName);
 
         // Check if </head> exists
         if (!htmlContent.includes('</head>')) {
             console.log('⚠️ Analytics injection: No </head> tag found in HTML');
             return htmlContent; // Return original if no </head> found
         }
-
-        // Fix any incorrect paths in the HTML
-        const tourFolderName = tourName.replace(/ /g, '-');
 
         // Replace incorrect media paths (if any exist)
         // Change /h3panos/Tour-Name/media/ to just ./media/
@@ -222,20 +229,51 @@ function injectAnalyticsScript(htmlContent, tourName) {
 }
 
 // Notify WordPress that tour processing is complete
-async function notifyWordPress(tourName, bucket) {
+async function notifyWordPress(tourName, tourFolderName, bucket, filesCount) {
     try {
-        // For now, just log that we would notify WordPress
-        // TODO: Implement actual webhook to WordPress
-        console.log(`📞 Would notify WordPress about tour: ${tourName}`);
-        console.log(`📊 Tour registered with S3 URL`);
+        const webhookUrl = process.env.WORDPRESS_WEBHOOK_URL;
 
-        // Could implement HTTP POST to WordPress webhook here
-        // const webhook_url = 'https://yoursite.com/wp-admin/admin-ajax.php?action=h3tm_lambda_webhook';
-        // await fetch(webhook_url, { method: 'POST', body: JSON.stringify({...}) });
+        if (!webhookUrl) {
+            console.log('⚠️ WORDPRESS_WEBHOOK_URL not configured, skipping notification');
+            return false;
+        }
 
-        return true;
+        const payload = {
+            success: true,
+            tourName: tourName,
+            s3FolderName: tourFolderName,
+            s3Bucket: bucket,
+            filesExtracted: filesCount,
+            processingTime: 0, // Could track this with start/end timestamps
+            totalSize: 0, // Could sum file sizes
+            message: `Tour "${tourName}" processed successfully`,
+            timestamp: new Date().toISOString(),
+            s3Url: `https://${bucket}.s3.us-east-1.amazonaws.com/tours/${tourFolderName}/`
+        };
+
+        console.log(`📞 Sending webhook to: ${webhookUrl}`);
+        console.log(`📊 Payload:`, JSON.stringify(payload, null, 2));
+
+        const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'H3-Lambda-Processor/1.0'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            console.log('✅ WordPress notified successfully');
+            const responseText = await response.text();
+            console.log('Response:', responseText);
+            return true;
+        } else {
+            console.error('❌ WordPress notification failed:', response.status, response.statusText);
+            return false;
+        }
     } catch (error) {
-        console.error('WordPress notification failed:', error);
+        console.error('❌ WordPress notification error:', error);
         return false;
     }
 }

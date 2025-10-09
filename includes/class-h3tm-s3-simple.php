@@ -1089,6 +1089,28 @@ class H3TM_S3_Simple {
         );
         update_option('h3tm_s3_tours', $tours);
 
+        // Create or update metadata entry with Lambda's actual folder structure
+        if (class_exists('H3TM_Tour_Metadata')) {
+            $metadata = new H3TM_Tour_Metadata();
+            $existing = $metadata->get_by_display_name($tour_name);
+
+            if (!$existing) {
+                // Create new metadata entry
+                $tour_slug = sanitize_title($tour_name);
+                // Lambda creates folders WITH SPACES, not dashes!
+                $s3_folder = 'tours/' . $tour_name;  // Keep spaces to match Lambda exactly
+
+                $metadata->create(array(
+                    'tour_slug' => $tour_slug,
+                    'display_name' => $tour_name,
+                    's3_folder' => $s3_folder,  // Matches Lambda: "tours/Jeffs Test/"
+                    'url_history' => json_encode(array())
+                ));
+
+                error_log('H3TM: Created metadata - Name: ' . $tour_name . ', S3 Folder: ' . $s3_folder);
+            }
+        }
+
         // Also add to recent uploads transient for immediate visibility
         $recent_uploads = get_transient('h3tm_recent_uploads') ?: array();
         if (!in_array($tour_name, $recent_uploads)) {
@@ -1187,11 +1209,26 @@ class H3TM_S3_Simple {
         }
 
         try {
-            $tour_s3_name = str_replace(' ', '-', $tour_name);
+            // Get actual S3 folder from metadata (Lambda may use spaces!)
+            $tour_s3_name = $tour_name; // Default to name as-is
+
+            if (class_exists('H3TM_Tour_Metadata')) {
+                $metadata = new H3TM_Tour_Metadata();
+                $tour = $metadata->get_by_display_name($tour_name);
+
+                if ($tour && !empty($tour->s3_folder)) {
+                    // Extract folder name from "tours/Folder Name/"
+                    $tour_s3_name = str_replace('tours/', '', rtrim($tour->s3_folder, '/'));
+                    error_log('H3TM S3 Archive: Using metadata S3 folder: ' . $tour_s3_name);
+                }
+            }
+
             $source_prefix = 'tours/' . $tour_s3_name . '/';
             // Generate timestamp once for the entire archive operation
             $archive_timestamp = date('Ymd_His');
-            $archive_prefix = 'archive/' . $tour_s3_name . '_' . $archive_timestamp . '/';
+            // Use dashes in archive name for cleaner naming
+            $archive_name = str_replace(' ', '-', $tour_s3_name);
+            $archive_prefix = 'archive/' . $archive_name . '_' . $archive_timestamp . '/';
 
             error_log('H3TM S3 Archive: Moving ' . $source_prefix . ' to ' . $archive_prefix);
 
@@ -1390,8 +1427,18 @@ class H3TM_S3_Simple {
         }
 
         try {
-            $old_s3_name = str_replace(' ', '-', $old_name);
-            $new_s3_name = str_replace(' ', '-', $new_name);
+            // Get actual S3 folders from metadata
+            $old_s3_name = $old_name; // Default with spaces
+            $new_s3_name = $new_name;
+
+            if (class_exists("H3TM_Tour_Metadata")) {
+                $metadata = new H3TM_Tour_Metadata();
+                $old_tour = $metadata->get_by_display_name($old_name);
+                if ($old_tour && !empty($old_tour->s3_folder)) {
+                    $old_s3_name = str_replace("tours/", "", rtrim($old_tour->s3_folder, "/"));
+                }
+            }
+
 
             error_log('H3TM S3 Rename: ' . $old_s3_name . ' to ' . $new_s3_name);
 

@@ -559,3 +559,237 @@
 .notice.notice-info {
     border-left-color: #2271b1;
 }
+
+/* Tour Status Badges */
+.h3tm-status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.h3tm-status-uploading {
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1px solid #90caf9;
+}
+
+.h3tm-status-processing {
+    background: #fff3e0;
+    color: #ef6c00;
+    border: 1px solid #ffb74d;
+    animation: pulse-processing 2s ease-in-out infinite;
+}
+
+.h3tm-status-completed {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #81c784;
+}
+
+.h3tm-status-failed {
+    background: #ffebee;
+    color: #c62828;
+    border: 1px solid #ef5350;
+}
+
+/* Pulse animation for processing status */
+@keyframes pulse-processing {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* Disable animation for reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    .h3tm-status-processing {
+        animation: none;
+    }
+}
+/* Update Tour Warning */
+.h3tm-update-warning {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    padding: 12px;
+    margin: 15px 0;
+}
+
+.h3tm-update-warning p {
+    margin: 0;
+    color: #856404;
+}
+
+/* Embed Modal Specific Styles */
+.h3tm-embed-modal .h3tm-modal-container {
+    max-width: 700px;
+}
+
+.h3tm-embed-container {
+    max-width: 700px !important;
+}
+
+.h3tm-embed-option {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.h3tm-embed-option h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #2271b1;
+}
+
+.h3tm-embed-code {
+    width: 100%;
+    min-height: 120px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    resize: vertical;
+    margin-bottom: 10px;
+}
+
+.h3tm-copy-embed {
+    margin-top: 5px;
+}
+
+.h3tm-copy-success {
+    background-color: #00a32a !important;
+    border-color: #00a32a !important;
+    color: #fff !important;
+}
+
+.h3tm-embed-instructions {
+    margin-top: 20px;
+    padding: 15px;
+    background: #e7f5fe;
+    border-left: 4px solid #2271b1;
+    border-radius: 4px;
+}
+
+.h3tm-embed-instructions h4 {
+    margin-top: 0;
+    color: #2271b1;
+}
+
+.h3tm-embed-instructions ol {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.h3tm-embed-instructions p {
+    margin-bottom: 0;
+    font-size: 13px;
+}
+
+/* Button Styles for New Actions */
+.update-tour {
+    background: #2271b1;
+    color: #fff;
+    border-color: #2271b1;
+}
+
+.update-tour:hover {
+    background: #135e96;
+    border-color: #135e96;
+}
+
+.get-script {
+    background: #00a32a;
+    color: #fff;
+    border-color: #00a32a;
+}
+
+.get-script:hover {
+    background: #008a20;
+    border-color: #008a20;
+}
+
+/* Update File Info */
+#h3tm-update-file-info {
+    background: #f0f0f1;
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+#h3tm-update-file-info p {
+    margin: 5px 0;
+    font-size: 13px;
+}
+
+/* Change URL Modal Styles */
+.h3tm-url-info {
+    background: #e7f5fe;
+    border-left: 4px solid #2271b1;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 4px;
+}
+
+.h3tm-url-info p {
+    margin: 0 0 8px 0;
+    font-weight: 600;
+    color: #2271b1;
+}
+
+.h3tm-url-info ul {
+    margin: 5px 0 0 0;
+    padding-left: 20px;
+}
+
+.h3tm-url-info li {
+    margin: 5px 0;
+    font-size: 13px;
+    color: #1d2327;
+}
+
+.h3tm-url-preview {
+    margin-top: 15px;
+    padding: 12px;
+    background: #f6f7f7;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.h3tm-url-preview strong {
+    color: #1d2327;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.h3tm-slug-preview {
+    color: #2271b1;
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+}
+
+#h3tm-url-preview-text {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    word-break: break-all;
+}
+
+/* Change URL Button */
+.change-url {
+    background: #8e44ad;
+    color: #fff;
+    border-color: #8e44ad;
+}
+
+.change-url:hover {
+    background: #7d3c98;
+    border-color: #7d3c98;
+}

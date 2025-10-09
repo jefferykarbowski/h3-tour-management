@@ -17,10 +17,12 @@ class H3TM_Lambda_Webhook {
 
     private $webhook_secret;
     private $tour_manager;
+    private $tour_processing;
 
-    public function __construct() {
+    public function __construct($tour_processing = null) {
         $this->webhook_secret = get_option('h3tm_lambda_webhook_secret', '');
         $this->tour_manager = new H3TM_Tour_Manager();
+        $this->tour_processing = $tour_processing ?: new H3TM_Tour_Processing();
 
         // Register webhook endpoint
         add_action('wp_ajax_h3tm_lambda_webhook', array($this, 'handle_webhook'));
@@ -176,31 +178,21 @@ class H3TM_Lambda_Webhook {
             $tour_name = sanitize_text_field($payload['tourName']);
             $files_extracted = intval($payload['filesExtracted'] ?? 0);
             $total_size = intval($payload['totalSize'] ?? 0);
-            $processing_time = intval($payload['processingTime'] ?? 0);
 
-            // Update tour database record
-            $tour_data = [
-                'tour_name' => $tour_name,
-                'status' => 'completed',
-                'files_count' => $files_extracted,
-                'total_size' => $total_size,
-                'processing_time_ms' => $processing_time,
-                'processed_at' => current_time('mysql'),
-                'processing_method' => 'lambda'
-            ];
+            // Update tour processing status in database
+            $this->tour_processing->mark_completed($tour_name, $files_extracted, $total_size);
 
-            // Use tour manager to update or create tour record
-            $tour_result = $this->tour_manager->register_completed_tour($tour_data);
-
-            if (!$tour_result) {
-                throw new Exception('Failed to register completed tour in database');
-            }
+            // Clear S3 tour cache so new tour appears immediately
+            delete_transient('h3tm_s3_tours_cache');
+            error_log('H3TM Lambda Webhook: Cleared S3 tour cache');
 
             // Clear any processing transients
-            $this->cleanup_processing_transients($payload['s3Key']);
+            if (isset($payload['s3Key'])) {
+                $this->cleanup_processing_transients($payload['s3Key']);
+            }
 
             // Trigger success actions
-            do_action('h3tm_tour_processing_success', $payload, $tour_data);
+            do_action('h3tm_tour_processing_success', $payload);
 
             // Send admin notification if configured
             $this->send_admin_notification($payload, true);
@@ -227,23 +219,16 @@ class H3TM_Lambda_Webhook {
             $tour_name = sanitize_text_field($payload['tourName']);
             $error_message = sanitize_text_field($payload['message']);
 
-            // Update tour database record
-            $tour_data = [
-                'tour_name' => $tour_name,
-                'status' => 'failed',
-                'error_message' => $error_message,
-                'failed_at' => current_time('mysql'),
-                'processing_method' => 'lambda'
-            ];
-
-            // Use tour manager to update tour record
-            $this->tour_manager->register_failed_tour($tour_data);
+            // Update tour processing status in database
+            $this->tour_processing->mark_failed($tour_name, $error_message);
 
             // Clear any processing transients
-            $this->cleanup_processing_transients($payload['s3Key']);
+            if (isset($payload['s3Key'])) {
+                $this->cleanup_processing_transients($payload['s3Key']);
+            }
 
             // Trigger failure actions
-            do_action('h3tm_tour_processing_failure', $payload, $tour_data);
+            do_action('h3tm_tour_processing_failure', $payload);
 
             // Send admin notification
             $this->send_admin_notification($payload, false);

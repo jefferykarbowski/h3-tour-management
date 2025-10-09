@@ -28,3 +28,5 @@ package-lock.json
 
 # Plugin update checker (if you want to exclude it)
 # plugin-update-checker/
+# Codemachine memory
+.codemachine/memory/

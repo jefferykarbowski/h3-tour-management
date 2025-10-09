@@ -21,6 +21,7 @@ define('H3TM_VERSION', '2.4.7');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
+define('H3TM_PLUGIN_FILE', __FILE__);
 define('H3TM_TOUR_DIR', 'h3panos');
 
 // Include required files
@@ -39,6 +40,13 @@ require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-proxy.php';
 require_once H3TM_PLUGIN_DIR . 'admin/s3-settings.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-analytics-endpoint.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-shortcodes-v4.php';
+// Tour processing status tracking
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-processing.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-lambda-webhook.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-lambda-integration.php';
+// Tour metadata and URL management
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-metadata.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-url-redirector.php';
 
 // Activation hook
 register_activation_hook(__FILE__, array('H3TM_Activator', 'activate'));
@@ -60,6 +68,16 @@ function h3tm_init() {
     new H3TM_S3_Settings();
     new H3TM_Analytics_Endpoint();
     new H3TM_Shortcodes_V4();
+
+    // Initialize tour processing status tracking
+    $tour_processing = new H3TM_Tour_Processing();
+    $tour_processing->create_table(); // Ensure table exists
+
+    new H3TM_Lambda_Webhook($tour_processing);
+    new H3TM_Lambda_Integration();
+
+    // Initialize tour metadata and URL redirector
+    new H3TM_URL_Redirector();
 }
 
 // Disable new user notification emails (moved from functions.php)
