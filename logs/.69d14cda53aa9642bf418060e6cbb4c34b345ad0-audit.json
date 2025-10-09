@@ -6,36 +6,6 @@
     "auditLog": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\.69d14cda53aa9642bf418060e6cbb4c34b345ad0-audit.json",
     "files": [
         {
-            "date": 1757940781390,
-            "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-09-15.log",
-            "hash": "43fc1ef7ea62c24fca14ec010c420cf8876c8f82daebef8f6d3c03c8fdd34360"
-        },
-        {
-            "date": 1758033138811,
-            "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-09-16.log",
-            "hash": "e909ab296e5bdc449f40accb26e2eaf173fc52feefa81697ba980f8e0982ba8f"
-        },
-        {
-            "date": 1758121021049,
-            "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-09-17.log",
-            "hash": "0d7a443e3789b5abd0defe70f710e1b69ad925a9cf33c772c7de1f0f700dcaf6"
-        },
-        {
-            "date": 1758200224656,
-            "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-09-18.log",
-            "hash": "00c0b36ba5ac0b076bfe036e96731a749acfc610f92b3562e607a3d55a0dcb37"
-        },
-        {
-            "date": 1758301261007,
-            "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-09-19.log",
-            "hash": "ba46840d8bf02bc36a3a7d53c64290ab567dfa620e095770c5aea143f77ccef4"
-        },
-        {
-            "date": 1758466947087,
-            "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-09-21.log",
-            "hash": "588272381e41a762b38dee3e27c32037592f209328e7f14078ba158a62bfcecb"
-        },
-        {
             "date": 1759017158100,
             "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-09-27.log",
             "hash": "4081bc6d1de235b8e71d4aedcdc935349ddbbda55180e964734951db0b596727"
@@ -44,6 +14,21 @@
             "date": 1759039480588,
             "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-09-28.log",
             "hash": "c6d9c48fc42fbd3d17a50a38ed1e014f6f8aba8dfd7471d5bb3940c20b7b240e"
+        },
+        {
+            "date": 1759192437886,
+            "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-09-29.log",
+            "hash": "a628804a4f28b6a4a5cb53712fd2f3df5d4901b73a632c3b6df8a619148a4940"
+        },
+        {
+            "date": 1759330900868,
+            "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-10-01.log",
+            "hash": "8f0e11586f02ba02cd2d67c5a4f7ea82fa1ab3cfcad40819f864e12fce0e7c53"
+        },
+        {
+            "date": 1759927355358,
+            "name": "C:\\Users\\Jeff\\Documents\\GitHub\\h3-tour-management\\logs\\mcp-puppeteer-2025-10-08.log",
+            "hash": "04c65459622904c9d549f6cb6177ec25c1df4b742f5d7f3755ff31bf26546010"
         }
     ],
     "hashType": "sha256"

@@ -52,7 +52,13 @@
       "Bash(git rm:*)",
       "Read(//c/c/Users/Jeff/**)",
       "Bash(aws s3api:*)",
-      "mcp__serena__read_memory"
+      "mcp__serena__read_memory",
+      "Bash(where uvx)",
+      "Bash(pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(uvx:*)",
+      "Bash(python:*)",
+      "Bash(\"C:\\Users\\Jeff\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\awslabs.aws-api-mcp-server.exe\" --help)"
     ],
     "deny": []
   }
