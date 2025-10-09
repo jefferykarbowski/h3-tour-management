@@ -1,0 +1,32 @@
+@startuml
+' Entity-Relationship view of the H3TM metadata store
+
+hide circle
+skinparam entity {
+  BackgroundColor #FFFFFF
+  BorderColor #333333
+  FontSize 14
+  AttributeFontSize 12
+}
+
+title H3 Tour Management – Metadata Table
+
+entity "wp_h3tm_tour_metadata" as TourMetadata {
+  * id : bigint(20) UNSIGNED <<PK>>
+  --
+  tour_slug : varchar(255) <<UNIQUE>>
+  display_name : varchar(255)
+  s3_folder : varchar(255)
+  url_history : text
+  created_date : datetime <<DEFAULT CURRENT_TIMESTAMP>>
+  updated_date : datetime <<ON UPDATE CURRENT_TIMESTAMP>>
+}
+
+note right of TourMetadata
+  url_history stores a JSON array of prior slugs
+  to power 301 redirects via H3TM_URL_Redirector.
+  s3_folder preserves spaces and is the
+  canonical S3 key prefix for tour assets.
+end note
+
+@enduml

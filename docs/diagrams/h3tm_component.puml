@@ -1,0 +1,42 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title H3 Tour Management – Component View
+
+Person(admin, "WP Administrator", "Manages tours and plugin settings")
+Person(visitor, "Public Visitor", "Loads published 3D tours")
+
+Container_Boundary(wp_env, "WordPress Environment") {
+  Container(wp, "WordPress Core", "PHP 7.4+", "Hosts the H3TM plugin and WordPress admin UI") {
+    Component(admin_core, "H3TM_Admin", "PHP class", "Registers menus, enqueues assets, wires AJAX actions")
+    Component(traits, "H3TM Admin Traits (planned)", "PHP traits", "Modularize tour handlers, S3 ops, migrations, page renderers")
+    Component(metadata_repo, "H3TM_Tour_Metadata", "PHP class", "CRUD operations for wp_h3tm_tour_metadata and slug history")
+    Component(s3_service, "H3TM_S3_Simple", "PHP class", "Uploads, archives, and downloads tours from S3 using metadata.s3_folder")
+    Component(redirector, "H3TM_URL_Redirector", "PHP class", "Intercepts requests and issues 301 redirects for legacy slugs")
+    Component(activator, "H3TM_Activator", "PHP class", "Handles plugin activation, migrations, and metadata seeding")
+  }
+  Container(admin_js, "Admin JavaScript Bundle", "JavaScript / jQuery", "Handles modals, AJAX calls, progress UI in wp-admin")
+}
+
+ContainerDb(db, "wp_h3tm_tour_metadata", "MySQL", "Stores tour slug, display name, s3_folder, and url_history JSON")
+
+System_Ext(s3, "Amazon S3", "Tour storage bucket with folders created by Lambda")
+System_Ext(cf, "Amazon CloudFront", "CDN distribution serving tour assets")
+System_Ext(lambda, "AWS Lambda Pipeline", "Processes uploaded ZIPs into tour folders and optional status JSON")
+
+Rel(admin, admin_js, "Uses admin dashboard", "HTTPS")
+Rel(admin_js, admin_core, "AJAX (admin-ajax.php?action=h3tm_*)", "JSON / nonce protected")
+Rel(admin_core, metadata_repo, "Reads & updates tour metadata")
+Rel(metadata_repo, db, "CRUD", "SQL (wpdb)")
+Rel(admin_core, s3_service, "Invokes S3 operations", "AWS SDK for PHP")
+Rel(s3_service, s3, "Uploads, lists, archives tour assets", "AWS API")
+Rel(admin_core, redirector, "Registers redirect hooks", "template_redirect")
+Rel(admin_core, activator, "Triggers migrations on activation", "register_activation_hook")
+Rel(visitor, cf, "Requests tour pages/assets", "HTTPS")
+Rel(cf, s3, "Fetches tour assets", "Origin pull")
+Rel(lambda, s3, "Writes processed tour files & status", "S3 PutObject")
+Rel(admin_core, cf, "Invalidates cache post-update", "AWS SDK")
+
+@enduml
