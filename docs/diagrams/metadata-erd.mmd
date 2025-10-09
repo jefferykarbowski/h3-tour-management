@@ -1,0 +1,22 @@
+%% H3 Tour Management Plugin — ER diagram for wp_h3tm_tour_metadata
+%% Captures canonical S3 folder storage and slug history/indexing rules.
+
+erDiagram
+    TOUR_METADATA {
+        id BIGINT PK "Auto-increment, unsigned"
+        tour_slug VARCHAR "Current tour slug presented to the public"
+        display_name VARCHAR "Human-readable name shown in the admin UI"
+        s3_folder VARCHAR "Canonical S3 prefix (spaces preserved from Lambda)"
+        url_history TEXT "JSON array tracking up to 10 previous slugs"
+        created_date DATETIME "Defaults to CURRENT_TIMESTAMP"
+        updated_date DATETIME "Updates automatically on row change"
+    }
+
+    note right of TOUR_METADATA
+        "PRIMARY KEY (id)"
+        "UNIQUE KEY tour_slug (tour_slug)"
+        "INDEX idx_tour_slug (tour_slug) accelerates lookups"
+        "INDEX idx_s3_folder (s3_folder) ensures S3 operations use metadata as source of truth"
+        "s3_folder ALWAYS preserves spaces (e.g., tours/Jeffs Test/) to match Lambda output"
+        "url_history retains legacy slugs for redirector logic"
+    end note

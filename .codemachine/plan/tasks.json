@@ -6,7 +6,9 @@
     "description": "Compile the provided specifications into a concise Markdown brief covering critical bugs, root causes, target behaviours, and manual test checklists.",
     "agent_type_hint": "DocumentationAgent",
     "inputs": "Section 1; user requirements summary from prompt.",
-    "target_files": ["docs/requirements/critical-bugs.md"],
+    "target_files": [
+      "docs/requirements/critical-bugs.md"
+    ],
     "input_files": [],
     "deliverables": "Markdown brief describing each critical bug, expected fixes, and reproducible test steps.",
     "acceptance_criteria": "Document lists all five critical bugs with reproduction + validation steps; includes logging expectations; stored at the specified path with valid Markdown headings.",
@@ -21,11 +23,17 @@
     "description": "Produce a PlantUML component diagram reflecting current and target plugin components, emphasizing metadata, S3 operations, and admin traits.",
     "agent_type_hint": "DiagrammingAgent",
     "inputs": "Section 2; output of I1.T1.",
-    "target_files": ["docs/diagrams/component-overview.puml"],
-    "input_files": ["docs/requirements/critical-bugs.md"],
+    "target_files": [
+      "docs/diagrams/component-overview.puml"
+    ],
+    "input_files": [
+      "docs/requirements/critical-bugs.md"
+    ],
     "deliverables": "PlantUML file rendering without errors, showing component interactions and external systems.",
     "acceptance_criteria": "Diagram aligns with Section 2 descriptions; PlantUML syntax passes validation; references upcoming traits and AWS services.",
-    "dependencies": ["I1.T1"],
+    "dependencies": [
+      "I1.T1"
+    ],
     "parallelizable": false,
     "done": true
   },
@@ -36,13 +44,19 @@
     "description": "Create a Mermaid ERD documenting `wp_h3tm_tour_metadata`, highlighting canonical `s3_folder` usage and indexes for slug lookups.",
     "agent_type_hint": "DiagrammingAgent",
     "inputs": "Section 2; `docs/requirements/critical-bugs.md`.",
-    "target_files": ["docs/diagrams/metadata-erd.mmd"],
-    "input_files": ["docs/requirements/critical-bugs.md"],
+    "target_files": [
+      "docs/diagrams/metadata-erd.mmd"
+    ],
+    "input_files": [
+      "docs/requirements/critical-bugs.md"
+    ],
     "deliverables": "Mermaid ERD file detailing fields, constraints, and notes on slug history.",
     "acceptance_criteria": "ERD reflects schema from requirements; Mermaid preview renders successfully; notes clarify `s3_folder` as canonical path.",
-    "dependencies": ["I1.T1"],
+    "dependencies": [
+      "I1.T1"
+    ],
     "parallelizable": false,
-    "done": false
+    "done": true
   },
   {
     "task_id": "I1.T4",
@@ -63,7 +77,9 @@
     ],
     "deliverables": "Updated PHP logic using metadata-derived S3 folders, added logging statements, and appended test instructions.",
     "acceptance_criteria": "`archive_tour()` exclusively uses metadata `s3_folder`; logging captures success/failure with tour identifiers; `php -l` passes for touched files; manual test notes updated to include edge cases (spaces, hyphens, special chars).",
-    "dependencies": ["I1.T1"],
+    "dependencies": [
+      "I1.T1"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -74,14 +90,19 @@
     "description": "Document the delete workflow via a Mermaid sequence diagram covering UI trigger, PHP handler, metadata lookup, and S3 operations.",
     "agent_type_hint": "DiagrammingAgent",
     "inputs": "Section 2; outputs of I1.T2–I1.T4.",
-    "target_files": ["docs/diagrams/delete-tour-sequence.mmd"],
+    "target_files": [
+      "docs/diagrams/delete-tour-sequence.mmd"
+    ],
     "input_files": [
       "docs/diagrams/component-overview.puml",
       "docs/requirements/critical-bugs.md"
     ],
     "deliverables": "Mermaid sequence diagram illustrating interactions and error branches.",
     "acceptance_criteria": "Diagram matches implemented logic post-`I1.T4`; Mermaid syntax validates; includes logging touchpoints.",
-    "dependencies": ["I1.T2", "I1.T4"],
+    "dependencies": [
+      "I1.T2",
+      "I1.T4"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -106,7 +127,9 @@
     ],
     "deliverables": "Updated PHP handlers with proper hooks, logging, slug history updates, and refreshed manual test notes.",
     "acceptance_criteria": "All relevant `add_action` calls are registered; slug change updates DB and redirect history; rebuild metadata handler responds with success JSON; `php -l` clean; manual tests describe UI refresh expectations.",
-    "dependencies": ["I1.T4"],
+    "dependencies": [
+      "I1.T4"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -117,14 +140,18 @@
     "description": "Produce an OpenAPI v3 spec capturing request/response schemas for key admin AJAX actions, including error formats and nonce requirements.",
     "agent_type_hint": "DocumentationAgent",
     "inputs": "Section 2; outputs of I2.T1.",
-    "target_files": ["api/admin-ajax.yaml"],
+    "target_files": [
+      "api/admin-ajax.yaml"
+    ],
     "input_files": [
       "includes/class-h3tm-admin.php",
       "docs/requirements/critical-bugs.md"
     ],
     "deliverables": "Valid OpenAPI YAML documenting endpoints, parameters, responses, and security schemes.",
     "acceptance_criteria": "Spec passes OpenAPI validator; includes operations for delete, change URL, rename, update, get script, rebuild metadata; references nonce header/query usage.",
-    "dependencies": ["I2.T1"],
+    "dependencies": [
+      "I2.T1"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -145,7 +172,9 @@
     ],
     "deliverables": "Updated JS files with function declarations or reordered definitions, delegated event bindings, and console logging toggles.",
     "acceptance_criteria": "Functions referenced before definition are converted to hoisted declarations; `.rename-tour` and modal handlers fire with console confirmations; `node --check` (or eslint) passes; change URL modal triggers AJAX successfully.",
-    "dependencies": ["I2.T1"],
+    "dependencies": [
+      "I2.T1"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -170,7 +199,9 @@
     ],
     "deliverables": "JS enhancements for table refresh/embed updates and PHP adjustments ensuring legacy URLs redirect after slug changes.",
     "acceptance_criteria": "On slug change, UI updates the table row and embed snippet; old slug yields 301 to new slug; console logs confirm success branch; lint checks pass (`node --check`, `php -l`).",
-    "dependencies": ["I2.T3"],
+    "dependencies": [
+      "I2.T3"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -181,14 +212,19 @@
     "description": "Capture the Change URL workflow in a Mermaid sequence diagram incorporating UI, PHP, metadata, redirector, and S3 (if relevant).",
     "agent_type_hint": "DiagrammingAgent",
     "inputs": "Sections 2 & 4; outputs of I2.T2–I2.T4.",
-    "target_files": ["docs/diagrams/change-url-sequence.mmd"],
+    "target_files": [
+      "docs/diagrams/change-url-sequence.mmd"
+    ],
     "input_files": [
       "api/admin-ajax.yaml",
       "docs/requirements/critical-bugs.md"
     ],
     "deliverables": "Mermaid sequence diagram for Change URL with success/error branches.",
     "acceptance_criteria": "Diagram reflects final implementation; Mermaid renders cleanly; notes highlight redirect + embed updates.",
-    "dependencies": ["I2.T2", "I2.T4"],
+    "dependencies": [
+      "I2.T2",
+      "I2.T4"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -199,14 +235,18 @@
     "description": "Author an ADR documenting the trait refactor strategy, migration steps, and rollback considerations.",
     "agent_type_hint": "DocumentationAgent",
     "inputs": "Sections 2 & 3; outputs of I2.T2.",
-    "target_files": ["docs/adr/0001-admin-traits.md"],
+    "target_files": [
+      "docs/adr/0001-admin-traits.md"
+    ],
     "input_files": [
       "docs/requirements/critical-bugs.md",
       "api/admin-ajax.yaml"
     ],
     "deliverables": "Markdown ADR capturing motivation, options considered, and decision outcomes.",
     "acceptance_criteria": "ADR follows MADR structure (Context, Decision, Consequences); references trait files planned; links to relevant tasks.",
-    "dependencies": ["I2.T2"],
+    "dependencies": [
+      "I2.T2"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -227,7 +267,9 @@
     ],
     "deliverables": "New trait file with namespace/guards consistent with plugin style and updated admin class referencing it.",
     "acceptance_criteria": "Methods moved without behavioural change; `require` or autoload ensures trait availability; `php -l` passes; unit/manual tests for tour handlers succeed.",
-    "dependencies": ["I3.T1"],
+    "dependencies": [
+      "I3.T1"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -249,7 +291,9 @@
     ],
     "deliverables": "Trait file containing delete/rename methods with proper access to shared helpers, updated admin class.",
     "acceptance_criteria": "Traits load without fatal errors; delete/rename flows pass manual tests from docs; logging remains; `php -l` passes.",
-    "dependencies": ["I3.T2"],
+    "dependencies": [
+      "I3.T2"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -270,7 +314,9 @@
     ],
     "deliverables": "Trait encapsulating S3-related admin helpers with shared configuration, updated admin class wiring.",
     "acceptance_criteria": "Trait composes cleanly with other traits; S3 operations still reference metadata `s3_folder`; `php -l` clean; manual smoke tests for upload/update succeed.",
-    "dependencies": ["I3.T3"],
+    "dependencies": [
+      "I3.T3"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -292,7 +338,9 @@
     ],
     "deliverables": "Two trait files containing migration/page rendering code; refactored admin class around 300–400 lines; updated requires/autoloaders.",
     "acceptance_criteria": "Admin pages render correctly; migrations run without errors; class file length reduced below 400 lines; `php -l` passes for all new files.",
-    "dependencies": ["I3.T4"],
+    "dependencies": [
+      "I3.T4"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -303,7 +351,9 @@
     "description": "Produce a UX wireframe and interaction notes for the tour table, including search, filters, bulk actions, progress indicators, and confirmation flows.",
     "agent_type_hint": "UXDocumentationAgent",
     "inputs": "Sections 2 & 3; outputs of I1.T2, I2.T2, I3.T5.",
-    "target_files": ["docs/ux/admin-table-wireframe.md"],
+    "target_files": [
+      "docs/ux/admin-table-wireframe.md"
+    ],
     "input_files": [
       "docs/requirements/critical-bugs.md",
       "docs/diagrams/component-overview.puml",
@@ -311,7 +361,9 @@
     ],
     "deliverables": "Markdown document with ASCII wireframes, interaction notes, and accessibility considerations.",
     "acceptance_criteria": "Wireframe covers search, filter, bulk actions, progress, confirmations; documents keyboard/accessibility expectations; references supporting backend endpoints.",
-    "dependencies": ["I3.T5"],
+    "dependencies": [
+      "I3.T5"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -333,7 +385,9 @@
     ],
     "deliverables": "Updated renderer for table with search/filter controls, JS handling UI interactions, and documentation updates on UX notes if needed.",
     "acceptance_criteria": "Search/filter inputs alter table results without full page reload; bulk checkboxes support select-all; manual instructions updated; lint checks pass.",
-    "dependencies": ["I4.T1"],
+    "dependencies": [
+      "I4.T1"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -355,7 +409,9 @@
     ],
     "deliverables": "JS polling module, backend endpoint (if required) to proxy S3 status, and UX doc updates describing progress behaviour.",
     "acceptance_criteria": "Processing tours display live percentage/ETA; polling stops on completion/error; logging captures poll failures; lint checks pass.",
-    "dependencies": ["I4.T2"],
+    "dependencies": [
+      "I4.T2"
+    ],
     "parallelizable": false,
     "done": false
   },
@@ -377,7 +433,9 @@
     ],
     "deliverables": "JS modules for confirmations/toasts, accessible focus management, and UX doc updates.",
     "acceptance_criteria": "Confirm dialogs block destructive actions until confirmed; toasts announce results (with ARIA roles); behaviour documented; lint checks pass.",
-    "dependencies": ["I4.T2"],
+    "dependencies": [
+      "I4.T2"
+    ],
     "parallelizable": true,
     "done": false
   },
@@ -388,14 +446,18 @@
     "description": "Update admin CSS to support new layout, responsiveness, progress bars, and bulk action controls.",
     "agent_type_hint": "FrontendAgent",
     "inputs": "Section 2; outputs of I4.T1–I4.T4.",
-    "target_files": ["assets/css/admin.css"],
+    "target_files": [
+      "assets/css/admin.css"
+    ],
     "input_files": [
       "assets/css/admin.css",
       "docs/ux/admin-table-wireframe.md"
     ],
     "deliverables": "Revised CSS with variables/mixins as needed, ensuring compatibility with WP admin styles.",
     "acceptance_criteria": "UI renders cleanly across standard WP admin breakpoints; progress bars and dropdowns styled per wireframe; passes `stylelint` (if available) or manual review.",
-    "dependencies": ["I4.T4"],
+    "dependencies": [
+      "I4.T4"
+    ],
     "parallelizable": false,
     "done": false
   }
