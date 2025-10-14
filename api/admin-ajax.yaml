@@ -1,0 +1,483 @@
+openapi: 3.0.3
+info:
+  title: H3 Tour Management Admin AJAX API
+  description: |
+    WordPress admin-ajax.php endpoints for H3 Tour Management plugin.
+    All endpoints require authentication and use WordPress nonce security.
+  version: 1.0.0
+  contact:
+    name: H3 Tour Management
+
+servers:
+  - url: /wp-admin
+    description: WordPress admin area
+
+security:
+  - nonceAuth: []
+
+paths:
+  /admin-ajax.php?action=h3tm_delete_tour:
+    post:
+      summary: Delete/Archive Tour
+      description: |
+        Archives tour to S3 archive folder and removes from active tours.
+        Uses metadata s3_folder as canonical source for S3 operations.
+      operationId: deleteTour
+      tags:
+        - Tour Management
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - action
+                - nonce
+                - tour_name
+              properties:
+                action:
+                  type: string
+                  enum: [h3tm_delete_tour]
+                nonce:
+                  type: string
+                  description: WordPress nonce for h3tm_ajax_nonce
+                tour_name:
+                  type: string
+                  description: Display name of tour to delete
+      responses:
+        '200':
+          description: Success or error response
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/DeleteSuccess'
+                  - $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      message: "Tour archived successfully"
+                      archived: 42
+                      deleted: 42
+                      archive_path: "archive/tour-slug-20250109/"
+                error_not_found:
+                  value:
+                    success: false
+                    data: "Tour not found in metadata"
+                error_s3:
+                  value:
+                    success: false
+                    data: "Tour not found in S3"
+
+  /admin-ajax.php?action=h3tm_rename_tour:
+    post:
+      summary: Rename Tour
+      description: |
+        Updates tour display name only. URL slug and S3 folder remain unchanged.
+      operationId: renameTour
+      tags:
+        - Tour Management
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - action
+                - nonce
+                - old_name
+                - new_name
+              properties:
+                action:
+                  type: string
+                  enum: [h3tm_rename_tour]
+                nonce:
+                  type: string
+                old_name:
+                  type: string
+                  description: Current display name
+                new_name:
+                  type: string
+                  description: New display name
+      responses:
+        '200':
+          description: Rename result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/RenameSuccess'
+                  - $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      message: "Tour renamed successfully"
+                      old_name: "My Old Tour"
+                      new_name: "My New Tour"
+
+  /admin-ajax.php?action=h3tm_change_tour_url:
+    post:
+      summary: Change Tour URL
+      description: |
+        Changes tour slug and adds old slug to url_history for 301 redirects.
+        Display name and S3 folder remain unchanged.
+      operationId: changeTourUrl
+      tags:
+        - Tour Management
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - action
+                - nonce
+                - tour_name
+                - new_slug
+              properties:
+                action:
+                  type: string
+                  enum: [h3tm_change_tour_url]
+                nonce:
+                  type: string
+                tour_name:
+                  type: string
+                  description: Display name of tour
+                new_slug:
+                  type: string
+                  pattern: '^[a-z0-9-]+$'
+                  description: New URL slug (lowercase, alphanumeric, hyphens only)
+      responses:
+        '200':
+          description: URL change result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ChangeUrlSuccess'
+                  - $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      message: "URL changed successfully"
+                      old_slug: "old-tour-slug"
+                      new_slug: "new-tour-slug"
+                      new_url: "https://example.com/h3panos/new-tour-slug/"
+                error_exists:
+                  value:
+                    success: false
+                    data: "Slug already in use"
+
+  /admin-ajax.php?action=h3tm_update_tour:
+    post:
+      summary: Update Tour
+      description: |
+        Triggers Lambda processing to update tour files from uploaded ZIP.
+        Overwrites existing tour files and invalidates CloudFront cache.
+      operationId: updateTour
+      tags:
+        - Tour Management
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - action
+                - nonce
+                - tour_name
+                - s3_key
+              properties:
+                action:
+                  type: string
+                  enum: [h3tm_update_tour]
+                nonce:
+                  type: string
+                tour_name:
+                  type: string
+                s3_key:
+                  type: string
+                  description: S3 key of uploaded ZIP file
+      responses:
+        '200':
+          description: Update processing result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/UpdateSuccess'
+                  - $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      message: "Tour update initiated"
+                      lambda_arn: "arn:aws:lambda:..."
+                      status_url: "https://bucket.s3.region.amazonaws.com/tours/tour-name/status.json"
+
+  /admin-ajax.php?action=h3tm_get_embed_script:
+    post:
+      summary: Get Embed Script
+      description: |
+        Returns iframe embed code for tour in both standard and responsive formats.
+      operationId: getEmbedScript
+      tags:
+        - Tour Management
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - action
+                - nonce
+                - tour_name
+              properties:
+                action:
+                  type: string
+                  enum: [h3tm_get_embed_script]
+                nonce:
+                  type: string
+                tour_name:
+                  type: string
+      responses:
+        '200':
+          description: Embed script data
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/EmbedScriptSuccess'
+                  - $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      tour_name: "My Tour"
+                      tour_url: "https://example.com/h3panos/my-tour/"
+                      embed_script: "<iframe src=\"...\" width=\"800\" height=\"600\"></iframe>"
+                      embed_script_responsive: "<div style=\"position:relative;padding-bottom:56.25%\">...</div>"
+
+  /admin-ajax.php?action=h3tm_rebuild_metadata:
+    post:
+      summary: Rebuild Metadata
+      description: |
+        Clears and rebuilds tour metadata table from S3 bucket contents.
+        Used for recovery and synchronization.
+      operationId: rebuildMetadata
+      tags:
+        - Maintenance
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - action
+                - nonce
+              properties:
+                action:
+                  type: string
+                  enum: [h3tm_rebuild_metadata]
+                nonce:
+                  type: string
+      responses:
+        '200':
+          description: Rebuild result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/RebuildSuccess'
+                  - $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      message: "Metadata rebuilt successfully"
+                      tours_processed: 15
+
+components:
+  securitySchemes:
+    nonceAuth:
+      type: apiKey
+      in: query
+      name: nonce
+      description: WordPress nonce for h3tm_ajax_nonce action
+
+  schemas:
+    DeleteSuccess:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required:
+            - message
+          properties:
+            message:
+              type: string
+            archived:
+              type: integer
+              description: Number of objects archived
+            deleted:
+              type: integer
+              description: Number of objects deleted
+            archive_path:
+              type: string
+              description: S3 path to archived tour
+
+    RenameSuccess:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required:
+            - message
+          properties:
+            message:
+              type: string
+            old_name:
+              type: string
+            new_name:
+              type: string
+
+    ChangeUrlSuccess:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required:
+            - message
+            - new_url
+          properties:
+            message:
+              type: string
+            old_slug:
+              type: string
+            new_slug:
+              type: string
+            new_url:
+              type: string
+              format: uri
+
+    UpdateSuccess:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required:
+            - message
+          properties:
+            message:
+              type: string
+            lambda_arn:
+              type: string
+            status_url:
+              type: string
+              format: uri
+
+    EmbedScriptSuccess:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required:
+            - tour_name
+            - tour_url
+            - embed_script
+            - embed_script_responsive
+          properties:
+            tour_name:
+              type: string
+            tour_url:
+              type: string
+              format: uri
+            embed_script:
+              type: string
+              description: Standard fixed-height iframe embed
+            embed_script_responsive:
+              type: string
+              description: Responsive 16:9 aspect ratio embed
+
+    RebuildSuccess:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required:
+            - message
+          properties:
+            message:
+              type: string
+            tours_processed:
+              type: integer
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        data:
+          type: string
+          description: Error message
+
+tags:
+  - name: Tour Management
+    description: Core tour CRUD operations
+  - name: Maintenance
+    description: System maintenance and recovery operations

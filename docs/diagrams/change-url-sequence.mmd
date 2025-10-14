@@ -1,0 +1,118 @@
+```mermaid
+sequenceDiagram
+    participant UI as Admin UI
+    participant AJAX as WordPress AJAX
+    participant Admin as H3TM_Admin
+    participant Meta as H3TM_Tour_Metadata
+    participant Redir as H3TM_URL_Redirector
+    participant WP as WordPress Core
+
+    Note over UI,WP: Change Tour URL Workflow
+
+    UI->>UI: User clicks "Change URL" button
+    UI->>UI: Show modal with current slug
+    UI->>UI: User enters new slug
+
+    alt User Validates Input (Client-Side)
+        UI->>UI: Validate slug pattern: ^[a-z0-9-]+$
+        UI->>UI: Check length (2-200 chars)
+        UI->>UI: Verify different from current
+    end
+
+    UI->>AJAX: POST wp_ajax_h3tm_change_tour_url
+    Note right of UI: Payload: tour_name, new_slug, nonce
+
+    AJAX->>Admin: handle_change_tour_url()
+
+    Admin->>Admin: Verify nonce
+    Admin->>Admin: Check user capabilities (manage_options)
+
+    alt Authorization Failed
+        Admin-->>AJAX: {success: false, data: "Permission denied"}
+        AJAX-->>UI: Show error
+    end
+
+    Admin->>Admin: Sanitize new_slug with sanitize_title()
+    Admin->>Admin: Log: "Changing URL" + tour_name, new_slug
+
+    Admin->>Meta: get_by_display_name(tour_name)
+    Note right of Meta: Query: SELECT * WHERE display_name = ?
+
+    alt Tour Not Found
+        Meta-->>Admin: null
+        Admin->>Admin: Log: "Tour not found"
+        Admin-->>AJAX: {success: false, data: "Tour not found"}
+        AJAX-->>UI: Show error
+    end
+
+    Meta-->>Admin: {id, tour_slug, display_name, s3_folder, url_history}
+
+    Admin->>Admin: Extract current_slug from tour metadata
+
+    alt Slug Already Exists
+        Admin->>Meta: slug_exists(new_slug)
+        Meta-->>Admin: true
+        Admin->>Admin: Log: "Slug already in use"
+        Admin-->>AJAX: {success: false, data: "Slug already in use"}
+        AJAX-->>UI: Show error
+    end
+
+    Admin->>Admin: Construct new_url = /h3panos/{new_slug}/
+
+    Admin->>Meta: change_slug(current_slug, new_slug)
+    Note right of Meta: Updates slug + appends old to url_history
+
+    Meta->>Meta: Get current url_history (JSON decode)
+    Meta->>Meta: Append old_slug to url_history array
+    Meta->>Meta: Limit history to last 10 slugs
+
+    Meta->>Meta: UPDATE wp_h3tm_tour_metadata
+    Note right of Meta: SET tour_slug = new_slug<br/>url_history = JSON<br/>WHERE tour_slug = old_slug
+
+    alt DB Update Failed
+        Meta-->>Admin: false
+        Admin->>Admin: Log: "Failed to update slug"
+        Admin-->>AJAX: {success: false, data: "Failed to change URL"}
+        AJAX-->>UI: Show error
+    end
+
+    Meta-->>Admin: true (success)
+
+    Admin->>Admin: Log: "URL changed successfully" + old_slug → new_slug
+
+    Admin-->>AJAX: {success: true, data: {message, old_slug, new_slug, new_url}}
+    AJAX-->>UI: Success response
+
+    Note over UI: UI Refresh (I2.T4 - TODO)
+    UI->>UI: Update table row URL
+    UI->>UI: Update "Change URL" button data-url
+    UI->>UI: Show success toast
+
+    Note over Redir,WP: 301 Redirect Setup (Auto-Active)
+
+    WP->>Redir: init hook fires
+    Redir->>Redir: Register rewrite rules for /h3panos/*
+    Redir->>WP: Add query vars (tour_slug, tour_path)
+
+    alt User Visits Old URL
+        WP->>Redir: template_redirect hook fires
+        Redir->>Redir: Extract slug from $_SERVER['REQUEST_URI']
+        Redir->>Meta: find_by_old_slug(old_slug)
+
+        alt Found in url_history
+            Meta-->>Redir: {current tour with new slug}
+            Redir->>Redir: Construct redirect URL with new slug
+            Redir->>WP: wp_redirect(new_url, 301)
+            WP-->>UI: 301 Moved Permanently
+            Note right of WP: Browser automatically follows to new URL
+        else Not in url_history
+            Meta-->>Redir: null
+            Redir->>WP: Continue normal request processing
+        end
+    end
+
+    Note over UI,WP: Logging Touchpoints
+    Note right of Admin: - Authorization failures<br/>- Tour lookup failures<br/>- Slug validation<br/>- Success with old→new mapping
+    Note right of Meta: - url_history updates<br/>- DB operation status
+    Note right of Redir: - 301 redirect triggers<br/>- Old slug → new slug mapping
+```

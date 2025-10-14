@@ -114,22 +114,92 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
         window.open(tourUrl, "_blank");
         break;
       case "changeUrl":
-        const newUrl = prompt("Enter new URL:", tourUrl);
-        if (newUrl) {
-          // TODO: Implement URL change API call
-          console.log("Change URL for", tourName, "to", newUrl);
+        const newUrl = prompt("Enter new URL path (e.g., /custom-path/tour-name):", tourUrl);
+        if (newUrl && newUrl !== tourUrl) {
+          try {
+            const formData = new FormData();
+            formData.append("action", "h3tm_change_tour_url");
+            formData.append("tour_name", tourName);
+            formData.append("new_url", newUrl);
+            formData.append("nonce", window.h3tm_ajax?.nonce || "");
+
+            const response = await fetch(window.h3tm_ajax?.ajax_url || "/wp-admin/admin-ajax.php", {
+              method: "POST",
+              body: formData,
+            });
+
+            const data = await response.json();
+            if (data.success) {
+              alert(`URL changed successfully for "${tourName}"`);
+              await loadTours();
+            } else {
+              alert(`Failed to change URL: ${data.data || 'Unknown error'}`);
+            }
+          } catch (error) {
+            console.error("Error changing URL:", error);
+            alert("Failed to change URL. Check console for details.");
+          }
         }
         break;
       case "update":
-        // TODO: Implement update tour
-        console.log("Update tour:", tourName);
+        if (confirm(`Re-upload and update "${tourName}"? This will replace the existing tour with a new version.`)) {
+          try {
+            const formData = new FormData();
+            formData.append("action", "h3tm_update_tour");
+            formData.append("tour_name", tourName);
+            formData.append("nonce", window.h3tm_ajax?.nonce || "");
+
+            const response = await fetch(window.h3tm_ajax?.ajax_url || "/wp-admin/admin-ajax.php", {
+              method: "POST",
+              body: formData,
+            });
+
+            const data = await response.json();
+            if (data.success) {
+              alert(`Update initiated for "${tourName}". ${data.data || ''}`);
+              await loadTours();
+            } else {
+              alert(`Failed to update: ${data.data || 'Unknown error'}`);
+            }
+          } catch (error) {
+            console.error("Error updating tour:", error);
+            alert("Failed to update tour. Check console for details.");
+          }
+        }
         break;
       case "rename":
         startEdit(tourName);
         break;
       case "getScript":
-        // TODO: Implement get script
-        console.log("Get script for:", tourName);
+        try {
+          const formData = new FormData();
+          formData.append("action", "h3tm_get_embed_script");
+          formData.append("tour_name", tourName);
+          formData.append("nonce", window.h3tm_ajax?.nonce || "");
+
+          const response = await fetch(window.h3tm_ajax?.ajax_url || "/wp-admin/admin-ajax.php", {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await response.json();
+          if (data.success && data.data) {
+            // Create a dialog/modal to show the script
+            const script = data.data.script || data.data;
+            if (navigator.clipboard) {
+              await navigator.clipboard.writeText(script);
+              alert(`Embed script copied to clipboard!\n\nScript preview:\n${script.substring(0, 200)}...`);
+            } else {
+              // Fallback: show in prompt for manual copy
+              prompt("Copy the embed script below:", script);
+            }
+          } else {
+            alert(`Failed to get script: ${data.data || 'Unknown error'}`);
+          }
+        } catch (error) {
+          console.error("Error getting script:", error);
+          alert("Failed to get embed script. Check console for details.");
+        }
         break;
       case "delete":
         if (confirm(`Are you sure you want to archive "${tourName}"? The tour will be moved to the archive folder and permanently deleted after 90 days.`)) {
@@ -147,9 +217,12 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
             const data = await response.json();
             if (data.success) {
               await loadTours();
+            } else {
+              alert(`Failed to delete: ${data.data || 'Unknown error'}`);
             }
           } catch (error) {
             console.error("Error deleting tour:", error);
+            alert("Failed to delete tour. Check console for details.");
           }
         }
         break;

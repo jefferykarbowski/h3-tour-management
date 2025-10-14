@@ -93,27 +93,67 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
     setIsProcessing(true);
     setProgress(0);
 
-    // Simulate upload progress
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setIsComplete(true);
-            setTimeout(() => {
-              setIsProcessing(false);
-              setIsComplete(false);
-              onUploadComplete?.(tourName, file);
-              setTourName("");
-              setFile(null);
-              setProgress(0);
-            }, 1500);
-          }, 300);
-          return 100;
+    try {
+      // Create FormData with file and tour info
+      const formData = new FormData();
+      formData.append('action', 'h3tm_upload_tour');
+      formData.append('tour_name', tourName);
+      formData.append('tour_file', file);
+      formData.append('nonce', (window as any).h3tm_ajax?.nonce || '');
+
+      // Track upload progress
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 100);
+          setProgress(percentComplete);
         }
-        return prev + 10;
       });
-    }, 200);
+
+      // Make the upload request
+      const response = await new Promise<any>((resolve, reject) => {
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch (e) {
+              reject(new Error('Invalid response format'));
+            }
+          } else {
+            reject(new Error(`Upload failed: ${xhr.statusText}`));
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error during upload'));
+        });
+
+        xhr.open('POST', (window as any).h3tm_ajax?.ajax_url || '/wp-admin/admin-ajax.php');
+        xhr.send(formData);
+      });
+
+      if (response.success) {
+        setProgress(100);
+        setIsComplete(true);
+
+        setTimeout(() => {
+          setIsProcessing(false);
+          setIsComplete(false);
+          onUploadComplete?.(tourName, file);
+          setTourName("");
+          setFile(null);
+          setProgress(0);
+        }, 1500);
+      } else {
+        throw new Error(response.data || 'Upload failed');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      setIsProcessing(false);
+      setProgress(0);
+      alert(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   const isValid = tourName.trim() !== "" && file !== null;

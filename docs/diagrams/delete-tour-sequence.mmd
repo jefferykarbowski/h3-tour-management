@@ -1,0 +1,109 @@
+```mermaid
+sequenceDiagram
+    participant UI as Admin UI
+    participant AJAX as WordPress AJAX
+    participant Admin as H3TM_Admin
+    participant Meta as H3TM_Tour_Metadata
+    participant S3 as H3TM_S3_Simple
+    participant AWS as AWS S3
+
+    Note over UI,AWS: Delete Tour Workflow
+
+    UI->>UI: User clicks Delete button
+    UI->>UI: Show confirmation dialog
+
+    alt User Confirms
+        UI->>AJAX: POST wp_ajax_h3tm_delete_tour
+        Note right of UI: Payload: tour_name, nonce
+
+        AJAX->>Admin: handle_delete_tour()
+
+        Admin->>Admin: Verify nonce
+        Admin->>Admin: Check user capabilities
+
+        alt Authorization Failed
+            Admin-->>AJAX: {success: false, data: "Permission denied"}
+            AJAX-->>UI: Show error message
+        end
+
+        Admin->>Meta: get_tour_by_name(display_name)
+        Note right of Meta: Query: SELECT * WHERE display_name = ?
+
+        alt Tour Not Found in Metadata
+            Meta-->>Admin: null
+            Admin->>Admin: Log: "Metadata lookup failed"
+            Admin-->>AJAX: {success: false, data: "Tour not found in metadata"}
+            AJAX-->>UI: Show error: "Tour not found"
+        end
+
+        Meta-->>Admin: {id, tour_slug, display_name, s3_folder, ...}
+
+        Admin->>Admin: Log: "Deleting tour" + id, slug, s3_folder
+
+        alt s3_folder is empty/null
+            Admin->>Admin: Log: "Missing s3_folder"
+            Admin-->>AJAX: {success: false, data: "Invalid metadata: missing s3_folder"}
+            AJAX-->>UI: Show error
+        end
+
+        Admin->>S3: archive_tour(s3_folder, tour_metadata)
+        Note right of Admin: Use canonical s3_folder from metadata
+
+        S3->>S3: Validate bucket configuration
+        S3->>S3: Generate archive path with timestamp
+        Note right of S3: archive/{tour-slug}-{timestamp}/
+
+        S3->>AWS: ListObjectsV2(Prefix: s3_folder)
+        Note right of S3: List all objects in tours/{name}/
+
+        alt S3 Objects Not Found
+            AWS-->>S3: Empty result
+            S3->>S3: Log: "No S3 objects found" + s3_folder
+            S3-->>Admin: {success: false, error: "Tour not found in S3"}
+            Admin-->>AJAX: {success: false, data: "Tour not found in S3"}
+            AJAX-->>UI: Show error
+        end
+
+        AWS-->>S3: {Contents: [objects...]}
+        S3->>S3: Log: "Found N objects to archive"
+
+        loop For each object
+            S3->>AWS: CopyObject(source, archive_destination)
+            AWS-->>S3: Copy success
+            S3->>S3: Increment copied_count
+        end
+
+        S3->>S3: Log: "Copied N objects to archive"
+
+        loop For each object
+            S3->>AWS: DeleteObject(key)
+            AWS-->>S3: Delete success
+            S3->>S3: Increment deleted_count
+        end
+
+        S3->>S3: Log: "Deleted N objects from source"
+        S3-->>Admin: {success: true, archived: N, deleted: N, archive_path: "..."}
+
+        Admin->>Meta: delete_tour(tour_id)
+        Note right of Meta: DELETE FROM wp_h3tm_tour_metadata WHERE id = ?
+
+        Meta-->>Admin: success
+
+        Admin->>Admin: Log: "Tour deleted successfully" + counts
+        Admin-->>AJAX: {success: true, data: {message: "Tour deleted", archived: N}}
+
+        AJAX-->>UI: Show success message
+        UI->>UI: Remove tour row from table
+        UI->>UI: Update tour count
+
+    else User Cancels
+        UI->>UI: Close confirmation dialog
+        Note right of UI: No action taken
+    end
+
+    Note over UI,AWS: Error Logging Touchpoints
+    Note right of Admin: - Authorization failures
+    Note right of Meta: - Metadata lookup failures
+    Note right of S3: - Missing s3_folder<br/>- S3 operation failures<br/>- Object counts (copy/delete)
+    Note right of Admin: - Success with final counts
+```
