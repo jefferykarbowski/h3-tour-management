@@ -26,7 +26,7 @@ trait Trait_H3TM_Page_Renderers {
 
             <div class="h3tm-admin-container">
                 <!-- Upload Section - React Component -->
-                <div class="h3tm-section" style="margin-bottom: 30px;">
+                <div class="h3tm-section" style="margin-bottom: 30px; padding: 0; border: none; box-shadow: none; background: transparent;">
                     <?php
                     if (class_exists('H3TM_React_Uploader')) {
                         H3TM_React_Uploader::render_uploader();

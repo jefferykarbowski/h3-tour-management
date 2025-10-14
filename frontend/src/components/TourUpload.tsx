@@ -119,7 +119,7 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
   const isValid = tourName.trim() !== "" && file !== null;
 
   return (
-    <div className="w-full max-w-2xl mx-auto p-6 space-y-6">
+    <div className="w-full max-w-2xl p-6 space-y-6">
       <div className="space-y-2">
         <h2 className="text-2xl font-semibold tracking-tight">Upload 3D Tour</h2>
         <p className="text-sm text-muted-foreground">
