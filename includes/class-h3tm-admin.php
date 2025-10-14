@@ -2,7 +2,22 @@
 /**
  * Admin functionality
  */
+
+// Load trait files
+require_once __DIR__ . '/traits/trait-h3tm-tour-handlers.php';
+require_once __DIR__ . '/traits/trait-h3tm-delete-rename.php';
+require_once __DIR__ . '/traits/trait-h3tm-s3-operations.php';
+require_once __DIR__ . '/traits/trait-h3tm-migration.php';
+require_once __DIR__ . '/traits/trait-h3tm-page-renderers.php';
+
 class H3TM_Admin {
+
+    // Use trait-based architecture for modular code organization
+    use Trait_H3TM_Tour_Handlers;
+    use Trait_H3TM_Delete_Rename;
+    use Trait_H3TM_S3_Operations;
+    use Trait_H3TM_Migration;
+    use Trait_H3TM_Page_Renderers;
 
     private $use_optimized = false;
 
@@ -267,89 +282,6 @@ class H3TM_Admin {
     }
 
 
-    /**
-     * Render main tours management page
-     */
-    public function render_main_page() {
-        ?>
-        <div class="wrap">
-            <h1><?php _e('Tours Management', 'h3-tour-management'); ?></h1>
-
-            <div class="h3tm-admin-container">
-                <!-- Upload Section -->
-                <div class="h3tm-section">
-                    <h2><?php _e('Upload New Tour', 'h3-tour-management'); ?></h2>
-                    <form id="h3tm-upload-form" enctype="multipart/form-data">
-                        <table class="form-table">
-                            <tr>
-                                <th scope="row">
-                                    <label for="tour_name"><?php _e('Tour Name', 'h3-tour-management'); ?></label>
-                                </th>
-                                <td>
-                                    <input type="text" id="tour_name" name="tour_name" class="regular-text" required />
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="tour_file"><?php _e('Tour ZIP File', 'h3-tour-management'); ?></label>
-                                </th>
-                                <td>
-                                    <input type="file" id="tour_file" name="tour_file" accept=".zip" required />
-                                    <p class="description"><?php _e('Select a ZIP file containing your tour files', 'h3-tour-management'); ?></p>
-                                </td>
-                            </tr>
-                        </table>
-                        <p class="submit">
-                            <input type="submit" class="button button-primary" value="<?php _e('Upload Tour', 'h3-tour-management'); ?>" />
-                        </p>
-                    </form>
-                    <div id="upload-result" class="notice" style="display:none;"></div>
-                </div>
-
-                <!-- Tours Section -->
-                <div class="h3tm-section">
-                    <h2><?php _e('Available Tours', 'h3-tour-management'); ?></h2>
-                    <div id="s3-tour-list-container">
-                        <p id="s3-loading-message"><span class="spinner is-active" style="float: none;"></span> <?php _e('Loading tours...', 'h3-tour-management'); ?></p>
-                    </div>
-                </div>
-                
-                <div class="h3tm-section">
-                    <h2><?php _e('Test Email', 'h3-tour-management'); ?></h2>
-                    <p><?php _e('Send a test analytics email to verify the system is working correctly.', 'h3-tour-management'); ?></p>
-                    <form id="h3tm-test-email-form">
-                        <table class="form-table">
-                            <tr>
-                                <th scope="row">
-                                    <label for="test_user_id"><?php _e('Select User', 'h3-tour-management'); ?></label>
-                                </th>
-                                <td>
-                                    <select id="test_user_id" name="test_user_id" class="h3tm-user-select">
-                                        <option value=""><?php _e('-- Select a User --', 'h3-tour-management'); ?></option>
-                                        <?php
-                                        $users = get_users();
-                                        foreach ($users as $user) {
-                                            $user_tours = get_user_meta($user->ID, 'h3tm_tours', true);
-                                            if (!empty($user_tours)) {
-                                                echo '<option value="' . $user->ID . '">' . esc_html($user->display_name . ' (' . $user->user_email . ')') . '</option>';
-                                            }
-                                        }
-                                        ?>
-                                    </select>
-                                </td>
-                            </tr>
-                        </table>
-                        <p class="submit">
-                            <button type="submit" class="button button-primary"><?php _e('Send Test Email', 'h3-tour-management'); ?></button>
-                            <span class="spinner"></span>
-                        </p>
-                    </form>
-                    <div id="test-email-result" class="notice" style="display:none;"></div>
-                </div>
-            </div>
-        </div>
-        <?php
-    }
     
     /**
      * Render email settings page

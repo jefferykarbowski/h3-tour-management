@@ -1,6 +1,14 @@
 .h3tm-admin-container {
     max-width: 1200px;
     margin: 20px 0;
+    position: relative;
+}
+
+/* React Uploader Container */
+#h3tm-tour-uploader-root {
+    margin-bottom: 30px;
+    position: relative;
+    z-index: 1;
 }
 
 /* Spinning animation for refresh button */
@@ -19,6 +27,8 @@
     box-shadow: 0 1px 1px rgba(0,0,0,.04);
     margin-bottom: 20px;
     padding: 20px;
+    position: relative;
+    overflow: visible;
 }
 
 .h3tm-section h2 {

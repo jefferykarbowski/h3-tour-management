@@ -1330,8 +1330,21 @@ class H3TM_S3_Simple {
                 $query_params['continuation-token'] = $continuation_token;
             }
 
-            $request_uri = '/?' . http_build_query($query_params);
+            // Sort parameters alphabetically for canonical query string
+            ksort($query_params);
+
+            // Build canonical query string with proper encoding (same as list_s3_tours)
+            $canonical_querystring_parts = array();
+            foreach ($query_params as $key => $value) {
+                $canonical_querystring_parts[] = rawurlencode($key) . '=' . rawurlencode($value);
+            }
+            $canonical_querystring = implode('&', $canonical_querystring_parts);
+
+            // Build the request URI with properly encoded query string
+            $request_uri = '/?' . $canonical_querystring;
             $url = 'https://' . $this->s3_bucket . '.s3.' . $this->s3_region . '.amazonaws.com' . $request_uri;
+
+            error_log('H3TM S3: list_tour_files for "' . $tour_s3_name . '" - URL: ' . substr($url, 0, 200));
 
             $headers = $this->create_auth_headers('GET', $request_uri);
 
