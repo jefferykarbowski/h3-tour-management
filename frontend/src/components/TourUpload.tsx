@@ -138,10 +138,11 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
 
   const requestPresignedUrl = async (file: File, tourName: string) => {
     const formData = new FormData();
-    formData.append('action', 'h3tm_get_s3_upload_url');
-    formData.append('filename', file.name);
-    formData.append('filesize', file.size.toString());
+    formData.append('action', 'h3tm_get_s3_presigned_url');
     formData.append('tour_name', tourName);
+    formData.append('file_name', file.name);
+    formData.append('file_size', file.size.toString());
+    formData.append('file_type', file.type || 'application/zip');
     formData.append('nonce', (window as any).h3tm_ajax?.nonce || '');
 
     const response = await fetch((window as any).h3tm_ajax?.ajax_url || '/wp-admin/admin-ajax.php', {
