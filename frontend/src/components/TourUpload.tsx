@@ -93,18 +93,15 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
     setIsProcessing(true);
     setProgress(0);
 
-    let sessionId = '';
-
     try {
       // Step 1: Request presigned URL from server
       const presignedData = await requestPresignedUrl(file, tourName);
-      sessionId = presignedData.session_id;
 
       // Step 2: Upload directly to S3 with progress tracking
       await uploadToS3(file, presignedData);
 
-      // Step 3: Notify server of successful upload
-      await notifyUploadComplete(sessionId, true);
+      // Step 3: Mark tour as processing (matches old jQuery implementation)
+      await markTourProcessing(tourName);
 
       setProgress(100);
       setIsComplete(true);
@@ -120,16 +117,6 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
 
     } catch (error) {
       console.error('Upload error:', error);
-
-      // Notify server of failure if we have a session ID
-      if (sessionId) {
-        try {
-          await notifyUploadComplete(sessionId, false, error instanceof Error ? error.message : 'Unknown error');
-        } catch (notifyError) {
-          console.error('Failed to notify server of error:', notifyError);
-        }
-      }
-
       setIsProcessing(false);
       setProgress(0);
       alert(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -190,29 +177,23 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
         reject(new Error('Upload cancelled'));
       });
 
-      // Prepare FormData for S3
-      const formData = new FormData();
+      // Use PUT method with file directly (matching old jQuery implementation)
+      xhr.open('PUT', uploadData.upload_url);
+      xhr.timeout = 300000; // 5 minutes
 
-      // Add S3 required fields first
-      Object.keys(uploadData.fields).forEach(key => {
-        formData.append(key, uploadData.fields[key]);
-      });
+      // Set content type
+      const contentType = file.type || 'application/zip';
+      xhr.setRequestHeader('Content-Type', contentType);
 
-      // Add the file last (S3 requirement)
-      formData.append('file', file);
-
-      // Upload to S3
-      xhr.open('POST', uploadData.upload_url);
-      xhr.send(formData);
+      // Send file directly (not FormData)
+      xhr.send(file);
     });
   };
 
-  const notifyUploadComplete = async (sessionId: string, success: boolean, errorMessage: string = '') => {
+  const markTourProcessing = async (tourName: string) => {
     const formData = new FormData();
-    formData.append('action', 'h3tm_s3_upload_complete');
-    formData.append('session_id', sessionId);
-    formData.append('success', success ? '1' : '0');
-    formData.append('error', errorMessage);
+    formData.append('action', 'h3tm_mark_tour_processing');
+    formData.append('tour_name', tourName);
     formData.append('nonce', (window as any).h3tm_ajax?.nonce || '');
 
     const response = await fetch((window as any).h3tm_ajax?.ajax_url || '/wp-admin/admin-ajax.php', {
@@ -227,10 +208,9 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
     const data = await response.json();
 
     if (!data.success) {
-      throw new Error(data.data?.message || 'Server notification failed');
+      console.log('Failed to mark as processing:', data.data);
+      // Don't throw - this is not critical for upload success
     }
-
-    return data.data;
   };
 
   const isValid = tourName.trim() !== "" && file !== null;
