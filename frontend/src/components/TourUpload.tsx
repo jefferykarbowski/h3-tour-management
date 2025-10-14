@@ -93,15 +93,77 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
     setIsProcessing(true);
     setProgress(0);
 
-    try {
-      // Create FormData with file and tour info
-      const formData = new FormData();
-      formData.append('action', 'h3tm_upload_tour');
-      formData.append('tour_name', tourName);
-      formData.append('tour_file', file);
-      formData.append('nonce', (window as any).h3tm_ajax?.nonce || '');
+    let sessionId = '';
 
-      // Track upload progress
+    try {
+      // Step 1: Request presigned URL from server
+      const presignedData = await requestPresignedUrl(file, tourName);
+      sessionId = presignedData.session_id;
+
+      // Step 2: Upload directly to S3 with progress tracking
+      await uploadToS3(file, presignedData);
+
+      // Step 3: Notify server of successful upload
+      await notifyUploadComplete(sessionId, true);
+
+      setProgress(100);
+      setIsComplete(true);
+
+      setTimeout(() => {
+        setIsProcessing(false);
+        setIsComplete(false);
+        onUploadComplete?.(tourName, file);
+        setTourName("");
+        setFile(null);
+        setProgress(0);
+      }, 1500);
+
+    } catch (error) {
+      console.error('Upload error:', error);
+
+      // Notify server of failure if we have a session ID
+      if (sessionId) {
+        try {
+          await notifyUploadComplete(sessionId, false, error instanceof Error ? error.message : 'Unknown error');
+        } catch (notifyError) {
+          console.error('Failed to notify server of error:', notifyError);
+        }
+      }
+
+      setIsProcessing(false);
+      setProgress(0);
+      alert(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const requestPresignedUrl = async (file: File, tourName: string) => {
+    const formData = new FormData();
+    formData.append('action', 'h3tm_get_s3_upload_url');
+    formData.append('filename', file.name);
+    formData.append('filesize', file.size.toString());
+    formData.append('tour_name', tourName);
+    formData.append('nonce', (window as any).h3tm_ajax?.nonce || '');
+
+    const response = await fetch((window as any).h3tm_ajax?.ajax_url || '/wp-admin/admin-ajax.php', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.data?.message || 'Failed to get upload URL');
+    }
+
+    return data.data;
+  };
+
+  const uploadToS3 = async (file: File, uploadData: any) => {
+    return new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
 
       xhr.upload.addEventListener('progress', (e) => {
@@ -111,49 +173,63 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
         }
       });
 
-      // Make the upload request
-      const response = await new Promise<any>((resolve, reject) => {
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              resolve(JSON.parse(xhr.responseText));
-            } catch (e) {
-              reject(new Error('Invalid response format'));
-            }
-          } else {
-            reject(new Error(`Upload failed: ${xhr.statusText}`));
-          }
-        });
-
-        xhr.addEventListener('error', () => {
-          reject(new Error('Network error during upload'));
-        });
-
-        xhr.open('POST', (window as any).h3tm_ajax?.ajax_url || '/wp-admin/admin-ajax.php');
-        xhr.send(formData);
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`S3 upload failed: ${xhr.status} ${xhr.statusText}`));
+        }
       });
 
-      if (response.success) {
-        setProgress(100);
-        setIsComplete(true);
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error during upload'));
+      });
 
-        setTimeout(() => {
-          setIsProcessing(false);
-          setIsComplete(false);
-          onUploadComplete?.(tourName, file);
-          setTourName("");
-          setFile(null);
-          setProgress(0);
-        }, 1500);
-      } else {
-        throw new Error(response.data || 'Upload failed');
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      setIsProcessing(false);
-      setProgress(0);
-      alert(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload cancelled'));
+      });
+
+      // Prepare FormData for S3
+      const formData = new FormData();
+
+      // Add S3 required fields first
+      Object.keys(uploadData.fields).forEach(key => {
+        formData.append(key, uploadData.fields[key]);
+      });
+
+      // Add the file last (S3 requirement)
+      formData.append('file', file);
+
+      // Upload to S3
+      xhr.open('POST', uploadData.upload_url);
+      xhr.send(formData);
+    });
+  };
+
+  const notifyUploadComplete = async (sessionId: string, success: boolean, errorMessage: string = '') => {
+    const formData = new FormData();
+    formData.append('action', 'h3tm_s3_upload_complete');
+    formData.append('session_id', sessionId);
+    formData.append('success', success ? '1' : '0');
+    formData.append('error', errorMessage);
+    formData.append('nonce', (window as any).h3tm_ajax?.nonce || '');
+
+    const response = await fetch((window as any).h3tm_ajax?.ajax_url || '/wp-admin/admin-ajax.php', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.data?.message || 'Server notification failed');
+    }
+
+    return data.data;
   };
 
   const isValid = tourName.trim() !== "" && file !== null;
