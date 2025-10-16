@@ -115,14 +115,18 @@ class H3TM_S3_Proxy {
 
             $resolved_tour_id = $resolved; // It's a string (tour_id)
 
-            // TEMPORARILY DISABLED: Handle trailing slash redirect for index files
-            // This was causing redirect loops - need to investigate
-            // if ($file_path === 'index.htm' && !preg_match('#/h3panos/[^/]+/$#', $request_uri)) {
-            //     $redirect_url = site_url('/h3panos/' . rawurlencode($tour_name) . '/');
-            //     error_log('H3TM S3 Proxy: Pantheon redirecting to: ' . $redirect_url);
-            //     wp_redirect($redirect_url, 301);
-            //     die();
-            // }
+            // Redirect to directory URL for proper base tag resolution (with loop prevention)
+            if ($file_path === 'index.htm' &&
+                !preg_match('#/h3panos/[^/]+/$#', $request_uri) &&
+                !isset($_GET['_redirected'])) {  // Prevent infinite redirect loops
+
+                $redirect_url = add_query_arg('_redirected', '1',
+                    site_url('/h3panos/' . rawurlencode($tour_name) . '/')
+                );
+                error_log('H3TM S3 Proxy: Pantheon redirecting to: ' . $redirect_url);
+                wp_redirect($redirect_url, 301);
+                die();
+            }
 
             // Get S3 configuration
             $s3_simple = new H3TM_S3_Simple();
