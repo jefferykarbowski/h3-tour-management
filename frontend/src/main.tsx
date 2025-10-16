@@ -15,30 +15,12 @@ if (container) {
     <React.StrictMode>
       <TourUpload
         onUploadComplete={(tourName, file) => {
-          console.log('Tour uploaded:', tourName, file);
-          // This will be replaced with actual WordPress AJAX call
-          const formData = new FormData();
-          formData.append('action', 'h3tm_upload_tour');
-          formData.append('tour_name', tourName);
-          formData.append('tour_file', file);
-          formData.append('nonce', (window as any).h3tmData?.nonce || '');
-
-          fetch((window as any).h3tmData?.ajaxUrl || '/wp-admin/admin-ajax.php', {
-            method: 'POST',
-            body: formData,
-          })
-            .then((response) => response.json())
-            .then((data) => {
-              if (data.success) {
-                alert('Tour uploaded successfully!');
-              } else {
-                alert('Upload failed: ' + (data.message || 'Unknown error'));
-              }
-            })
-            .catch((error) => {
-              console.error('Upload error:', error);
-              alert('Upload failed. Please try again.');
-            });
+          console.log('Tour uploaded successfully:', tourName, file);
+          // Tour already uploaded to S3 and processed by Lambda
+          // Reload page to show updated tours table
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
         }}
       />
     </React.StrictMode>

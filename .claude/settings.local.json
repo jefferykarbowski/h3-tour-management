@@ -3,7 +3,12 @@
     "allow": [
       "Bash(done)",
       "Bash(git mv:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(aws sts get-caller-identity:*)",
+      "Bash(aws configure:*)",
+      "Bash(aws cloudfront create-invalidation:*)",
+      "Bash(wp eval-file:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []
