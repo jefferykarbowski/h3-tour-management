@@ -233,15 +233,20 @@ class H3TM_S3_Proxy {
             $file_path = 'index.htm';
         }
 
-        // TEMPORARILY DISABLED: Redirect to directory URL for proper base tag resolution
-        // This was causing redirect loops - need to investigate
-        // if ($file_path === 'index.htm' && $_SERVER['REQUEST_URI'] && !preg_match('#/h3panos/[^/]+/$#', $_SERVER['REQUEST_URI'])) {
-        //     $redirect_url = site_url('/h3panos/' . rawurlencode($tour_name) . '/');
-        //     error_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
-        //     wp_redirect($redirect_url);
-        //     // Use WordPress die() instead of exit() for Pantheon compatibility
-        //     die();
-        // }
+        // Redirect to directory URL for proper base tag resolution (with loop prevention)
+        if ($file_path === 'index.htm' &&
+            $_SERVER['REQUEST_URI'] &&
+            !preg_match('#/h3panos/[^/]+/$#', $_SERVER['REQUEST_URI']) &&
+            !isset($_GET['_redirected'])) {  // Prevent infinite redirect loops
+
+            $redirect_url = add_query_arg('_redirected', '1',
+                site_url('/h3panos/' . rawurlencode($tour_name) . '/')
+            );
+            error_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
+            wp_redirect($redirect_url, 301);
+            // Use WordPress die() instead of exit() for Pantheon compatibility
+            die();
+        }
 
         // Get S3 configuration
         $s3_simple = new H3TM_S3_Simple();
