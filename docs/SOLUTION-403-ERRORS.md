@@ -58,30 +58,35 @@ All tours (new and legacy) were returning **403 Forbidden** from CloudFront/S3.
 
 ## What Still Needs to Be Done (AWS)
 
-⏳ **Apply S3 Bucket Policy**
+⏳ **Apply S3 Bucket Policy** (One Simple Step!)
 
-You need to choose ONE option:
+### ✅ Good News: CloudFront Already Configured
 
-### Option A: CloudFront OAI (Recommended - More Secure)
+Your CloudFront distribution **already has an Origin Access Control (OAC)** set up:
+- **Distribution ID**: E2NXJFS5WWGCEO
+- **OAC ID**: E13T04WFZC3OSE
+- **OAC Name**: oac-h3-tour-files-h3vt.s3.amazonaws.com-mg3psvcbb21
 
-**Steps:**
-1. Create CloudFront Origin Access Identity in AWS Console
-2. Update CloudFront distribution to use the OAI
-3. Apply bucket policy: `docs/s3-bucket-policy-cloudfront-oai.json`
+**This is the modern replacement for Origin Access Identity (OAI).**
 
-**Detailed Guide**: `docs/fix-403-permissions-guide.md` (Option A section)
+### One-Step Fix: Apply Bucket Policy
 
-**Result**: Only CloudFront can access S3 files
+**Quick Guide**: `docs/APPLY-BUCKET-POLICY.md` ← **Read this!**
 
-### Option B: Public Read (Alternative - Simpler)
+**AWS Console** (Recommended):
+1. Go to S3 bucket `h3-tour-files-h3vt` → Permissions
+2. Edit Bucket policy
+3. Paste policy from `docs/s3-bucket-policy-cloudfront-oac.json`
+4. Save
 
-**Steps:**
-1. Disable public access block on bucket (if enabled)
-2. Apply bucket policy: `docs/s3-bucket-policy-public-read.json`
+**AWS CLI**:
+```bash
+aws s3api put-bucket-policy \
+  --bucket h3-tour-files-h3vt \
+  --policy file://docs/s3-bucket-policy-cloudfront-oac.json
+```
 
-**Detailed Guide**: `docs/fix-403-permissions-guide.md` (Option B section)
-
-**Result**: Anyone can access tours via S3 or CloudFront
+**Result**: Only CloudFront can access S3 files (secure ✅)
 
 ---
 
