@@ -60,52 +60,57 @@ class H3TM_CDN_Helper {
     /**
      * Get URL for a tour file
      *
-     * @param string $tour_name Tour name (may contain spaces or dashes)
+     * @param string $tour_name Tour name or tour_id (YYYYMMDD_HHMMSS_8random format or legacy name)
      * @param string $file_path File path within tour (e.g., 'index.htm')
      * @return array Array of URLs to try (primary and fallback)
      */
     public function get_tour_urls($tour_name, $file_path = 'index.htm') {
         $urls = array();
 
-        // Convert spaces to dashes for S3/CloudFront compatibility
-        // S3 stores tours with dashes instead of spaces
-        $tour_name_with_dashes = str_replace(' ', '-', $tour_name);
+        // IMPORTANT: Legacy tours are stored WITH SPACES in S3, not dashes
+        // New tours use tour_id format (YYYYMMDD_HHMMSS_8random) with no spaces
+        // Always use URL encoding for spaces, never convert to dashes
+        $tour_s3_path = rawurlencode($tour_name);
 
         if ($this->use_cloudfront) {
             // CloudFront URL - must include /tours/ in path since Lambda uploads to tours/ directory
+            // Primary: URL-encoded path (works for both legacy with spaces and new tour_ids)
             $urls[] = sprintf(
                 'https://%s/tours/%s/%s',
                 $this->cloudfront_domain,
-                $tour_name_with_dashes,
+                $tour_s3_path,
                 $file_path
             );
 
-            // Try with spaces as fallback (URL encoded)
+            // Fallback: Try with dashes if original has spaces (for tours that may have been uploaded with dashes)
             if (strpos($tour_name, ' ') !== false) {
+                $tour_name_with_dashes = str_replace(' ', '-', $tour_name);
                 $urls[] = sprintf(
                     'https://%s/tours/%s/%s',
                     $this->cloudfront_domain,
-                    rawurlencode($tour_name),
+                    $tour_name_with_dashes,
                     $file_path
                 );
             }
         } else {
             // S3 direct URL - needs /tours in path
+            // Primary: URL-encoded path (works for both legacy with spaces and new tour_ids)
             $urls[] = sprintf(
                 'https://%s.s3.%s.amazonaws.com/tours/%s/%s',
                 $this->s3_bucket,
                 $this->s3_region,
-                $tour_name_with_dashes,
+                $tour_s3_path,
                 $file_path
             );
 
-            // Try with spaces as fallback (URL encoded)
+            // Fallback: Try with dashes if original has spaces (for tours that may have been uploaded with dashes)
             if (strpos($tour_name, ' ') !== false) {
+                $tour_name_with_dashes = str_replace(' ', '-', $tour_name);
                 $urls[] = sprintf(
                     'https://%s.s3.%s.amazonaws.com/tours/%s/%s',
                     $this->s3_bucket,
                     $this->s3_region,
-                    rawurlencode($tour_name),
+                    $tour_name_with_dashes,
                     $file_path
                 );
             }
@@ -117,19 +122,19 @@ class H3TM_CDN_Helper {
     /**
      * Get base URL for tour (directory URL)
      *
-     * @param string $tour_name Tour name
+     * @param string $tour_name Tour name or tour_id
      * @return string Tour base URL
      */
     public function get_tour_base_url($tour_name) {
-        // Convert spaces to dashes for S3/CloudFront compatibility
-        $tour_s3_name = str_replace(' ', '-', $tour_name);
+        // Use URL encoding for spaces (legacy tours stored WITH spaces in S3)
+        $tour_s3_path = rawurlencode($tour_name);
 
         if ($this->use_cloudfront) {
             // CloudFront URL - must include /tours/ in path since Lambda uploads to tours/ directory
             return sprintf(
                 'https://%s/tours/%s/',
                 $this->cloudfront_domain,
-                $tour_s3_name
+                $tour_s3_path
             );
         } else {
             // S3 direct URL - needs /tours in path
@@ -137,7 +142,7 @@ class H3TM_CDN_Helper {
                 'https://%s.s3.%s.amazonaws.com/tours/%s/',
                 $this->s3_bucket,
                 $this->s3_region,
-                $tour_s3_name
+                $tour_s3_path
             );
         }
     }
