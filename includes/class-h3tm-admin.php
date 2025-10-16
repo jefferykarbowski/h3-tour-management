@@ -1300,25 +1300,47 @@ class H3TM_Admin {
 
         error_log('H3TM Rename: "' . $old_name . '" → "' . $new_name . '"');
 
-        // Use S3 Simple to rename the tour
-        $s3 = new H3TM_S3_Simple();
+        // Check if this is a new ID-based tour or legacy tour
+        if (class_exists('H3TM_Tour_Metadata')) {
+            $metadata = new H3TM_Tour_Metadata();
+            $tour = $metadata->get_by_display_name($old_name);
 
-        // Rename the tour in S3
-        $rename_result = $s3->rename_tour($old_name, $new_name);
+            if ($tour && !empty($tour->tour_id)) {
+                // New ID-based tour: Just update display_name in metadata
+                // S3 files stay under tours/{tour_id}/ - no S3 rename needed
+                global $wpdb;
+                $table_name = $wpdb->prefix . 'h3tm_tour_metadata';
 
-        if ($rename_result['success']) {
-            // Clear the cache so the tour list updates
-            delete_transient('h3tm_s3_tour_list');
+                $updated = $wpdb->update(
+                    $table_name,
+                    array('display_name' => $new_name),
+                    array('tour_id' => $tour->tour_id),
+                    array('%s'),
+                    array('%s')
+                );
 
-            wp_send_json_success('Tour renamed successfully');
-        } else {
-            // Check if it's a configuration issue or tour not found
-            if (strpos($rename_result['message'], 'not configured') !== false) {
-                wp_send_json_error('S3 is not configured. Please configure S3 settings first.');
-            } else {
-                wp_send_json_error($rename_result['message']);
+                if ($updated !== false) {
+                    // Clear tour cache
+                    if (class_exists('H3TM_S3_Simple')) {
+                        $s3 = new H3TM_S3_Simple();
+                        $s3->clear_tour_cache();
+                    }
+                    delete_transient('h3tm_s3_tour_list');
+
+                    wp_send_json_success('Tour renamed successfully');
+                } else {
+                    wp_send_json_error('Failed to update tour name in database');
+                }
+                return;
+            } else if ($tour && empty($tour->tour_id)) {
+                // Legacy tour without tour_id - reject rename
+                wp_send_json_error('Renaming is not supported for legacy tours. Only new tours can be renamed.');
+                return;
             }
         }
+
+        // If we get here, tour not found in metadata - this shouldn't happen for new tours
+        wp_send_json_error('Tour not found in metadata system');
         return;
 
         // Try local tour rename
@@ -1934,13 +1956,30 @@ class H3TM_Admin {
 
         // Get tour URL using metadata
         $tour_url = '';
+        $tour = null;
 
-        if (class_exists('H3TM_URL_Redirector')) {
-            $redirector = new H3TM_URL_Redirector();
-            $tour_url = $redirector->get_tour_url($tour_name);
+        if (class_exists('H3TM_Tour_Metadata')) {
+            $metadata = new H3TM_Tour_Metadata();
+
+            // Try to find tour by display name (most common case from UI)
+            $tour = $metadata->get_by_display_name($tour_name);
+
+            // Try as slug if not found
+            if (!$tour) {
+                $tour = $metadata->get_by_slug($tour_name);
+            }
+
+            // Try as tour_id if not found
+            if (!$tour && preg_match('/^\d{8}_\d{6}_[a-z0-9]{8}$/', $tour_name)) {
+                $tour = $metadata->get_by_tour_id($tour_name);
+            }
+
+            if ($tour && !empty($tour->tour_slug)) {
+                $tour_url = home_url('/h3panos/' . $tour->tour_slug . '/');
+            }
         }
 
-        // Fallback to standard URL
+        // Fallback to sanitized name if tour not found in metadata (legacy tours)
         if (empty($tour_url)) {
             $tour_slug = sanitize_title($tour_name);
             $tour_url = home_url('/h3panos/' . $tour_slug . '/');
@@ -2014,11 +2053,8 @@ class H3TM_Admin {
         }
 
         // Check if new slug is in any tour's history
-        if (class_exists('H3TM_URL_Redirector')) {
-            $redirector = new H3TM_URL_Redirector();
-            if ($redirector->is_slug_historical($new_slug)) {
-                wp_send_json_error('This URL slug was previously used and cannot be reused');
-            }
+        if ($metadata->find_by_old_slug($new_slug)) {
+            wp_send_json_error('This URL slug was previously used and cannot be reused');
         }
 
         // Validate slug format
@@ -2090,7 +2126,5 @@ class H3TM_Admin {
             wp_send_json_error('Failed to rebuild metadata: ' . $e->getMessage());
         }
     }
-
-
 
 }

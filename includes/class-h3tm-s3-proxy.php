@@ -97,13 +97,32 @@ class H3TM_S3_Proxy {
 
             error_log('H3TM S3 Proxy: Pantheon parsed tour=' . $tour_name . ', file=' . $file_path);
 
-            // Handle trailing slash redirect for index files
-            if ($file_path === 'index.htm' && !preg_match('#/h3panos/[^/]+/$#', $request_uri)) {
-                $redirect_url = site_url('/h3panos/' . rawurlencode($tour_name) . '/');
-                error_log('H3TM S3 Proxy: Pantheon redirecting to: ' . $redirect_url);
+            // Resolve tour identifier (slug or display name) to tour_id for S3 lookup
+            $resolved = $this->resolve_tour_identifier($tour_name);
+
+            // Check if we need to redirect to current slug (old slug accessed)
+            if (is_array($resolved) && isset($resolved['redirect']) && $resolved['redirect']) {
+                $redirect_url = site_url('/h3panos/' . $resolved['current_slug']);
+                if ($file_path && $file_path !== 'index.htm') {
+                    $redirect_url .= '/' . $file_path;
+                } else {
+                    $redirect_url .= '/';
+                }
+                error_log('H3TM S3 Proxy: 301 redirect from old slug to: ' . $redirect_url);
                 wp_redirect($redirect_url, 301);
                 die();
             }
+
+            $resolved_tour_id = $resolved; // It's a string (tour_id)
+
+            // TEMPORARILY DISABLED: Handle trailing slash redirect for index files
+            // This was causing redirect loops - need to investigate
+            // if ($file_path === 'index.htm' && !preg_match('#/h3panos/[^/]+/$#', $request_uri)) {
+            //     $redirect_url = site_url('/h3panos/' . rawurlencode($tour_name) . '/');
+            //     error_log('H3TM S3 Proxy: Pantheon redirecting to: ' . $redirect_url);
+            //     wp_redirect($redirect_url, 301);
+            //     die();
+            // }
 
             // Get S3 configuration
             $s3_simple = new H3TM_S3_Simple();
@@ -115,7 +134,8 @@ class H3TM_S3_Proxy {
 
             // Use CDN helper if available, otherwise fallback to direct S3
             if ($this->cdn_helper) {
-                $urls = $this->cdn_helper->get_tour_urls($tour_name, $file_path);
+                // Use resolved tour_id for CDN URLs
+                $urls = $this->cdn_helper->get_tour_urls($resolved_tour_id, $file_path);
                 error_log('H3TM S3 Proxy: Using CDN helper, trying URLs: ' . implode(', ', $urls));
 
                 $success = false;
@@ -131,16 +151,25 @@ class H3TM_S3_Proxy {
                     wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
                 }
             } else {
-                // Fallback to original logic
-                $s3_url_with_spaces = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($tour_name) . '/' . $file_path;
-                $s3_url_with_dashes = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode(str_replace(' ', '-', $tour_name)) . '/' . $file_path;
+                // Use resolved tour_id for S3 URLs
+                // Check if this is a tour_id (immutable identifier)
+                if ($this->is_tour_id($resolved_tour_id)) {
+                    // Tour IDs are used directly as S3 folder names
+                    $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
+                    error_log('H3TM S3 Proxy: Pantheon using tour_id format: ' . $s3_url);
+                    $this->proxy_s3_file($s3_url, $file_path);
+                } else {
+                    // Legacy: Fallback to original logic with resolved identifier
+                    $s3_url_with_spaces = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
+                    $s3_url_with_dashes = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode(str_replace(' ', '-', $resolved_tour_id)) . '/' . $file_path;
 
-                error_log('H3TM S3 Proxy: Trying S3 URLs - spaces: ' . $s3_url_with_spaces . ', dashes: ' . $s3_url_with_dashes);
+                    error_log('H3TM S3 Proxy: Trying S3 URLs - spaces: ' . $s3_url_with_spaces . ', dashes: ' . $s3_url_with_dashes);
 
-                // Try with spaces first, then with dashes if that fails
-                if (!$this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
-                    error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
-                    $this->proxy_s3_file($s3_url_with_dashes, $file_path);
+                    // Try with spaces first, then with dashes if that fails
+                    if (!$this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
+                        error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
+                        $this->proxy_s3_file($s3_url_with_dashes, $file_path);
+                    }
                 }
             }
 
@@ -181,19 +210,38 @@ class H3TM_S3_Proxy {
 
         error_log('H3TM S3 Proxy: Processing tour request for=' . $tour_name . ', file=' . $file_path);
 
+        // Resolve tour identifier (slug or display name) to tour_id for S3 lookup
+        $resolved = $this->resolve_tour_identifier($tour_name);
+
+        // Check if we need to redirect to current slug (old slug accessed)
+        if (is_array($resolved) && isset($resolved['redirect']) && $resolved['redirect']) {
+            $redirect_url = site_url('/h3panos/' . $resolved['current_slug']);
+            if ($file_path && $file_path !== 'index.htm') {
+                $redirect_url .= '/' . $file_path;
+            } else {
+                $redirect_url .= '/';
+            }
+            error_log('H3TM S3 Proxy: 301 redirect from old slug to: ' . $redirect_url);
+            wp_redirect($redirect_url, 301);
+            die();
+        }
+
+        $resolved_tour_id = $resolved; // It's a string (tour_id)
+
         // Default to index.htm if no file specified
         if (empty($file_path)) {
             $file_path = 'index.htm';
         }
 
-        // If accessing index.htm, redirect to directory URL (for proper base tag resolution)
-        if ($file_path === 'index.htm' && $_SERVER['REQUEST_URI'] && !preg_match('#/h3panos/[^/]+/$#', $_SERVER['REQUEST_URI'])) {
-            $redirect_url = site_url('/h3panos/' . rawurlencode($tour_name) . '/');
-            error_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
-            wp_redirect($redirect_url);
-            // Use WordPress die() instead of exit() for Pantheon compatibility
-            die();
-        }
+        // TEMPORARILY DISABLED: Redirect to directory URL for proper base tag resolution
+        // This was causing redirect loops - need to investigate
+        // if ($file_path === 'index.htm' && $_SERVER['REQUEST_URI'] && !preg_match('#/h3panos/[^/]+/$#', $_SERVER['REQUEST_URI'])) {
+        //     $redirect_url = site_url('/h3panos/' . rawurlencode($tour_name) . '/');
+        //     error_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
+        //     wp_redirect($redirect_url);
+        //     // Use WordPress die() instead of exit() for Pantheon compatibility
+        //     die();
+        // }
 
         // Get S3 configuration
         $s3_simple = new H3TM_S3_Simple();
@@ -205,7 +253,8 @@ class H3TM_S3_Proxy {
 
         // Use CDN helper if available, otherwise fallback to direct S3
         if ($this->cdn_helper) {
-            $urls = $this->cdn_helper->get_tour_urls($tour_name, $file_path);
+            // Use resolved tour_id for CDN URLs
+            $urls = $this->cdn_helper->get_tour_urls($resolved_tour_id, $file_path);
             error_log('H3TM S3 Proxy: Using CDN helper for "' . $tour_name . '"');
             error_log('H3TM S3 Proxy: CDN URLs: ' . implode(', ', $urls));
 
@@ -223,18 +272,27 @@ class H3TM_S3_Proxy {
                 wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
             }
         } else {
-            // Fallback to original logic
-            $s3_url_with_spaces = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($tour_name) . '/' . $file_path;
-            $s3_url_with_dashes = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode(str_replace(' ', '-', $tour_name)) . '/' . $file_path;
+            // Use resolved tour_id for S3 URLs
+            // Check if this is a tour_id (immutable identifier)
+            if ($this->is_tour_id($resolved_tour_id)) {
+                // Tour IDs are used directly as S3 folder names
+                $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
+                error_log('H3TM S3 Proxy: Using tour_id format: ' . $s3_url);
+                $this->proxy_s3_file($s3_url, $file_path);
+            } else {
+                // Legacy: Fallback to original logic with resolved identifier
+                $s3_url_with_spaces = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
+                $s3_url_with_dashes = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode(str_replace(' ', '-', $resolved_tour_id)) . '/' . $file_path;
 
-            error_log('H3TM S3 Proxy: Trying both naming conventions for "' . $tour_name . '"');
-            error_log('H3TM S3 Proxy: URL with spaces: ' . $s3_url_with_spaces);
-            error_log('H3TM S3 Proxy: URL with dashes: ' . $s3_url_with_dashes);
+                error_log('H3TM S3 Proxy: Trying both naming conventions for "' . $resolved_tour_id . '"');
+                error_log('H3TM S3 Proxy: URL with spaces: ' . $s3_url_with_spaces);
+                error_log('H3TM S3 Proxy: URL with dashes: ' . $s3_url_with_dashes);
 
-            // Try with spaces first, then with dashes if that fails
-            if (!$this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
-                error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
-                $this->proxy_s3_file($s3_url_with_dashes, $file_path);
+                // Try with spaces first, then with dashes if that fails
+                if (!$this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
+                    error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
+                    $this->proxy_s3_file($s3_url_with_dashes, $file_path);
+                }
             }
         }
 
@@ -472,6 +530,54 @@ class H3TM_S3_Proxy {
         );
 
         return isset($content_types[$ext]) ? $content_types[$ext] : 'application/octet-stream';
+    }
+
+    /**
+     * Check if a string matches tour_id pattern
+     * Format: 20250114_173045_8k3j9d2m (timestamp + 8-char random)
+     */
+    private function is_tour_id($str) {
+        return preg_match('/^\d{8}_\d{6}_[a-z0-9]{8}$/', $str) === 1;
+    }
+
+    /**
+     * Resolve tour identifier (slug or display name) to tour_id for S3 lookup
+     * Returns either tour_id string OR array with 'redirect' info for old slugs
+     */
+    private function resolve_tour_identifier($identifier) {
+        // Check if it's already a tour_id
+        if ($this->is_tour_id($identifier)) {
+            return $identifier;
+        }
+
+        // Try to resolve slug to tour_id from metadata
+        if (class_exists('H3TM_Tour_Metadata')) {
+            $metadata = new H3TM_Tour_Metadata();
+
+            // First try current slug
+            $tour = $metadata->get_by_slug($identifier);
+
+            if ($tour && !empty($tour->tour_id)) {
+                error_log('H3TM S3 Proxy: Resolved slug "' . $identifier . '" to tour_id: ' . $tour->tour_id);
+                return $tour->tour_id;
+            }
+
+            // Check if this is an old slug that needs 301 redirect
+            $tour = $metadata->find_by_old_slug($identifier);
+
+            if ($tour && !empty($tour->tour_slug)) {
+                error_log('H3TM S3 Proxy: Old slug "' . $identifier . '" found, should redirect to: ' . $tour->tour_slug);
+                return array(
+                    'redirect' => true,
+                    'current_slug' => $tour->tour_slug,
+                    'tour_id' => $tour->tour_id
+                );
+            }
+        }
+
+        // Fallback: assume it's a legacy tour name (convert spaces to dashes for S3)
+        error_log('H3TM S3 Proxy: No metadata found for "' . $identifier . '", using as legacy tour name');
+        return $identifier;
     }
 
     /**

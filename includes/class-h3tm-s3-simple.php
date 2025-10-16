@@ -47,17 +47,6 @@ class H3TM_S3_Simple {
         $access_key = defined('AWS_ACCESS_KEY_ID') ? AWS_ACCESS_KEY_ID : get_option('h3tm_aws_access_key', '');
         $secret_key = defined('AWS_SECRET_ACCESS_KEY') ? AWS_SECRET_ACCESS_KEY : get_option('h3tm_aws_secret_key', '');
 
-        // Enhanced debugging
-        error_log('H3TM S3 Credentials Debug:');
-        error_log('  - Bucket: ' . (!empty($bucket) ? $bucket : 'NOT SET'));
-        error_log('  - Region: ' . $region);
-        error_log('  - Access Key from constant: ' . (defined('AWS_ACCESS_KEY_ID') ? 'YES' : 'NO'));
-        error_log('  - Access Key from DB: ' . (!empty(get_option('h3tm_aws_access_key', '')) ? 'YES' : 'NO'));
-        error_log('  - Secret Key from constant: ' . (defined('AWS_SECRET_ACCESS_KEY') ? 'YES' : 'NO'));
-        error_log('  - Secret Key from DB: ' . (!empty(get_option('h3tm_aws_secret_key', '')) ? 'YES' : 'NO'));
-        error_log('  - Final Access Key: ' . (empty($access_key) ? 'EMPTY' : substr($access_key, 0, 4) . '...'));
-        error_log('  - Final Secret Key: ' . (empty($secret_key) ? 'EMPTY' : 'SET'));
-
         return array(
             'bucket' => $bucket,
             'region' => $region,
@@ -291,14 +280,53 @@ class H3TM_S3_Simple {
 
             // Convert folder names to display names after collecting all pages
             $tours = array();
+            $tour_id_pattern = '/^\d{8}_\d{6}_[a-z0-9]{8}$/'; // Pattern for tour_id
+
+            // Load metadata for tour_id-based tours
+            $metadata_tours = array();
+            if (class_exists('H3TM_Tour_Metadata')) {
+                global $wpdb;
+                $table_name = $wpdb->prefix . 'h3tm_tour_metadata';
+                // Get all tours including uploading/processing status
+                $results = $wpdb->get_results("SELECT tour_id, tour_slug, display_name, status FROM $table_name");
+
+                foreach ($results as $row) {
+                    if (!empty($row->tour_id)) {
+                        $metadata_tours[$row->tour_id] = array(
+                            'display_name' => $row->display_name,
+                            'tour_slug' => $row->tour_slug,
+                            'status' => $row->status,
+                            'tour_id' => $row->tour_id
+                        );
+                    }
+                }
+                error_log('H3TM S3: Loaded ' . count($metadata_tours) . ' tours from metadata (all statuses)');
+            }
+
             foreach ($all_tour_folders as $tour_folder) {
-                // Convert dashes back to spaces for display
-                // AWS/Lambda converts spaces to dashes when uploading
-                // e.g., "Bee Cave.zip" becomes "Bee-Cave/" in S3
-                // But "Onion Creek" stays as "Onion Creek" (no dash conversion if originally uploaded that way)
-                $tour_display_name = str_replace('-', ' ', $tour_folder);
-                $tours[] = $tour_display_name;
-                error_log('H3TM S3: Added tour: ' . $tour_display_name . ' (S3 folder: ' . $tour_folder . ')');
+                // Check if this is a tour_id-based folder
+                if (preg_match($tour_id_pattern, $tour_folder)) {
+                    // Tour ID-based folder - get display name and slug from metadata
+                    if (isset($metadata_tours[$tour_folder])) {
+                        $tour_data = $metadata_tours[$tour_folder];
+                        $tours[] = array(
+                            'name' => $tour_data['display_name'],
+                            'tour_slug' => $tour_data['tour_slug'],
+                            'status' => $tour_data['status'],
+                            'tour_id' => $tour_data['tour_id']
+                        );
+                        error_log('H3TM S3: Added ID-based tour: ' . $tour_data['display_name'] . ' (Slug: ' . $tour_data['tour_slug'] . ', ID: ' . $tour_folder . ')');
+                    } else {
+                        error_log('H3TM S3: WARNING - Tour ID folder found but no metadata: ' . $tour_folder);
+                    }
+                } else {
+                    // Legacy name-based folder - convert dashes to spaces
+                    // AWS/Lambda converts spaces to dashes when uploading
+                    // e.g., "Bee Cave.zip" becomes "Bee-Cave/" in S3
+                    $tour_display_name = str_replace('-', ' ', $tour_folder);
+                    $tours[] = $tour_display_name;
+                    error_log('H3TM S3: Added legacy tour: ' . $tour_display_name . ' (S3 folder: ' . $tour_folder . ')');
+                }
             }
 
             error_log('H3TM S3: Total unique tours found across ' . $page_count . ' page(s): ' . count($tours));
@@ -501,21 +529,69 @@ class H3TM_S3_Simple {
             wp_send_json_error('Missing required upload parameters');
         }
 
-        // Simple presigned URL generation
-        $unique_id = uniqid() . '_' . time();
-        $s3_key = 'uploads/' . $unique_id . '/' . $file_name;
+        // Check if metadata class exists
+        if (!class_exists('H3TM_Tour_Metadata')) {
+            error_log('H3TM S3 Simple: H3TM_Tour_Metadata class not found');
+            wp_send_json_error('Server configuration error: Metadata class not available');
+            return;
+        }
+
+        // Generate unique tour ID (timestamp + random)
+        $metadata = new H3TM_Tour_Metadata();
+        $tour_id = $metadata->generate_tour_id();
+
+        error_log('H3TM S3 Simple: Generated tour_id: ' . $tour_id . ' for tour: ' . $tour_name);
+
+        // Create metadata entry BEFORE upload with status='uploading'
+        $tour_slug = sanitize_title($tour_name);
+        $s3_folder = 'tours/' . $tour_id . '/';
+
+        $metadata_id = $metadata->create(array(
+            'tour_id' => $tour_id,
+            'tour_slug' => $tour_slug,
+            'display_name' => $tour_name,
+            's3_folder' => $s3_folder,
+            'status' => 'uploading',
+            'url_history' => json_encode(array())
+        ));
+
+        if (!$metadata_id) {
+            error_log('H3TM S3 Simple: Failed to create metadata entry for tour_id: ' . $tour_id);
+            wp_send_json_error('Failed to create tour metadata');
+        }
+
+        error_log('H3TM S3 Simple: Created metadata entry with ID: ' . $metadata_id . ', status=uploading');
+
+        // Clear tour list cache so new tour appears immediately (even with 'uploading' status)
+        $this->clear_tour_cache();
+
+        // Use tour_id for S3 key instead of tour_name
+        // S3 key format: uploads/{tour_id}/{tour_id}.zip
+        $s3_filename = $tour_id . '.zip';
+        $s3_key = 'uploads/' . $tour_id . '/' . $s3_filename;
+
+        error_log('H3TM S3 Simple: Using tour_id for S3 key: ' . $s3_key);
 
         try {
             $presigned_url = $this->generate_simple_presigned_url($config, $s3_key);
 
+            // Return tour_id in presigned URL response
             wp_send_json_success(array(
                 'upload_url' => $presigned_url,
                 's3_key' => $s3_key,
-                'unique_id' => $unique_id
+                'tour_id' => $tour_id,  // Include tour_id for frontend
+                'tour_name' => $tour_name  // Include tour_name for display
             ));
 
         } catch (Exception $e) {
             error_log('H3TM S3 Simple: Presigned URL generation failed: ' . $e->getMessage());
+
+            // Clean up metadata entry on error
+            if ($metadata_id) {
+                $metadata->delete($metadata_id);
+                error_log('H3TM S3 Simple: Cleaned up metadata entry ' . $metadata_id . ' after error');
+            }
+
             wp_send_json_error('Failed to generate presigned URL: ' . $e->getMessage());
         }
     }

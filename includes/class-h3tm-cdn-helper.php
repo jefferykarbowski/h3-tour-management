@@ -72,10 +72,9 @@ class H3TM_CDN_Helper {
         $tour_name_with_dashes = str_replace(' ', '-', $tour_name);
 
         if ($this->use_cloudfront) {
-            // CloudFront URL - Origin path already includes /tours
-            // So we don't add /tours to the URL path
+            // CloudFront URL - must include /tours/ in path since Lambda uploads to tours/ directory
             $urls[] = sprintf(
-                'https://%s/%s/%s',
+                'https://%s/tours/%s/%s',
                 $this->cloudfront_domain,
                 $tour_name_with_dashes,
                 $file_path
@@ -84,7 +83,7 @@ class H3TM_CDN_Helper {
             // Try with spaces as fallback (URL encoded)
             if (strpos($tour_name, ' ') !== false) {
                 $urls[] = sprintf(
-                    'https://%s/%s/%s',
+                    'https://%s/tours/%s/%s',
                     $this->cloudfront_domain,
                     rawurlencode($tour_name),
                     $file_path
@@ -126,10 +125,9 @@ class H3TM_CDN_Helper {
         $tour_s3_name = str_replace(' ', '-', $tour_name);
 
         if ($this->use_cloudfront) {
-            // CloudFront URL - Origin path already includes /tours
-            // So we don't add /tours to the URL path
+            // CloudFront URL - must include /tours/ in path since Lambda uploads to tours/ directory
             return sprintf(
-                'https://%s/%s/',
+                'https://%s/tours/%s/',
                 $this->cloudfront_domain,
                 $tour_s3_name
             );

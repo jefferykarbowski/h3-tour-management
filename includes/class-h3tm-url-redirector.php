@@ -48,8 +48,20 @@ class H3TM_URL_Redirector {
     }
 
     /**
+     * Check if a string matches tour_id pattern
+     * Format: 20250114_173045_8k3j9d2m (timestamp + 8-char random)
+     *
+     * @param string $str String to check
+     * @return bool True if matches tour_id pattern
+     */
+    private function is_tour_id($str) {
+        return preg_match('/^\d{8}_\d{6}_[a-z0-9]{8}$/', $str) === 1;
+    }
+
+    /**
      * Check for tour redirects on init
      * Runs before template_redirect for early detection
+     * Supports both tour_id and slug-based URLs
      */
     public function check_tour_redirect() {
         // Only process tour URLs
@@ -59,9 +71,17 @@ class H3TM_URL_Redirector {
             return;
         }
 
-        // Extract potential tour slug from URL
+        // Extract potential tour identifier from URL
         if (preg_match('#^/h3panos/([^/]+)#', $request_uri, $matches)) {
-            $requested_slug = sanitize_title($matches[1]);
+            $identifier = $matches[1];
+
+            // Check if this is a tour_id (no redirect needed for IDs)
+            if ($this->is_tour_id($identifier)) {
+                return; // Tour IDs are immutable, no redirect needed
+            }
+
+            // It's a slug - check if it needs to be redirected
+            $requested_slug = sanitize_title($identifier);
 
             // Check if this slug needs to be redirected
             $tour = $this->metadata->find_by_old_slug($requested_slug);
@@ -78,21 +98,38 @@ class H3TM_URL_Redirector {
 
     /**
      * Handle tour request from rewrite rules
+     * Supports both tour_id and slug-based URLs (dual-mode)
      */
     public function handle_tour_request() {
-        $tour_slug = get_query_var('tour_slug');
+        $tour_identifier = get_query_var('tour_slug');
         $tour_path = get_query_var('tour_path');
 
-        if (!$tour_slug) {
+        if (!$tour_identifier) {
             return;
         }
 
-        // Get tour metadata
-        $tour = $this->metadata->get_by_slug($tour_slug);
+        $tour = null;
+
+        // Check if this is a tour_id (immutable identifier)
+        if ($this->is_tour_id($tour_identifier)) {
+            // Direct lookup by tour_id
+            $tour = $this->metadata->get_by_tour_id($tour_identifier);
+
+            if (!$tour) {
+                // Tour ID doesn't exist
+                return;
+            }
+
+            // Tour found by ID - let normal processing continue
+            return;
+        }
+
+        // It's a slug - try to find tour
+        $tour = $this->metadata->get_by_slug($tour_identifier);
 
         if (!$tour) {
-            // Tour not found, try old slug
-            $tour = $this->metadata->find_by_old_slug($tour_slug);
+            // Tour not found by slug, try old slug
+            $tour = $this->metadata->find_by_old_slug($tour_identifier);
 
             if ($tour) {
                 // Redirect to current slug
@@ -109,28 +146,38 @@ class H3TM_URL_Redirector {
             return;
         }
 
-        // Tour found - let normal processing continue
+        // Tour found by slug - let normal processing continue
         // The actual tour files are served from S3/CloudFront
     }
 
     /**
      * Get current tour URL from metadata
+     * Supports tour_id, slug, display name, and old slugs
      *
-     * @param string $tour_name_or_slug Tour name or slug
+     * @param string $identifier Tour ID, name, or slug
      * @return string|null Current tour URL or null if not found
      */
-    public function get_tour_url($tour_name_or_slug) {
-        // Try as slug first
-        $tour = $this->metadata->get_by_slug($tour_name_or_slug);
+    public function get_tour_url($identifier) {
+        $tour = null;
+
+        // Try as tour_id first (most specific)
+        if ($this->is_tour_id($identifier)) {
+            $tour = $this->metadata->get_by_tour_id($identifier);
+        }
+
+        // Try as slug
+        if (!$tour) {
+            $tour = $this->metadata->get_by_slug($identifier);
+        }
 
         // Try as display name
         if (!$tour) {
-            $tour = $this->metadata->get_by_display_name($tour_name_or_slug);
+            $tour = $this->metadata->get_by_display_name($identifier);
         }
 
         // Try as old slug
         if (!$tour) {
-            $tour = $this->metadata->find_by_old_slug($tour_name_or_slug);
+            $tour = $this->metadata->find_by_old_slug($identifier);
         }
 
         if ($tour) {

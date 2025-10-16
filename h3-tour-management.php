@@ -3,7 +3,7 @@
  * Plugin Name: H3 Tour Management
  * Plugin URI: https://github.com/jefferykarbowski/h3-tour-management
  * Description: Cloud-based Tour Management system with S3/CloudFront delivery, analytics, and user management
- * Version: 2.5.0
+ * Version: 2.5.1
  * Author: H3 Photography
  * Author URI: https://h3vt.com/
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('H3TM_VERSION', '2.5.0');
+define('H3TM_VERSION', '2.5.1');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -49,6 +49,7 @@ require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-metadata.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-url-redirector.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-react-uploader.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-react-tours-table.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-migration.php';
 
 // Activation hook
 register_activation_hook(__FILE__, array('H3TM_Activator', 'activate'));
@@ -78,8 +79,9 @@ function h3tm_init() {
     new H3TM_Lambda_Webhook($tour_processing);
     new H3TM_Lambda_Integration();
 
-    // Initialize tour metadata and URL redirector
-    new H3TM_URL_Redirector();
+    // TEMPORARILY DISABLED: Initialize tour metadata and URL redirector
+    // This was conflicting with S3 Proxy rewrite rules
+    // new H3TM_URL_Redirector();
 }
 
 // Disable new user notification emails (moved from functions.php)

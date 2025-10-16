@@ -13,18 +13,32 @@ class H3TM_Tour_Metadata {
     }
 
     /**
+     * Generate a unique tour ID
+     * Format: 20250114_173045_8k3j9d2m (timestamp + 8-char random)
+     *
+     * @return string Unique tour ID
+     */
+    public function generate_tour_id() {
+        $timestamp = date('Ymd_His');
+        $random = substr(str_shuffle('abcdefghijklmnopqrstuvwxyz0123456789'), 0, 8);
+        return $timestamp . '_' . $random;
+    }
+
+    /**
      * Create a new tour metadata entry
      *
-     * @param array $data Tour metadata (tour_slug, display_name, s3_folder, url_history)
+     * @param array $data Tour metadata (tour_id, tour_slug, display_name, s3_folder, status, url_history)
      * @return int|false The inserted row ID or false on failure
      */
     public function create($data) {
         global $wpdb;
 
         $defaults = array(
+            'tour_id' => null,
             'tour_slug' => '',
             'display_name' => '',
             's3_folder' => '',
+            'status' => 'completed',
             'url_history' => json_encode(array()),
             'created_date' => current_time('mysql'),
             'updated_date' => current_time('mysql')
@@ -35,10 +49,25 @@ class H3TM_Tour_Metadata {
         $result = $wpdb->insert(
             $this->table_name,
             $data,
-            array('%s', '%s', '%s', '%s', '%s', '%s')
+            array('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')
         );
 
         return $result ? $wpdb->insert_id : false;
+    }
+
+    /**
+     * Get tour metadata by tour_id
+     *
+     * @param string $tour_id Unique tour identifier
+     * @return object|null
+     */
+    public function get_by_tour_id($tour_id) {
+        global $wpdb;
+
+        return $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$this->table_name} WHERE tour_id = %s",
+            $tour_id
+        ));
     }
 
     /**

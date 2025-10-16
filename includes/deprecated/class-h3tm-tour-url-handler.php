@@ -328,37 +328,81 @@ class H3TM_Tour_URL_Handler {
     }
 
     /**
+     * Resolve tour identifier (slug or tour_id) to actual tour_id for S3 lookup
+     */
+    private function resolve_tour_identifier($identifier) {
+        // Check if it's already a tour_id (immutable format: 20251014_204411_mhy3v057)
+        if ($this->is_tour_id($identifier)) {
+            return $identifier;
+        }
+
+        // It's a slug - look up the tour_id from metadata
+        if (class_exists('H3TM_Tour_Metadata')) {
+            $metadata = new H3TM_Tour_Metadata();
+            $tour = $metadata->get_by_slug($identifier);
+
+            if ($tour && !empty($tour->tour_id)) {
+                $this->log('Resolved slug "' . $identifier . '" to tour_id: ' . $tour->tour_id);
+                return $tour->tour_id;
+            }
+        }
+
+        // Fallback: assume it's a legacy tour name (convert spaces to dashes for S3)
+        // This handles old tours that don't have metadata entries
+        $this->log('No metadata found for "' . $identifier . '", using as legacy tour name');
+        return str_replace(' ', '-', $identifier);
+    }
+
+    /**
+     * Check if a string matches tour_id pattern
+     * Format: 20251014_204411_mhy3v057 (YYYYMMDD_HHMMSS_8random)
+     */
+    private function is_tour_id($str) {
+        return preg_match('/^\d{8}_\d{6}_[a-z0-9]{8}$/', $str) === 1;
+    }
+
+    /**
      * Serve tour content from S3
      */
     private function serve_tour_content($tour_name, $file_path = 'index.htm') {
         // Validate inputs
         $tour_name = $this->sanitize_tour_name($tour_name);
         $file_path = $this->sanitize_file_path($file_path);
-        
+
         if (!$tour_name || !$file_path) {
             $this->send_404('Invalid tour or file name');
             return;
         }
-        
+
         $this->log('serve_tour_content: ' . $tour_name . '/' . $file_path);
-        
+
+        // Resolve tour identifier (slug or tour_id) to actual tour_id for S3
+        $resolved_tour_id = $this->resolve_tour_identifier($tour_name);
+
+        if (!$resolved_tour_id) {
+            $this->send_404('Tour not found: ' . $tour_name);
+            return;
+        }
+
+        $this->log('Resolved identifier: ' . $tour_name . ' -> ' . $resolved_tour_id);
+
         // Check S3 configuration
         if (!$this->s3_config['configured']) {
             $this->send_error('S3 not configured', 500);
             return;
         }
-        
-        // Try cache first
-        $cache_key = 'tour_' . $tour_name . '_' . md5($file_path);
+
+        // Try cache first (use resolved tour_id for cache key)
+        $cache_key = 'tour_' . $resolved_tour_id . '_' . md5($file_path);
         $cached_content = $this->get_cached_content($cache_key);
-        
+
         if ($cached_content) {
             $this->serve_content($cached_content['content'], $cached_content['content_type']);
             return;
         }
-        
-        // Fetch from S3
-        $s3_url = $this->build_s3_url($tour_name, $file_path);
+
+        // Fetch from S3 using resolved tour_id
+        $s3_url = $this->build_s3_url($resolved_tour_id, $file_path);
         $content = $this->fetch_s3_content($s3_url);
         
         if ($content) {
@@ -375,14 +419,22 @@ class H3TM_Tour_URL_Handler {
 
     /**
      * Build S3 URL for tour file
+     * Supports both tour_id and legacy name-based tours
      */
     private function build_s3_url($tour_name, $file_path) {
         $bucket = $this->s3_config['bucket'];
         $region = $this->s3_config['region'];
 
-        // Convert spaces to dashes for S3 path
-        // AWS/Lambda converts "Bee Cave" to "Bee-Cave" when uploading
-        $s3_tour_folder = str_replace(' ', '-', $tour_name);
+        // Check if this is a tour_id (immutable identifier)
+        // Format: 20250114_173045_8k3j9d2m
+        if ($this->is_tour_id($tour_name)) {
+            // Tour IDs are used directly as S3 folder names
+            $s3_tour_folder = $tour_name;
+        } else {
+            // Legacy: Convert spaces to dashes for S3 path
+            // AWS/Lambda converts "Bee Cave" to "Bee-Cave" when uploading
+            $s3_tour_folder = str_replace(' ', '-', $tour_name);
+        }
 
         return sprintf(
             'https://%s.s3.%s.amazonaws.com/tours/%s/%s',
@@ -391,6 +443,14 @@ class H3TM_Tour_URL_Handler {
             rawurlencode($s3_tour_folder),
             $file_path
         );
+    }
+
+    /**
+     * Check if a string matches tour_id pattern
+     * Format: 20250114_173045_8k3j9d2m (timestamp + 8-char random)
+     */
+    private function is_tour_id($str) {
+        return preg_match('/^\d{8}_\d{6}_[a-z0-9]{8}$/', $str) === 1;
     }
 
     /**

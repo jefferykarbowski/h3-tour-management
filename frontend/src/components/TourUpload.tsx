@@ -63,6 +63,8 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
+  const [processingPhase, setProcessingPhase] = useState<"uploading" | "processing">("uploading");
+  const [processingTime, setProcessingTime] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (newFiles: File[]) => {
@@ -92,16 +94,27 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
 
     setIsProcessing(true);
     setProgress(0);
+    setProcessingPhase("uploading");
+    setProcessingTime(0);
 
     try {
-      // Step 1: Request presigned URL from server
+      // Step 1: Request presigned URL from server (returns tour_id)
       const presignedData = await requestPresignedUrl(file, tourName);
+
+      // Extract tour_id from response
+      const uploadTourId = presignedData.tour_id;
+      if (!uploadTourId) {
+        throw new Error('Server did not return tour_id');
+      }
 
       // Step 2: Upload directly to S3 with progress tracking
       await uploadToS3(file, presignedData);
 
-      // Step 3: Mark tour as processing (matches old jQuery implementation)
+      // Step 3: Mark tour as processing
       await markTourProcessing(tourName);
+
+      // Step 4: Wait for Lambda processing with polling (use tour_id)
+      await pollForTourReady(uploadTourId);
 
       setProgress(100);
       setIsComplete(true);
@@ -141,10 +154,21 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    // Get response text first to debug JSON parse errors
+    const responseText = await response.text();
+    console.log('Presigned URL response:', responseText);
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (error) {
+      console.error('JSON parse error:', error);
+      console.error('Response text:', responseText);
+      throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}`);
+    }
 
     if (!data.success) {
-      throw new Error(data.data?.message || 'Failed to get upload URL');
+      throw new Error(data.data?.message || data.data || 'Failed to get upload URL');
     }
 
     return data.data;
@@ -211,6 +235,64 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
       console.log('Failed to mark as processing:', data.data);
       // Don't throw - this is not critical for upload success
     }
+  };
+
+  const pollForTourReady = async (tourId: string): Promise<void> => {
+    const maxPolls = 60; // 5 minutes (60 * 5 seconds)
+    const pollInterval = 5000; // 5 seconds
+
+    // Use tour_id directly in URL (immutable identifier)
+    const tourUrl = `/h3panos/${tourId}/index.htm`;
+
+    console.log('🔄 Starting Lambda processing status monitor for tour_id:', tourId);
+    console.log('Testing URL:', tourUrl);
+
+    // Switch to processing phase
+    setProcessingPhase("processing");
+    setProgress(0);
+    setProcessingTime(0);
+
+    for (let attempt = 1; attempt <= maxPolls; attempt++) {
+      console.log(`🔍 Polling attempt ${attempt}/${maxPolls}`);
+
+      try {
+        // Use HEAD request to check if tour is accessible without downloading content
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const response = await fetch(tourUrl, {
+          method: 'HEAD',
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          console.log('✅ Tour is ready!');
+          setProgress(100);
+          return; // Success - tour is ready
+        }
+      } catch (error) {
+        // Tour not ready yet or network error - continue polling
+        console.log(`Tour not ready yet (attempt ${attempt}/${maxPolls})`);
+      }
+
+      // Update elapsed time
+      setProcessingTime(attempt * 5);
+
+      // Update progress (show gradual progress during polling)
+      const progressPercent = Math.min(95, Math.round((attempt / maxPolls) * 100));
+      setProgress(progressPercent);
+
+      // Wait before next poll (unless this was the last attempt)
+      if (attempt < maxPolls) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+    }
+
+    // Timeout reached
+    console.log('⏱️ Processing timeout - tour taking longer than expected');
+    throw new Error('Processing timeout - tour taking longer than expected. The tour should appear shortly.');
   };
 
   const isValid = tourName.trim() !== "" && file !== null;
@@ -357,12 +439,18 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {isComplete ? "Upload Complete!" : "Processing Tour"}
+              {isComplete
+                ? "Upload Complete!"
+                : processingPhase === "uploading"
+                ? "Uploading to S3"
+                : "Processing Tour"}
             </DialogTitle>
             <DialogDescription>
               {isComplete
-                ? "Your 3D tour has been uploaded successfully."
-                : "Please wait while we process your 3D tour file..."}
+                ? "Your 3D tour has been uploaded and processed successfully."
+                : processingPhase === "uploading"
+                ? "Uploading your 3D tour file to AWS S3..."
+                : `AWS Lambda is extracting and deploying your tour... (${processingTime} seconds elapsed)`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -381,15 +469,35 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
               <>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Progress</span>
+                    <span className="text-muted-foreground">
+                      {processingPhase === "uploading" ? "Upload Progress" : "Processing Progress"}
+                    </span>
                     <span className="font-medium text-blue-600">{progress}%</span>
                   </div>
                   <Progress value={progress} className="h-2" />
                 </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                  <span>Uploading {file?.name}...</span>
-                </div>
+                {processingPhase === "uploading" ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                    <span>Uploading {file?.name}...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                      <span>Processing tour on AWS Lambda...</span>
+                    </div>
+                    <div className="pl-6 space-y-1 text-xs text-muted-foreground">
+                      <div>• Downloading from S3</div>
+                      <div>• Extracting tour files</div>
+                      <div>• Injecting analytics</div>
+                      <div>• Deploying to tours directory</div>
+                    </div>
+                    <p className="text-xs text-muted-foreground italic">
+                      This may take 2-5 minutes for large tours. Please wait...
+                    </p>
+                  </div>
+                )}
               </>
             )}
           </div>

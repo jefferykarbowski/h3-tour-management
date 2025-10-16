@@ -2,6 +2,9 @@
 const { S3Client, CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const s3 = new S3Client({ region: 'us-east-1' });
 
+// Import migration handler
+const migrationHandler = require('./migrate-tours');
+
 exports.handler = async (event) => {
     console.log('H3 Tour Processor Lambda triggered');
 
@@ -22,6 +25,12 @@ exports.handler = async (event) => {
                 body: JSON.stringify({ error: 'Invalid request body' })
             };
         }
+    }
+
+    // Check if this is a migration request
+    if (parsedEvent.action === 'migrate_tours') {
+        console.log('🔄 Migration action detected - routing to migration handler');
+        return await migrationHandler.handler(parsedEvent);
     }
 
     // Check if this is a direct invocation for deletion
@@ -49,10 +58,10 @@ exports.handler = async (event) => {
             console.log(`Processing file: ${key} from bucket: ${bucket}`);
 
             try {
-                const tourName = extractTourName(key);
-                console.log(`🎯 Extracted tour name: ${tourName}`);
-                const tourFolderName = getTourFolderName(tourName);
-                console.log(`📁 S3 folder name: ${tourFolderName}`);
+                const tourId = extractTourId(key);
+                console.log(`🎯 Extracted tour_id: ${tourId}`);
+                const tourName = extractTourNameFromZip(key);
+                console.log(`📝 Extracted tour name from ZIP filename: ${tourName}`);
 
                 // Step 1: Download ZIP from S3
                 console.log('⬇️ Step 1: Downloading ZIP from S3...');
@@ -66,7 +75,7 @@ exports.handler = async (event) => {
 
                 // Step 2: Extract ZIP and handle nested structure
                 console.log('📂 Step 2: Extracting ZIP and processing nested structure...');
-                const extractedFiles = await extractAndProcessZip(zipData, tourName);
+                const extractedFiles = await extractAndProcessZip(zipData, tourId);
 
                 if (!extractedFiles || extractedFiles.length === 0) {
                     throw new Error('No files extracted from ZIP');
@@ -79,13 +88,13 @@ exports.handler = async (event) => {
                 let uploadedCount = 0;
 
                 for (const file of extractedFiles) {
-                    const s3Key = `tours/${tourFolderName}/${file.path}`;
+                    const s3Key = `tours/${tourId}/${file.path}`;
                     let fileData = file.data;
 
                     // Inject analytics script into index.htm files
                     if (file.path === 'index.htm' || file.path === 'index.html') {
                         console.log('📊 Injecting analytics script into index file...');
-                        fileData = injectAnalyticsScript(file.data.toString(), tourName, tourFolderName);
+                        fileData = injectAnalyticsScript(file.data.toString(), tourName, tourId);
                     }
 
                     await s3.send(new PutObjectCommand({
@@ -93,7 +102,7 @@ exports.handler = async (event) => {
                         Key: s3Key,
                         Body: fileData,
                         ContentType: getContentType(file.path)
-                        // No ACL - bucket policy handles public access
+                        // Bucket policy handles public access - ACLs are disabled on this bucket
                     }));
 
                     uploadedCount++;
@@ -113,12 +122,12 @@ exports.handler = async (event) => {
                 }));
 
                 console.log(`🧹 Cleaned up original upload: ${key}`);
-                console.log(`🎉 Tour "${tourName}" processed successfully!`);
-                console.log(`🌐 Available at: https://${bucket}.s3.us-east-1.amazonaws.com/tours/${tourFolderName}/index.htm`);
+                console.log(`🎉 Tour "${tourName}" (ID: ${tourId}) processed successfully!`);
+                console.log(`🌐 Available at: https://${bucket}.s3.us-east-1.amazonaws.com/tours/${tourId}/index.htm`);
 
                 // Step 5: Notify WordPress to register the tour
                 console.log('📞 Step 5: Notifying WordPress...');
-                await notifyWordPress(tourName, tourFolderName, bucket, uploadedCount);
+                await notifyWordPress(tourName, tourId, bucket, uploadedCount);
 
                 console.log(`✅ Complete! Tour "${tourName}" is ready!`);
 
@@ -132,18 +141,26 @@ exports.handler = async (event) => {
     return { statusCode: 200, body: 'Tour processing completed' };
 };
 
-function extractTourName(s3Key) {
-    // Extract tour name from uploads/uniqueid/Tour-Name.zip
-    // Keep original name (with spaces) for display
+/**
+ * Extract tour_id from S3 key
+ * New format: uploads/{tour_id}/{tour_id}.zip
+ * Example: uploads/20250114_173045_8k3j9d2m/20250114_173045_8k3j9d2m.zip
+ */
+function extractTourId(s3Key) {
+    const parts = s3Key.split('/');
+    // tour_id is the folder name (second part)
+    return parts[1];
+}
+
+/**
+ * Extract tour name from ZIP filename for display purposes
+ * Note: This is kept for backward compatibility with analytics
+ * The actual folder structure uses tour_id
+ */
+function extractTourNameFromZip(s3Key) {
     const parts = s3Key.split('/');
     const fileName = parts[parts.length - 1];
     return fileName.replace('.zip', '');
-}
-
-function getTourFolderName(tourName) {
-    // ALWAYS convert spaces to dashes for S3 folder names
-    // This ensures consistency and prevents duplicates
-    return tourName.replace(/\s+/g, '-');
 }
 
 function getFileName(s3Key) {
@@ -170,11 +187,11 @@ function getContentType(filePath) {
 }
 
 // Inject analytics script tag into HTML
-function injectAnalyticsScript(htmlContent, tourName, tourFolderName) {
+function injectAnalyticsScript(htmlContent, tourName, tourId) {
     try {
         console.log('📊 Analytics injection: Processing HTML content, length:', htmlContent.length);
         console.log('📊 Analytics injection: Tour name:', tourName);
-        console.log('📊 Analytics injection: Folder name:', tourFolderName);
+        console.log('📊 Analytics injection: Tour ID:', tourId);
 
         // Check if </head> exists
         if (!htmlContent.includes('</head>')) {
@@ -183,11 +200,11 @@ function injectAnalyticsScript(htmlContent, tourName, tourFolderName) {
         }
 
         // Replace incorrect media paths (if any exist)
-        // Change /h3panos/Tour-Name/media/ to just ./media/
-        htmlContent = htmlContent.replace(new RegExp(`/h3panos/${tourFolderName}/media/`, 'g'), './media/');
+        // Change /h3panos/{anything}/media/ to just ./media/
+        htmlContent = htmlContent.replace(/\/h3panos\/[^/]+\/media\//g, './media/');
 
         // Also fix any references to h3panos in general
-        htmlContent = htmlContent.replace(new RegExp(`/h3panos/${tourFolderName}/`, 'g'), './');
+        htmlContent = htmlContent.replace(/\/h3panos\/[^/]+\//g, './');
 
         // Inject external analytics script from WordPress site
         // This allows centralized management of analytics code
@@ -201,11 +218,12 @@ function injectAnalyticsScript(htmlContent, tourName, tourFolderName) {
         }
 
         // Build the analytics script URL with all parameters
+        // Note: We pass both tour_id and tour_name for flexibility
         const analyticsParams = new URLSearchParams({
             tour: tourName,
-            folder: tourFolderName,
+            tour_id: tourId,
             title: pageTitle,
-            path: `/tours/${tourFolderName}/`
+            path: `/tours/${tourId}/`
         });
 
         const analyticsTag = `
@@ -229,7 +247,7 @@ function injectAnalyticsScript(htmlContent, tourName, tourFolderName) {
 }
 
 // Notify WordPress that tour processing is complete
-async function notifyWordPress(tourName, tourFolderName, bucket, filesCount) {
+async function notifyWordPress(tourName, tourId, bucket, filesCount) {
     try {
         const webhookUrl = process.env.WORDPRESS_WEBHOOK_URL;
 
@@ -241,14 +259,16 @@ async function notifyWordPress(tourName, tourFolderName, bucket, filesCount) {
         const payload = {
             success: true,
             tourName: tourName,
-            s3FolderName: tourFolderName,
+            tourId: tourId,  // Include tour_id for metadata updates
+            s3Key: `uploads/${tourId}/${tourId}.zip`,  // Add s3Key for webhook validation
+            s3FolderName: tourId,  // Folder name is now the tour_id
             s3Bucket: bucket,
             filesExtracted: filesCount,
             processingTime: 0, // Could track this with start/end timestamps
             totalSize: 0, // Could sum file sizes
-            message: `Tour "${tourName}" processed successfully`,
+            message: `Tour "${tourName}" (ID: ${tourId}) processed successfully`,
             timestamp: new Date().toISOString(),
-            s3Url: `https://${bucket}.s3.us-east-1.amazonaws.com/tours/${tourFolderName}/`
+            s3Url: `https://${bucket}.s3.us-east-1.amazonaws.com/tours/${tourId}/`
         };
 
         console.log(`📞 Sending webhook to: ${webhookUrl}`);
@@ -305,7 +325,7 @@ async function downloadZipFromS3(bucket, key) {
 }
 
 // Extract ZIP and handle nested Web.zip structure
-async function extractAndProcessZip(zipData, tourName) {
+async function extractAndProcessZip(zipData, tourId) {
     const AdmZip = require('adm-zip');
 
     try {

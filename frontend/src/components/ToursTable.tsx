@@ -17,6 +17,7 @@ interface Tour {
   name: string;
   url: string;
   status?: "completed" | "processing" | "uploading" | "failed";
+  tour_id?: string;
 }
 
 interface ToursTableProps {
@@ -57,11 +58,19 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
       const data = await response.json();
       if (data.success && data.data) {
         const toursList = Array.isArray(data.data) ? data.data : data.data.tours || [];
-        setTours(toursList.map((tour: any) => ({
-          name: typeof tour === "string" ? tour : tour.name,
-          url: window.location.origin + "/h3panos/" + encodeURIComponent(typeof tour === "string" ? tour : tour.name),
-          status: typeof tour === "string" ? "completed" : tour.status,
-        })));
+        setTours(toursList.map((tour: any) => {
+          // For new ID-based tours, use tour_slug for friendly URLs; for legacy tours, use name
+          const tourIdentifier = (typeof tour === "object" && tour.tour_slug)
+            ? tour.tour_slug
+            : (typeof tour === "string" ? tour : tour.name);
+
+          return {
+            name: typeof tour === "string" ? tour : tour.name,
+            url: window.location.origin + "/h3panos/" + encodeURIComponent(tourIdentifier),
+            status: typeof tour === "string" ? "completed" : tour.status,
+            tour_id: typeof tour === "string" ? undefined : tour.tour_id,
+          };
+        }));
       }
     } catch (error) {
       console.error("Error loading tours:", error);
@@ -114,13 +123,26 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
         window.open(tourUrl, "_blank");
         break;
       case "changeUrl":
-        const newUrl = prompt("Enter new URL path (e.g., /custom-path/tour-name):", tourUrl);
-        if (newUrl && newUrl !== tourUrl) {
+        const newUrl = prompt("Enter new URL slug (e.g., my-custom-tour-name):", tourUrl?.split('/').pop());
+        if (newUrl && newUrl.trim()) {
           try {
+            // Extract slug from input (handle both full URLs and plain slugs)
+            let slug = newUrl.trim();
+            if (slug.includes('/')) {
+              // Extract last part of URL path
+              slug = slug.split('/').filter(p => p).pop() || '';
+            }
+
+            // Validate slug format
+            if (!slug || slug.length === 0) {
+              alert("Invalid URL slug. Please enter a valid slug.");
+              return;
+            }
+
             const formData = new FormData();
             formData.append("action", "h3tm_change_tour_url");
             formData.append("tour_name", tourName);
-            formData.append("new_url", newUrl);
+            formData.append("new_slug", slug);  // Changed from new_url to new_slug
             formData.append("nonce", window.h3tm_ajax?.nonce || "");
 
             const response = await fetch(window.h3tm_ajax?.ajax_url || "/wp-admin/admin-ajax.php", {
@@ -130,7 +152,7 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
 
             const data = await response.json();
             if (data.success) {
-              alert(`URL changed successfully for "${tourName}"`);
+              alert(`URL changed successfully for "${tourName}"\nNew URL: /h3panos/${slug}`);
               await loadTours();
             } else {
               alert(`Failed to change URL: ${data.data || 'Unknown error'}`);
@@ -257,18 +279,20 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
         <p className="text-sm text-gray-600">
           {tours.length} {tours.length === 1 ? "tour" : "tours"} found
         </p>
-        <Button
-          onClick={() => {
-            loadTours();
-            onRefresh?.();
-          }}
-          variant="outline"
-          size="sm"
-          className="gap-2"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => {
+              loadTours();
+              onRefresh?.();
+            }}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
@@ -321,19 +345,26 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900">
-                          {tour.name}
-                        </span>
-                        {tour.status && tour.status !== "completed" && (
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            tour.status === "processing"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : tour.status === "uploading"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-red-100 text-red-800"
-                          }`}>
-                            {tour.status}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-900">
+                            {tour.name}
+                          </span>
+                          {tour.status && tour.status !== "completed" && (
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              tour.status === "processing"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : tour.status === "uploading"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-red-100 text-red-800"
+                            }`}>
+                              {tour.status}
+                            </span>
+                          )}
+                        </div>
+                        {tour.tour_id && (
+                          <span className="text-xs font-mono text-gray-500" title="Tour ID (immutable identifier)">
+                            ID: {tour.tour_id}
                           </span>
                         )}
                       </div>
@@ -366,18 +397,18 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
                         <Link2 className="h-4 w-4 text-gray-500 group-hover:text-purple-600" />
                       </button>
                       <button
-                        onClick={() => handleAction("update", tour.name)}
-                        className="p-2 hover:bg-green-50 rounded-md transition-colors group"
-                        title="Update Tour"
-                      >
-                        <RefreshCw className="h-4 w-4 text-gray-500 group-hover:text-green-600" />
-                      </button>
-                      <button
                         onClick={() => handleAction("rename", tour.name)}
                         className="p-2 hover:bg-amber-50 rounded-md transition-colors group"
                         title="Rename Tour"
                       >
                         <Pencil className="h-4 w-4 text-gray-500 group-hover:text-amber-600" />
+                      </button>
+                      <button
+                        onClick={() => handleAction("update", tour.name)}
+                        className="p-2 hover:bg-green-50 rounded-md transition-colors group"
+                        title="Update Tour"
+                      >
+                        <RefreshCw className="h-4 w-4 text-gray-500 group-hover:text-green-600" />
                       </button>
                       <button
                         onClick={() => handleAction("getScript", tour.name)}

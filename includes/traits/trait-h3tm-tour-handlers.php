@@ -108,13 +108,30 @@ trait Trait_H3TM_Tour_Handlers {
 
         // Get tour URL using metadata
         $tour_url = '';
+        $tour = null;
 
-        if (class_exists('H3TM_URL_Redirector')) {
-            $redirector = new H3TM_URL_Redirector();
-            $tour_url = $redirector->get_tour_url($tour_name);
+        if (class_exists('H3TM_Tour_Metadata')) {
+            $metadata = new H3TM_Tour_Metadata();
+
+            // Try to find tour by display name (most common case from UI)
+            $tour = $metadata->get_by_display_name($tour_name);
+
+            // Try as slug if not found
+            if (!$tour) {
+                $tour = $metadata->get_by_slug($tour_name);
+            }
+
+            // Try as tour_id if not found
+            if (!$tour && preg_match('/^\d{8}_\d{6}_[a-z0-9]{8}$/', $tour_name)) {
+                $tour = $metadata->get_by_tour_id($tour_name);
+            }
+
+            if ($tour && !empty($tour->tour_slug)) {
+                $tour_url = home_url('/h3panos/' . $tour->tour_slug . '/');
+            }
         }
 
-        // Fallback to standard URL
+        // Fallback to sanitized name if tour not found in metadata (legacy tours)
         if (empty($tour_url)) {
             $tour_slug = sanitize_title($tour_name);
             $tour_url = home_url('/h3panos/' . $tour_slug . '/');
@@ -180,6 +197,11 @@ trait Trait_H3TM_Tour_Handlers {
             wp_send_json_error('Tour not found');
         }
 
+        // Only allow URL changes for new ID-based tours
+        if (empty($tour->tour_id)) {
+            wp_send_json_error('URL changes are only supported for new tours. Legacy tours cannot be renamed or have their URLs changed.');
+        }
+
         $old_slug = $tour->tour_slug;
 
         // Check if new slug already exists
@@ -188,11 +210,8 @@ trait Trait_H3TM_Tour_Handlers {
         }
 
         // Check if new slug is in any tour's history
-        if (class_exists('H3TM_URL_Redirector')) {
-            $redirector = new H3TM_URL_Redirector();
-            if ($redirector->is_slug_historical($new_slug)) {
-                wp_send_json_error('This URL slug was previously used and cannot be reused');
-            }
+        if ($metadata->find_by_old_slug($new_slug)) {
+            wp_send_json_error('This URL slug was previously used and cannot be reused');
         }
 
         // Validate slug format

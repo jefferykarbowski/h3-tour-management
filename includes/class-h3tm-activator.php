@@ -9,6 +9,7 @@ class H3TM_Activator {
      */
     public static function activate() {
         self::create_tables();
+        self::maybe_upgrade_tour_metadata_table();
         self::set_default_options();
         self::create_upload_directory();
 
@@ -57,16 +58,21 @@ class H3TM_Activator {
           $metadata_table = $wpdb->prefix . 'h3tm_tour_metadata';
           $sql_metadata = "CREATE TABLE $metadata_table (
               id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+              tour_id varchar(32) DEFAULT NULL,
               tour_slug varchar(255) NOT NULL,
               display_name varchar(255) NOT NULL,
               s3_folder varchar(255) NOT NULL,
+              status varchar(20) DEFAULT 'completed',
               url_history text,
               created_date datetime DEFAULT CURRENT_TIMESTAMP,
               updated_date datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (id),
+              UNIQUE KEY tour_id (tour_id),
               UNIQUE KEY tour_slug (tour_slug),
+              KEY idx_tour_id (tour_id),
               KEY idx_tour_slug (tour_slug),
-              KEY idx_s3_folder (s3_folder)
+              KEY idx_s3_folder (s3_folder),
+              KEY idx_status (status)
           ) $charset_collate;";
           dbDelta($sql_metadata);
           self::migrate_existing_tours();
@@ -110,6 +116,66 @@ class H3TM_Activator {
 
         // Mark migration as complete
         update_option('h3tm_metadata_migrated', true);
+    }
+
+    /**
+     * Upgrade tour metadata table to add tour_id column
+     * Runs on plugin activation to upgrade existing installations
+     */
+    private static function maybe_upgrade_tour_metadata_table() {
+        global $wpdb;
+
+        // Check if upgrade has already been run
+        if (get_option('h3tm_metadata_upgraded_to_v2', false)) {
+            return;
+        }
+
+        $metadata_table = $wpdb->prefix . 'h3tm_tour_metadata';
+
+        // Check if table exists
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$metadata_table'") === $metadata_table;
+        if (!$table_exists) {
+            return; // Table will be created with new schema
+        }
+
+        // Check if tour_id column already exists
+        $column_exists = $wpdb->get_results(
+            "SHOW COLUMNS FROM `{$metadata_table}` LIKE 'tour_id'"
+        );
+
+        if (empty($column_exists)) {
+            error_log('H3TM: Upgrading tour metadata table to add tour_id column');
+
+            // Add tour_id column (nullable for backward compatibility)
+            $wpdb->query("ALTER TABLE `{$metadata_table}`
+                ADD COLUMN `tour_id` varchar(32) DEFAULT NULL AFTER `id`,
+                ADD UNIQUE KEY `tour_id` (`tour_id`),
+                ADD KEY `idx_tour_id` (`tour_id`)
+            ");
+
+            error_log('H3TM: Added tour_id column and indexes');
+        }
+
+        // Check if status column already exists
+        $status_column_exists = $wpdb->get_results(
+            "SHOW COLUMNS FROM `{$metadata_table}` LIKE 'status'"
+        );
+
+        if (empty($status_column_exists)) {
+            error_log('H3TM: Adding status column to tour metadata table');
+
+            // Add status column (default to 'completed' for existing tours)
+            $wpdb->query("ALTER TABLE `{$metadata_table}`
+                ADD COLUMN `status` varchar(20) DEFAULT 'completed' AFTER `s3_folder`,
+                ADD KEY `idx_status` (`status`)
+            ");
+
+            error_log('H3TM: Added status column and index');
+        }
+
+        // Mark upgrade as complete
+        update_option('h3tm_metadata_upgraded_to_v2', true);
+        error_log('H3TM: Tour metadata table upgrade completed');
     }
 
     /**

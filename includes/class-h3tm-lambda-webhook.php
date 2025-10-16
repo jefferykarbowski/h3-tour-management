@@ -176,11 +176,39 @@ class H3TM_Lambda_Webhook {
     private function handle_processing_success($payload) {
         try {
             $tour_name = sanitize_text_field($payload['tourName']);
+            $tour_id = isset($payload['tourId']) ? sanitize_text_field($payload['tourId']) : null;
             $files_extracted = intval($payload['filesExtracted'] ?? 0);
             $total_size = intval($payload['totalSize'] ?? 0);
 
             // Update tour processing status in database
             $this->tour_processing->mark_completed($tour_name, $files_extracted, $total_size);
+
+            // Update metadata status from 'uploading' to 'completed' using tour_id
+            if ($tour_id && class_exists('H3TM_Tour_Metadata')) {
+                $metadata = new H3TM_Tour_Metadata();
+                $tour = $metadata->get_by_tour_id($tour_id);
+
+                if ($tour) {
+                    global $wpdb;
+                    $table_name = $wpdb->prefix . 'h3tm_tour_metadata';
+
+                    $updated = $wpdb->update(
+                        $table_name,
+                        array('status' => 'completed'),
+                        array('tour_id' => $tour_id),
+                        array('%s'),
+                        array('%s')
+                    );
+
+                    if ($updated !== false) {
+                        error_log("H3TM Lambda Webhook: Updated metadata status to 'completed' for tour_id: {$tour_id}");
+                    } else {
+                        error_log("H3TM Lambda Webhook: Failed to update metadata status for tour_id: {$tour_id}");
+                    }
+                } else {
+                    error_log("H3TM Lambda Webhook: Tour metadata not found for tour_id: {$tour_id}");
+                }
+            }
 
             // Clear S3 tour cache so new tour appears immediately
             delete_transient('h3tm_s3_tours_cache');
@@ -199,7 +227,7 @@ class H3TM_Lambda_Webhook {
 
             return [
                 'success' => true,
-                'message' => "Tour '{$tour_name}' processed successfully: {$files_extracted} files extracted"
+                'message' => "Tour '{$tour_name}' (ID: {$tour_id}) processed successfully: {$files_extracted} files extracted"
             ];
 
         } catch (Exception $e) {
