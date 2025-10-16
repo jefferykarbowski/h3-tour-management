@@ -8,6 +8,8 @@ Thumbs.db
 
 # WordPress
 *.log
+*.log.gz
+logs/*
 
 # Development
 node_modules/
@@ -25,6 +27,9 @@ package-lock.json
 *.tmp
 *.temp
 .cache/
+
+# Browser testing artifacts
+.playwright-mcp/
 
 # Plugin update checker (if you want to exclude it)
 # plugin-update-checker/
