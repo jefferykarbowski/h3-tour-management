@@ -38,6 +38,7 @@ require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-cdn-helper.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-simple.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-proxy.php';
 require_once H3TM_PLUGIN_DIR . 'admin/s3-settings.php';
+require_once H3TM_PLUGIN_DIR . 'admin/clear-webhook-secret.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-analytics-endpoint.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-shortcodes-v4.php';
 // Tour processing status tracking
