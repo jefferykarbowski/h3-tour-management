@@ -73,10 +73,10 @@ class H3TM_CDN_Helper {
         $tour_s3_path = rawurlencode($tour_name);
 
         if ($this->use_cloudfront) {
-            // CloudFront URL - must include /tours/ in path since Lambda uploads to tours/ directory
+            // CloudFront URL - CloudFront Origin Path is set to /tours, so we don't include it here
             // Primary: URL-encoded path (works for both legacy with spaces and new tour_ids)
             $urls[] = sprintf(
-                'https://%s/tours/%s/%s',
+                'https://%s/%s/%s',
                 $this->cloudfront_domain,
                 $tour_s3_path,
                 $file_path
@@ -86,7 +86,7 @@ class H3TM_CDN_Helper {
             if (strpos($tour_name, ' ') !== false) {
                 $tour_name_with_dashes = str_replace(' ', '-', $tour_name);
                 $urls[] = sprintf(
-                    'https://%s/tours/%s/%s',
+                    'https://%s/%s/%s',
                     $this->cloudfront_domain,
                     $tour_name_with_dashes,
                     $file_path
@@ -130,9 +130,9 @@ class H3TM_CDN_Helper {
         $tour_s3_path = rawurlencode($tour_name);
 
         if ($this->use_cloudfront) {
-            // CloudFront URL - must include /tours/ in path since Lambda uploads to tours/ directory
+            // CloudFront URL - CloudFront Origin Path is set to /tours, so we don't include it here
             return sprintf(
-                'https://%s/tours/%s/',
+                'https://%s/%s/',
                 $this->cloudfront_domain,
                 $tour_s3_path
             );
@@ -198,11 +198,11 @@ class H3TM_CDN_Helper {
             return false;
         }
 
-        // Build invalidation paths
+        // Build invalidation paths (CloudFront Origin Path is /tours, so paths are relative to that)
         $tour_s3_name = str_replace(' ', '-', $tour_name);
         $paths = array(
-            '/tours/' . $tour_s3_name . '/*',
-            '/tours/' . rawurlencode($tour_name) . '/*'
+            '/' . $tour_s3_name . '/*',
+            '/' . rawurlencode($tour_name) . '/*'
         );
 
         // Use AWS CLI or SDK to invalidate
