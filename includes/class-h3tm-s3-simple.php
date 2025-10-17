@@ -1350,14 +1350,17 @@ class H3TM_S3_Simple {
             error_log('H3TM S3 Archive: Found ' . count($files) . ' file(s) to archive from ' . $source_prefix);
 
             $moved = 0;
-            $errors = 0;
+            $skipped = 0; // Files that don't exist (phantom tiles)
+            $errors = 0;  // Actual errors
 
             // Copy each file to archive location
             foreach ($files as $file) {
                 $source_key = 'tours/' . $canonical_folder . '/' . $file;
                 $dest_key = $archive_prefix . $file;
 
-                if ($this->copy_s3_object($source_key, $dest_key)) {
+                $copy_result = $this->copy_s3_object($source_key, $dest_key);
+
+                if ($copy_result === 'success') {
                     // Delete the original after successful copy
                     if ($this->delete_s3_object($source_key)) {
                         $moved++;
@@ -1365,23 +1368,32 @@ class H3TM_S3_Simple {
                         $errors++;
                         error_log('H3TM S3 Archive: Failed to delete ' . $source_key . ' after copy');
                     }
+                } elseif ($copy_result === 'not_found') {
+                    // File was listed but doesn't exist - common with phantom panorama tiles
+                    $skipped++;
                 } else {
+                    // Actual error
                     $errors++;
-                    error_log('H3TM S3 Archive: Failed to copy ' . $source_key . ' to ' . $dest_key);
                 }
             }
 
             error_log(sprintf(
-                'H3TM S3 Archive: Completed with %d moved, %d errors for tour id=%s',
+                'H3TM S3 Archive: Completed with %d moved, %d skipped (phantom files), %d errors for tour id=%s',
                 $moved,
+                $skipped,
                 $errors,
                 isset($tour->id) ? $tour->id : 'n/a'
             ));
 
-            if ($errors === 0) {
-                return array('success' => true, 'message' => 'Tour archived successfully');
+            // Consider it successful if we moved files or only had phantom files (no real errors)
+            if ($errors === 0 || ($moved > 0 && $errors === 0)) {
+                $message = 'Tour archived successfully';
+                if ($skipped > 0) {
+                    $message .= ' (' . $skipped . ' phantom files skipped)';
+                }
+                return array('success' => true, 'message' => $message);
             } else {
-                return array('success' => false, 'message' => 'Partial archive: ' . $moved . ' files moved, ' . $errors . ' errors');
+                return array('success' => false, 'message' => 'Archive failed: ' . $moved . ' moved, ' . $skipped . ' skipped, ' . $errors . ' errors');
             }
 
         } catch (Exception $e) {
@@ -1459,6 +1471,8 @@ class H3TM_S3_Simple {
 
     /**
      * Copy an S3 object
+     *
+     * @return string 'success', 'not_found', or 'error'
      */
     private function copy_s3_object($source_key, $dest_key) {
         try {
@@ -1488,22 +1502,28 @@ class H3TM_S3_Simple {
 
             if (is_wp_error($response)) {
                 error_log('H3TM S3: Copy error - ' . $response->get_error_message());
-                return false;
+                return 'error';
             }
 
             $response_code = wp_remote_retrieve_response_code($response);
+            $body = wp_remote_retrieve_body($response);
+
             if ($response_code < 200 || $response_code >= 300) {
-                $body = wp_remote_retrieve_body($response);
+                // Check if this is a "file not found" error (common with phantom tiles)
+                if ($response_code === 404 || strpos($body, 'NoSuchKey') !== false) {
+                    // File doesn't actually exist even though it was listed - skip silently
+                    return 'not_found';
+                }
+
                 error_log('H3TM S3: Copy failed with code ' . $response_code . ' for ' . $source_key . ' to ' . $dest_key);
-                error_log('H3TM S3: Response body: ' . $body);
-                return false;
+                return 'error';
             }
 
-            return true;
+            return 'success';
 
         } catch (Exception $e) {
             error_log('H3TM S3: Copy exception - ' . $e->getMessage());
-            return false;
+            return 'error';
         }
     }
 
@@ -1578,29 +1598,38 @@ class H3TM_S3_Simple {
             }
 
             $copied = 0;
-            $errors = 0;
+            $skipped = 0; // Phantom files
+            $errors = 0;  // Actual errors
 
             // Copy each file to new location
             foreach ($files as $file) {
                 $source_key = 'tours/' . $old_s3_name . '/' . $file;
                 $dest_key = 'tours/' . $new_s3_name . '/' . $file;
 
-                if ($this->copy_s3_object($source_key, $dest_key)) {
+                $copy_result = $this->copy_s3_object($source_key, $dest_key);
+
+                if ($copy_result === 'success') {
                     $copied++;
+                } elseif ($copy_result === 'not_found') {
+                    $skipped++;
                 } else {
                     $errors++;
                     error_log('H3TM S3 Rename: Failed to copy ' . $source_key . ' to ' . $dest_key);
                 }
             }
 
-            // If all files copied successfully, delete the old ones
+            // If no actual errors, delete the old files
             if ($errors === 0) {
                 foreach ($files as $file) {
                     $old_key = 'tours/' . $old_s3_name . '/' . $file;
                     $this->delete_s3_object($old_key);
                 }
 
-                return array('success' => true, 'message' => 'Tour renamed successfully');
+                $message = 'Tour renamed successfully';
+                if ($skipped > 0) {
+                    $message .= ' (' . $skipped . ' phantom files skipped)';
+                }
+                return array('success' => true, 'message' => $message);
             } else {
                 // Clean up any partial copies
                 foreach ($files as $file) {
@@ -1608,7 +1637,7 @@ class H3TM_S3_Simple {
                     $this->delete_s3_object($new_key);
                 }
 
-                return array('success' => false, 'message' => 'Rename failed: ' . $errors . ' copy errors');
+                return array('success' => false, 'message' => 'Rename failed: ' . $copied . ' copied, ' . $skipped . ' skipped, ' . $errors . ' errors');
             }
 
         } catch (Exception $e) {
