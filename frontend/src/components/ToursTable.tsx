@@ -206,14 +206,17 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
 
           const data = await response.json();
           if (data.success && data.data) {
-            // Create a dialog/modal to show the script
-            const script = data.data.script || data.data;
+            // Backend returns: { embed_script, embed_script_responsive, tour_url, tour_name }
+            const embedScript = data.data.embed_script;
+            const responsiveScript = data.data.embed_script_responsive;
+
             if (navigator.clipboard) {
-              await navigator.clipboard.writeText(script);
-              alert(`Embed script copied to clipboard!\n\nScript preview:\n${script.substring(0, 200)}...`);
+              // Copy the standard embed script to clipboard
+              await navigator.clipboard.writeText(embedScript);
+              alert(`Standard embed script copied to clipboard!\n\nFor responsive (16:9) version, use:\n${responsiveScript.substring(0, 150)}...`);
             } else {
               // Fallback: show in prompt for manual copy
-              prompt("Copy the embed script below:", script);
+              prompt("Copy the standard embed script below:", embedScript);
             }
           } else {
             alert(`Failed to get script: ${data.data || 'Unknown error'}`);
