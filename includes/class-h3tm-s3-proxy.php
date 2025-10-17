@@ -34,9 +34,6 @@ class H3TM_S3_Proxy {
         // Add query vars first
         add_filter('query_vars', array($this, 'add_query_vars'));
 
-        // Debug: Log that rewrite rules are being added
-        error_log('H3TM S3 Proxy: Adding rewrite rules...');
-
         // Add multiple rewrite rules to handle different URL patterns
         add_rewrite_rule(
             '^h3panos/([^/]+)/?$',
@@ -49,8 +46,6 @@ class H3TM_S3_Proxy {
             'index.php?h3tm_tour=$matches[1]&h3tm_file=$matches[2]',
             'top'
         );
-
-        error_log('H3TM S3 Proxy: Rewrite rules added');
 
         // Force flush rewrite rules for S3 proxy
         add_action('admin_init', array($this, 'maybe_flush_rewrite_rules'));
@@ -197,8 +192,6 @@ class H3TM_S3_Proxy {
 
         // Decode URL encoding (convert %20 to spaces)
         $tour_name = urldecode($tour_name);
-
-        error_log('H3TM S3 Proxy: Query vars - tour_name=' . $tour_name . ', file_path=' . $file_path);
 
         if (empty($tour_name)) {
             // Pantheon nginx fallback: Parse URL directly if query vars not set

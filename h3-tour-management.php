@@ -3,7 +3,7 @@
  * Plugin Name: H3 Tour Management
  * Plugin URI: https://github.com/jefferykarbowski/h3-tour-management
  * Description: Cloud-based Tour Management system with S3/CloudFront delivery, analytics, and user management
- * Version: 2.5.7
+ * Version: 2.5.8
  * Author: H3 Photography
  * Author URI: https://h3vt.com/
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('H3TM_VERSION', '2.5.7');
+define('H3TM_VERSION', '2.5.8');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -38,8 +38,6 @@ require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-cdn-helper.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-simple.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-proxy.php';
 require_once H3TM_PLUGIN_DIR . 'admin/s3-settings.php';
-require_once H3TM_PLUGIN_DIR . 'admin/clear-webhook-secret.php';
-require_once H3TM_PLUGIN_DIR . 'admin/webhook-diagnostics.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-analytics-endpoint.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-shortcodes-v4.php';
 // Tour processing status tracking

@@ -49,12 +49,6 @@ class H3TM_CDN_Helper {
         if (empty($this->cloudfront_domain)) {
             $this->use_cloudfront = false;
         }
-
-        // Log configuration
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('H3TM CDN Helper: CloudFront=' . ($this->use_cloudfront ? 'enabled' : 'disabled') .
-                     ', Domain=' . $this->cloudfront_domain);
-        }
     }
 
     /**

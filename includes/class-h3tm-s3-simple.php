@@ -391,13 +391,11 @@ class H3TM_S3_Simple {
             if (!$force_refresh) {
                 $cached_tours = get_transient($cache_key);
                 if ($cached_tours !== false) {
-                    error_log('H3TM: Using cached S3 tours list (' . count($cached_tours) . ' tours)');
                     $s3_tours = $cached_tours;
                 } else {
                     $s3_tours = false;
                 }
             } else {
-                error_log('H3TM: Force refresh requested - bypassing cache');
                 $s3_tours = false;
             }
 
@@ -438,7 +436,6 @@ class H3TM_S3_Simple {
             // Use S3 tours directly - no need to check for duplicates with local tours
             if (is_array($s3_tours)) {
                 $s3_tours_only = $s3_tours;
-                error_log('H3TM: Successfully retrieved ' . count($s3_tours) . ' tours from S3');
             }
         }
 
@@ -1341,8 +1338,13 @@ class H3TM_S3_Simple {
             $files = $this->list_tour_files($canonical_folder);
 
             if (empty($files)) {
-                error_log('H3TM S3 Archive: No files found under ' . $source_prefix);
-                return array('success' => false, 'message' => 'Tour not found in S3');
+                error_log('H3TM S3 Archive: No files found under ' . $source_prefix . ' - will clean up metadata only');
+                // Return special status to indicate metadata should be cleaned up
+                return array(
+                    'success' => true,
+                    'message' => 'Tour not found in S3 (metadata will be cleaned up)',
+                    'files_not_found' => true
+                );
             }
 
             error_log('H3TM S3 Archive: Found ' . count($files) . ' file(s) to archive from ' . $source_prefix);

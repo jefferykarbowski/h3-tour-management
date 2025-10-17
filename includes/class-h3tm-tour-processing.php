@@ -61,7 +61,7 @@ class H3TM_Tour_Processing {
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
 
-        error_log('H3TM: Tour processing table created/updated');
+        // Removed routine log message - only log actual errors
     }
 
     /**

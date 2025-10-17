@@ -226,25 +226,65 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
       case "delete":
         if (confirm(`Are you sure you want to archive "${tourName}"? The tour will be moved to the archive folder and permanently deleted after 90 days.`)) {
           try {
+            console.log("🗑️ Delete Request Starting:", {
+              tourName,
+              ajaxUrl: window.h3tm_ajax?.ajax_url,
+              hasNonce: !!window.h3tm_ajax?.nonce,
+              timestamp: new Date().toISOString()
+            });
+
             const formData = new FormData();
             formData.append("action", "h3tm_delete_tour");
             formData.append("tour_name", tourName);
             formData.append("nonce", window.h3tm_ajax?.nonce || "");
+
+            console.log("📤 Sending DELETE request to:", window.h3tm_ajax?.ajax_url || "/wp-admin/admin-ajax.php");
 
             const response = await fetch(window.h3tm_ajax?.ajax_url || "/wp-admin/admin-ajax.php", {
               method: "POST",
               body: formData,
             });
 
-            const data = await response.json();
+            console.log("📥 Response received:", {
+              status: response.status,
+              statusText: response.statusText,
+              ok: response.ok,
+              headers: {
+                contentType: response.headers.get("content-type")
+              }
+            });
+
+            const responseText = await response.text();
+            console.log("📄 Raw response body:", responseText);
+
+            let data;
+            try {
+              data = JSON.parse(responseText);
+            } catch (parseError) {
+              console.error("❌ JSON parse error:", parseError);
+              console.error("Raw response that failed to parse:", responseText);
+              alert(`Server returned invalid JSON response. Check console for details.\n\nResponse preview: ${responseText.substring(0, 200)}`);
+              return;
+            }
+
+            console.log("✅ Parsed response:", data);
+
             if (data.success) {
+              console.log("✓ Delete successful, reloading tours...");
               await loadTours();
+              alert(`Tour "${tourName}" archived successfully! ${data.data || ''}`);
             } else {
-              alert(`Failed to delete: ${data.data || 'Unknown error'}`);
+              console.error("❌ Delete failed:", data.data);
+              alert(`Failed to delete: ${data.data || 'Unknown error'}\n\nCheck WordPress error logs for "H3TM S3 Archive:" messages.`);
             }
           } catch (error) {
-            console.error("Error deleting tour:", error);
-            alert("Failed to delete tour. Check console for details.");
+            console.error("💥 Delete operation exception:", {
+              error,
+              errorMessage: error instanceof Error ? error.message : String(error),
+              errorStack: error instanceof Error ? error.stack : undefined,
+              tourName
+            });
+            alert(`Failed to delete tour "${tourName}".\n\nError: ${error instanceof Error ? error.message : String(error)}\n\nCheck browser console and WordPress error logs for more details.`);
           }
         }
         break;

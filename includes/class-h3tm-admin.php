@@ -1271,12 +1271,37 @@ class H3TM_Admin {
         $archive_result = $s3->archive_tour($tour_name);
 
         if ($archive_result['success']) {
+            // Clean up database metadata whether or not S3 files were found
+            if (class_exists('H3TM_Tour_Metadata')) {
+                $metadata = new H3TM_Tour_Metadata();
+                $tour = $metadata->resolve_by_display_name($tour_name);
+
+                if ($tour && !empty($tour->id)) {
+                    $metadata->delete($tour->id);
+                    error_log('H3TM Delete: Removed metadata entry for tour: ' . $tour_name);
+                }
+            }
+
+            // Clean up from h3tm_s3_tours option
+            $tours = get_option('h3tm_s3_tours', array());
+            if (isset($tours[$tour_name])) {
+                unset($tours[$tour_name]);
+                update_option('h3tm_s3_tours', $tours);
+                error_log('H3TM Delete: Removed tour from h3tm_s3_tours option');
+            }
+
             // Clear the cache so the tour list updates
             delete_transient('h3tm_s3_tour_list');
+            delete_transient('h3tm_s3_tours_cache');
 
-            wp_send_json_success('Tour archived successfully. It will be permanently deleted after 90 days.');
+            // Different message if S3 files weren't found
+            if (isset($archive_result['files_not_found']) && $archive_result['files_not_found']) {
+                wp_send_json_success('Tour files not found in S3, but database entry has been removed.');
+            } else {
+                wp_send_json_success('Tour archived successfully. It will be permanently deleted after 90 days.');
+            }
         } else {
-            // Check if it's a configuration issue or tour not found
+            // Check if it's a configuration issue
             if (strpos($archive_result['message'], 'not configured') !== false) {
                 wp_send_json_error('S3 is not configured. Please configure S3 settings first.');
             } else {
