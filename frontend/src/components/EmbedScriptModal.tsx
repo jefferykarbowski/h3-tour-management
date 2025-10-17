@@ -161,7 +161,19 @@ export const EmbedScriptModal: React.FC<EmbedScriptModalProps> = ({
         </div>
 
         <div className="h3tm-modal-footer">
-          <button type="button" className="button button-secondary h3tm-modal-close" onClick={onClose}>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={onClose}
+            style={{
+              padding: '8px 16px',
+              lineHeight: '1.5',
+              minHeight: '32px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
             Close
           </button>
         </div>
