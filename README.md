@@ -1,6 +1,6 @@
 # H3 Tour Management
 
-**Version**: 2.5.6
+**Version**: 2.5.7
 **Architecture**: S3-Only Direct Upload System
 
 A comprehensive WordPress plugin for managing 3D virtual tours with AWS S3 storage, Lambda processing, analytics integration, and automated migration from legacy name-based to ID-based tours.
