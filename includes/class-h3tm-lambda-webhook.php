@@ -86,12 +86,17 @@ class H3TM_Lambda_Webhook {
             }
 
             // Verify webhook authenticity (optional but recommended)
-            if (!empty($this->webhook_secret)) {
+            // Check if signature verification is explicitly disabled
+            $signature_disabled = get_option('h3tm_webhook_signature_disabled', '0');
+
+            if ($signature_disabled !== '1' && !empty($this->webhook_secret)) {
                 $signature = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'] ?? '';
                 if (!$this->verify_webhook_signature($raw_input, $signature)) {
                     error_log($log_prefix . 'Webhook signature verification failed');
                     wp_send_json_error('Unauthorized', 401);
                 }
+            } else if ($signature_disabled === '1') {
+                error_log($log_prefix . 'Signature verification disabled - accepting webhook without authentication');
             }
 
             // Process the webhook based on success/failure
