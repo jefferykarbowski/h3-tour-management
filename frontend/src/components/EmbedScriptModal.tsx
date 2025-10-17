@@ -79,7 +79,28 @@ export const EmbedScriptModal: React.FC<EmbedScriptModalProps> = ({
       <div className="h3tm-modal-container h3tm-embed-container">
         <div className="h3tm-modal-header">
           <h3>Embed Code for: {tourName}</h3>
-          <button type="button" className="h3tm-modal-close" onClick={onClose}>
+          <button
+            type="button"
+            className="h3tm-modal-close"
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '28px',
+              cursor: 'pointer',
+              color: '#666',
+              padding: '0',
+              width: '30px',
+              height: '30px',
+              lineHeight: '1',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#000'}
+            onMouseLeave={(e) => e.currentTarget.style.color = '#666'}
+            aria-label="Close modal"
+          >
             &times;
           </button>
         </div>
