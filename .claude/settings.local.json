@@ -9,7 +9,8 @@
       "Bash(aws cloudfront create-invalidation:*)",
       "Bash(wp eval-file:*)",
       "Bash(npm run build:*)",
-      "Bash(terminus auth:whoami:*)"
+      "Bash(terminus auth:whoami:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []

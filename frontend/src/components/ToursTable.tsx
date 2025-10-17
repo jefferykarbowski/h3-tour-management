@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EmbedScriptModal } from "./EmbedScriptModal";
 
 interface Tour {
   name: string;
@@ -38,6 +39,13 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [editingTour, setEditingTour] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [embedModalOpen, setEmbedModalOpen] = useState(false);
+  const [embedData, setEmbedData] = useState({
+    tourName: "",
+    tourUrl: "",
+    embedScript: "",
+    embedScriptResponsive: "",
+  });
 
   useEffect(() => {
     loadTours();
@@ -207,17 +215,13 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
           const data = await response.json();
           if (data.success && data.data) {
             // Backend returns: { embed_script, embed_script_responsive, tour_url, tour_name }
-            const embedScript = data.data.embed_script;
-            const responsiveScript = data.data.embed_script_responsive;
-
-            if (navigator.clipboard) {
-              // Copy the standard embed script to clipboard
-              await navigator.clipboard.writeText(embedScript);
-              alert(`Standard embed script copied to clipboard!\n\nFor responsive (16:9) version, use:\n${responsiveScript.substring(0, 150)}...`);
-            } else {
-              // Fallback: show in prompt for manual copy
-              prompt("Copy the standard embed script below:", embedScript);
-            }
+            setEmbedData({
+              tourName: data.data.tour_name,
+              tourUrl: data.data.tour_url,
+              embedScript: data.data.embed_script,
+              embedScriptResponsive: data.data.embed_script_responsive,
+            });
+            setEmbedModalOpen(true);
           } else {
             alert(`Failed to get script: ${data.data || 'Unknown error'}`);
           }
@@ -317,8 +321,18 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
+    <>
+      <EmbedScriptModal
+        isOpen={embedModalOpen}
+        onClose={() => setEmbedModalOpen(false)}
+        tourName={embedData.tourName}
+        tourUrl={embedData.tourUrl}
+        embedScript={embedData.embedScript}
+        embedScriptResponsive={embedData.embedScriptResponsive}
+      />
+
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
         <p className="text-sm text-gray-600">
           {tours.length} {tours.length === 1 ? "tour" : "tours"} found
         </p>
@@ -475,6 +489,7 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
           </table>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
