@@ -1183,7 +1183,7 @@ class H3TM_S3_Simple {
         // Invalidate CloudFront cache if CDN helper is available
         if ($this->cdn_helper) {
             error_log('H3TM Update: Invalidating CloudFront cache for tour_id: ' . $tour_id);
-            $this->cdn_helper->invalidate_tour_by_id($tour_id);
+            $this->cdn_helper->invalidate_tour_cache($tour_id);
         }
 
         // Clear tour list cache
