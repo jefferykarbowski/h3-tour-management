@@ -13,12 +13,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmbedScriptModal } from "./EmbedScriptModal";
+import { UpdateTourModal } from "./UpdateTourModal";
 
 interface Tour {
   name: string;
   url: string;
   status?: "completed" | "processing" | "uploading" | "failed";
   tour_id?: string;
+  updated_date?: string;
 }
 
 interface ToursTableProps {
@@ -46,6 +48,9 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
     embedScript: "",
     embedScriptResponsive: "",
   });
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [updateTourId, setUpdateTourId] = useState("");
+  const [updateTourName, setUpdateTourName] = useState("");
 
   useEffect(() => {
     loadTours();
@@ -77,6 +82,7 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
             url: window.location.origin + "/h3panos/" + encodeURIComponent(tourIdentifier),
             status: typeof tour === "string" ? "completed" : tour.status,
             tour_id: typeof tour === "string" ? undefined : tour.tour_id,
+            updated_date: typeof tour === "string" ? undefined : tour.updated_date,
           };
         }));
       }
@@ -125,7 +131,7 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
     }
   };
 
-  const handleAction = async (action: string, tourName: string, tourUrl?: string) => {
+  const handleAction = async (action: string, tourName: string, tourUrl?: string, tourId?: string) => {
     switch (action) {
       case "view":
         window.open(tourUrl, "_blank");
@@ -172,30 +178,14 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
         }
         break;
       case "update":
-        if (confirm(`Re-upload and update "${tourName}"? This will replace the existing tour with a new version.`)) {
-          try {
-            const formData = new FormData();
-            formData.append("action", "h3tm_update_tour");
-            formData.append("tour_name", tourName);
-            formData.append("nonce", window.h3tm_ajax?.nonce || "");
-
-            const response = await fetch(window.h3tm_ajax?.ajax_url || "/wp-admin/admin-ajax.php", {
-              method: "POST",
-              body: formData,
-            });
-
-            const data = await response.json();
-            if (data.success) {
-              alert(`Update initiated for "${tourName}". ${data.data || ''}`);
-              await loadTours();
-            } else {
-              alert(`Failed to update: ${data.data || 'Unknown error'}`);
-            }
-          } catch (error) {
-            console.error("Error updating tour:", error);
-            alert("Failed to update tour. Check console for details.");
-          }
+        if (!tourId) {
+          alert('Cannot update legacy tour without tour_id. Please re-upload as a new tour.');
+          return;
         }
+        // Open update modal with tour info
+        setUpdateTourId(tourId);
+        setUpdateTourName(tourName);
+        setUpdateModalOpen(true);
         break;
       case "rename":
         startEdit(tourName);
@@ -331,6 +321,17 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
         embedScriptResponsive={embedData.embedScriptResponsive}
       />
 
+      <UpdateTourModal
+        isOpen={updateModalOpen}
+        onClose={() => setUpdateModalOpen(false)}
+        tourId={updateTourId}
+        tourName={updateTourName}
+        onUpdateComplete={() => {
+          loadTours();
+          onRefresh?.();
+        }}
+      />
+
       <div className="space-y-4">
         <div className="flex justify-between items-center">
         <p className="text-sm text-gray-600">
@@ -363,6 +364,9 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   URL
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Last Updated
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -370,7 +374,7 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {tours.map((tour) => (
-                <tr key={tour.name} className="hover:bg-gray-50 transition-colors">
+                <tr key={tour.tour_id || tour.name} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     {editingTour === tour.name ? (
                       <div className="flex items-center gap-2">
@@ -437,45 +441,59 @@ export function ToursTable({ onRefresh }: ToursTableProps) {
                       {tour.url}
                     </a>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="text-sm text-gray-500">
+                      {tour.updated_date
+                        ? new Date(tour.updated_date).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        : '-'}
+                    </span>
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => handleAction("view", tour.name, tour.url)}
+                        onClick={() => handleAction("view", tour.name, tour.url, tour.tour_id)}
                         className="p-2 hover:bg-blue-50 rounded-md transition-colors group"
                         title="View Tour"
                       >
                         <Eye className="h-4 w-4 text-gray-500 group-hover:text-blue-600" />
                       </button>
                       <button
-                        onClick={() => handleAction("changeUrl", tour.name, tour.url)}
+                        onClick={() => handleAction("changeUrl", tour.name, tour.url, tour.tour_id)}
                         className="p-2 hover:bg-purple-50 rounded-md transition-colors group"
                         title="Change URL"
                       >
                         <Link2 className="h-4 w-4 text-gray-500 group-hover:text-purple-600" />
                       </button>
                       <button
-                        onClick={() => handleAction("rename", tour.name)}
+                        onClick={() => handleAction("rename", tour.name, tour.url, tour.tour_id)}
                         className="p-2 hover:bg-amber-50 rounded-md transition-colors group"
                         title="Rename Tour"
                       >
                         <Pencil className="h-4 w-4 text-gray-500 group-hover:text-amber-600" />
                       </button>
                       <button
-                        onClick={() => handleAction("update", tour.name)}
+                        onClick={() => handleAction("update", tour.name, tour.url, tour.tour_id)}
                         className="p-2 hover:bg-green-50 rounded-md transition-colors group"
                         title="Update Tour"
+                        disabled={!tour.tour_id}
                       >
-                        <RefreshCw className="h-4 w-4 text-gray-500 group-hover:text-green-600" />
+                        <RefreshCw className={`h-4 w-4 ${!tour.tour_id ? 'text-gray-300' : 'text-gray-500 group-hover:text-green-600'}`} />
                       </button>
                       <button
-                        onClick={() => handleAction("getScript", tour.name)}
+                        onClick={() => handleAction("getScript", tour.name, tour.url, tour.tour_id)}
                         className="p-2 hover:bg-indigo-50 rounded-md transition-colors group"
                         title="Get Script"
                       >
                         <Code className="h-4 w-4 text-gray-500 group-hover:text-indigo-600" />
                       </button>
                       <button
-                        onClick={() => handleAction("delete", tour.name)}
+                        onClick={() => handleAction("delete", tour.name, tour.url, tour.tour_id)}
                         className="p-2 hover:bg-red-50 rounded-md transition-colors group"
                         title="Delete Tour"
                       >

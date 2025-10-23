@@ -519,12 +519,7 @@ class H3TM_S3_Simple {
 
         $file_name = isset($_POST['file_name']) ? sanitize_file_name($_POST['file_name']) : '';
         $file_size = isset($_POST['file_size']) ? intval($_POST['file_size']) : 0;
-        $tour_name = isset($_POST['tour_name']) ? sanitize_text_field($_POST['tour_name']) : '';
-
-        if (empty($file_name) || empty($tour_name) || $file_size <= 0) {
-            error_log('H3TM S3 Simple: Missing required parameters - file_name=' . $file_name . ', tour_name=' . $tour_name . ', file_size=' . $file_size);
-            wp_send_json_error('Missing required upload parameters');
-        }
+        $is_update = isset($_POST['is_update']) && $_POST['is_update'] === 'true';
 
         // Check if metadata class exists
         if (!class_exists('H3TM_Tour_Metadata')) {
@@ -533,34 +528,76 @@ class H3TM_S3_Simple {
             return;
         }
 
-        // Generate unique tour ID (timestamp + random)
         $metadata = new H3TM_Tour_Metadata();
-        $tour_id = $metadata->generate_tour_id();
 
-        error_log('H3TM S3 Simple: Generated tour_id: ' . $tour_id . ' for tour: ' . $tour_name);
+        // Handle UPDATE vs NEW upload
+        if ($is_update) {
+            // For updates, accept tour_id instead of tour_name
+            $tour_id = isset($_POST['tour_id']) ? sanitize_text_field($_POST['tour_id']) : '';
 
-        // Create metadata entry BEFORE upload with status='uploading'
-        $tour_slug = sanitize_title($tour_name);
-        $s3_folder = 'tours/' . $tour_id . '/';
+            if (empty($tour_id) || empty($file_name) || $file_size <= 0) {
+                error_log('H3TM S3 Simple: Missing required parameters for update - tour_id=' . $tour_id . ', file_name=' . $file_name . ', file_size=' . $file_size);
+                wp_send_json_error('Missing required update parameters');
+            }
 
-        $metadata_id = $metadata->create(array(
-            'tour_id' => $tour_id,
-            'tour_slug' => $tour_slug,
-            'display_name' => $tour_name,
-            's3_folder' => $s3_folder,
-            'status' => 'uploading',
-            'url_history' => json_encode(array())
-        ));
+            error_log('H3TM S3 Simple: UPDATE request for tour_id: ' . $tour_id);
 
-        if (!$metadata_id) {
-            error_log('H3TM S3 Simple: Failed to create metadata entry for tour_id: ' . $tour_id);
-            wp_send_json_error('Failed to create tour metadata');
+            // Validate tour_id exists in metadata
+            $existing_tour = $metadata->get_by_tour_id($tour_id);
+
+            if (!$existing_tour) {
+                error_log('H3TM S3 Simple: Cannot update - tour_id not found: ' . $tour_id);
+                wp_send_json_error('Tour not found for update');
+            }
+
+            // Use existing tour_id (NO new metadata created)
+            error_log('H3TM S3 Simple: Using tour_id for update: ' . $tour_id);
+            $tour_name = $existing_tour->display_name; // Get display name for response
+
+        } else {
+            // NEW upload - accept tour_name
+            $tour_name = isset($_POST['tour_name']) ? sanitize_text_field($_POST['tour_name']) : '';
+
+            if (empty($tour_name) || empty($file_name) || $file_size <= 0) {
+                error_log('H3TM S3 Simple: Missing required parameters for new upload - tour_name=' . $tour_name . ', file_name=' . $file_name . ', file_size=' . $file_size);
+                wp_send_json_error('Missing required upload parameters');
+            }
+
+            // NEW upload - generate unique tour ID (timestamp + random)
+            $tour_id = $metadata->generate_tour_id();
+
+            error_log('H3TM S3 Simple: Generated tour_id: ' . $tour_id . ' for tour: ' . $tour_name);
+
+            // Generate unique slug (auto-increments if base slug exists)
+            $tour_slug = $metadata->generate_unique_slug($tour_name);
+            $s3_folder = 'tours/' . $tour_id . '/';
+
+            error_log('H3TM S3 Simple: Generated unique slug: ' . $tour_slug . ' for tour: ' . $tour_name);
+
+            // Create metadata entry BEFORE upload with status='uploading'
+            $metadata_id = $metadata->create(array(
+                'tour_id' => $tour_id,
+                'tour_slug' => $tour_slug,
+                'display_name' => $tour_name,
+                's3_folder' => $s3_folder,
+                'status' => 'uploading',
+                'url_history' => json_encode(array())
+            ));
+
+            if (!$metadata_id) {
+                error_log('H3TM S3 Simple: Failed to create metadata entry for tour_id: ' . $tour_id);
+                wp_send_json_error('Failed to create tour metadata');
+            }
+
+            error_log('H3TM S3 Simple: Created metadata entry with ID: ' . $metadata_id . ', status=uploading');
+
+            // Clear tour list cache so new tour appears immediately (even with 'uploading' status)
+            $this->clear_tour_cache();
         }
 
-        error_log('H3TM S3 Simple: Created metadata entry with ID: ' . $metadata_id . ', status=uploading');
-
-        // Clear tour list cache so new tour appears immediately (even with 'uploading' status)
-        $this->clear_tour_cache();
+        // Both UPDATE and NEW paths converge here - use the appropriate tour_id
+        // For UPDATE: uses existing tour_id from metadata
+        // For NEW: uses newly generated tour_id
 
         // Use tour_id for S3 key instead of tour_name
         // S3 key format: uploads/{tour_id}/{tour_id}.zip
@@ -583,8 +620,8 @@ class H3TM_S3_Simple {
         } catch (Exception $e) {
             error_log('H3TM S3 Simple: Presigned URL generation failed: ' . $e->getMessage());
 
-            // Clean up metadata entry on error
-            if ($metadata_id) {
+            // Clean up metadata entry on error (only for NEW uploads)
+            if (!$is_update && isset($metadata_id)) {
                 $metadata->delete($metadata_id);
                 error_log('H3TM S3 Simple: Cleaned up metadata entry ' . $metadata_id . ' after error');
             }
@@ -886,7 +923,7 @@ class H3TM_S3_Simple {
      * S3-to-S3 Processing Helper Methods
      */
 
-    private function download_zip_temporarily($s3_key, $file_name) {
+    public function download_zip_temporarily($s3_key, $file_name) {
         $config = $this->get_s3_credentials();
 
         // Try simple public URL first (since we updated bucket policy)
@@ -990,7 +1027,7 @@ class H3TM_S3_Simple {
         return $key;
     }
 
-    private function extract_tour_temporarily($zip_path, $tour_name) {
+    public function extract_tour_temporarily($zip_path, $tour_name) {
         error_log('H3TM S3-to-S3: Starting extraction of: ' . $zip_path);
 
         if (!file_exists($zip_path)) {
@@ -1083,6 +1120,77 @@ class H3TM_S3_Simple {
         ));
 
         return !is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200;
+    }
+
+    /**
+     * Update an existing tour by replacing its files in S3
+     *
+     * @param string $tour_id The tour_id (immutable identifier)
+     * @param string $temp_extract_dir Path to temporary directory containing extracted tour files
+     * @return bool True on success, false on failure
+     */
+    public function update_tour($tour_id, $temp_extract_dir) {
+        error_log('H3TM Update: Starting update for tour_id: ' . $tour_id);
+
+        // Get tour metadata to validate tour_id exists
+        if (!class_exists('H3TM_Tour_Metadata')) {
+            error_log('H3TM Update: Metadata class not available');
+            return false;
+        }
+
+        $metadata = new H3TM_Tour_Metadata();
+        $tour = $metadata->get_by_tour_id($tour_id);
+
+        if (!$tour) {
+            error_log('H3TM Update: Tour not found with tour_id: ' . $tour_id);
+            return false;
+        }
+
+        error_log('H3TM Update: Found tour: ' . $tour->display_name);
+
+        // Fix HTML references before uploading
+        $this->fix_html_references($temp_extract_dir, $tour_id);
+
+        // Upload all files to tours/{tour_id}/
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($temp_extract_dir, RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        $uploaded_count = 0;
+        $failed_count = 0;
+
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $relative_path = substr($file->getPathname(), strlen($temp_extract_dir) + 1);
+                $s3_key = 'tours/' . $tour_id . '/' . str_replace('\\', '/', $relative_path);
+
+                if ($this->upload_file_to_s3_public($file->getPathname(), $s3_key)) {
+                    $uploaded_count++;
+                } else {
+                    $failed_count++;
+                    error_log('H3TM Update: Failed to upload file: ' . $relative_path);
+                }
+            }
+        }
+
+        error_log('H3TM Update: Uploaded ' . $uploaded_count . ' files, ' . $failed_count . ' failures');
+
+        if ($uploaded_count === 0) {
+            error_log('H3TM Update: No files were uploaded');
+            return false;
+        }
+
+        // Invalidate CloudFront cache if CDN helper is available
+        if ($this->cdn_helper) {
+            error_log('H3TM Update: Invalidating CloudFront cache for tour_id: ' . $tour_id);
+            $this->cdn_helper->invalidate_tour_by_id($tour_id);
+        }
+
+        // Clear tour list cache
+        $this->clear_tour_cache();
+
+        error_log('H3TM Update: Successfully updated tour_id: ' . $tour_id);
+        return true;
     }
 
     private function fix_s3_tour_structure($extract_dir) {
@@ -1403,6 +1511,103 @@ class H3TM_S3_Simple {
     }
 
     /**
+     * Archive a tour by tour_id
+     *
+     * @param string $tour_id Tour ID
+     * @return array Result with success status and message
+     */
+    public function archive_tour_by_id($tour_id) {
+        if (!$this->is_configured) {
+            return array('success' => false, 'message' => 'S3 not configured');
+        }
+
+        try {
+            error_log('H3TM S3 Archive: Start request for tour_id: ' . $tour_id);
+
+            if (!class_exists('H3TM_Tour_Metadata')) {
+                error_log('H3TM S3 Archive: Metadata class missing');
+                return array('success' => false, 'message' => 'Tour metadata unavailable');
+            }
+
+            $metadata = new H3TM_Tour_Metadata();
+            $tour = $metadata->get_by_tour_id($tour_id);
+
+            if (!$tour) {
+                error_log('H3TM S3 Archive: Tour not found for tour_id: ' . $tour_id);
+                return array('success' => false, 'message' => 'Tour not found');
+            }
+
+            $source_prefix = 'tours/' . $tour_id . '/';
+            $archive_timestamp = date('Ymd_His');
+            $archive_prefix = 'archive/' . $tour_id . '_' . $archive_timestamp . '/';
+
+            error_log('H3TM S3 Archive: Moving ' . $source_prefix . ' to ' . $archive_prefix);
+
+            // List all files in the tour
+            $files = $this->list_tour_files($tour_id);
+
+            if (empty($files)) {
+                error_log('H3TM S3 Archive: No files found - tour may not exist yet');
+                return array(
+                    'success' => true,
+                    'message' => 'No files to archive (first upload?)',
+                    'files_not_found' => true
+                );
+            }
+
+            error_log('H3TM S3 Archive: Found ' . count($files) . ' files to archive');
+
+            $moved = 0;
+            $skipped = 0;
+            $errors = 0;
+
+            // Copy each file to archive location
+            foreach ($files as $file) {
+                $source_key = 'tours/' . $tour_id . '/' . $file;
+                $dest_key = $archive_prefix . $file;
+
+                $copy_result = $this->copy_s3_object($source_key, $dest_key);
+
+                if ($copy_result === 'success') {
+                    // Delete the original after successful copy
+                    if ($this->delete_s3_object($source_key)) {
+                        $moved++;
+                    } else {
+                        $errors++;
+                        error_log('H3TM S3 Archive: Failed to delete ' . $source_key);
+                    }
+                } elseif ($copy_result === 'not_found') {
+                    $skipped++;
+                } else {
+                    $errors++;
+                }
+            }
+
+            error_log(sprintf(
+                'H3TM S3 Archive: Completed with %d moved, %d skipped, %d errors for tour_id: %s',
+                $moved,
+                $skipped,
+                $errors,
+                $tour_id
+            ));
+
+            if ($errors === 0 || ($moved > 0 && $errors === 0)) {
+                $message = 'Tour archived successfully';
+                if ($skipped > 0) {
+                    $message .= ' (' . $skipped . ' phantom files skipped)';
+                }
+                return array('success' => true, 'message' => $message);
+            } else {
+                return array('success' => false, 'message' => 'Archive failed: ' . $moved . ' moved, ' . $errors . ' errors');
+            }
+
+        } catch (Exception $e) {
+            error_log('H3TM S3 Archive Error: ' . $e->getMessage());
+            return array('success' => false, 'message' => 'Archive failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * List all files in a tour
      */
     private function list_tour_files($tour_s3_name) {
@@ -1530,7 +1735,7 @@ class H3TM_S3_Simple {
     /**
      * Delete an S3 object
      */
-    private function delete_s3_object($key) {
+    public function delete_s3_object($key) {
         try {
             // Use raw key for signing
             $request_uri = '/' . $key;

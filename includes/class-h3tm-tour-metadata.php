@@ -360,6 +360,27 @@ class H3TM_Tour_Metadata {
     }
 
     /**
+     * Generate a unique slug from a tour name
+     * If the base slug exists, appends -2, -3, etc. until unique
+     *
+     * @param string $tour_name Tour name to convert to slug
+     * @return string Unique slug
+     */
+    public function generate_unique_slug($tour_name) {
+        $base_slug = sanitize_title($tour_name);
+        $slug = $base_slug;
+        $counter = 2;
+
+        // Keep incrementing counter until we find a unique slug
+        while ($this->slug_exists($slug)) {
+            $slug = $base_slug . '-' . $counter;
+            $counter++;
+        }
+
+        return $slug;
+    }
+
+    /**
      * Get or create tour metadata entry
      * For backward compatibility with existing tours
      *

@@ -1903,17 +1903,26 @@ class H3TM_Admin {
             wp_die('Unauthorized');
         }
 
-        $tour_name = isset($_POST['tour_name']) ? sanitize_text_field($_POST['tour_name']) : '';
+        $tour_id = isset($_POST['tour_id']) ? sanitize_text_field($_POST['tour_id']) : '';
         $s3_key = isset($_POST['s3_key']) ? sanitize_text_field($_POST['s3_key']) : '';
 
-        if (empty($tour_name) || empty($s3_key)) {
+        if (empty($tour_id) || empty($s3_key)) {
             wp_send_json_error('Missing required parameters');
         }
 
-        error_log('H3TM Update: Starting update for tour: ' . $tour_name);
+        error_log('H3TM Update: Starting update for tour_id: ' . $tour_id);
 
         try {
             $s3 = new H3TM_S3_Simple();
+
+            // STEP 1: Archive existing tour files
+            error_log('H3TM Update: Archiving current version');
+            $archive_result = $s3->archive_tour_by_id($tour_id);
+
+            if (!$archive_result['success']) {
+                error_log('H3TM Update: Archive failed: ' . $archive_result['message']);
+                // Continue anyway - maybe first upload attempt
+            }
 
             // Download ZIP from S3
             $file_name = basename($s3_key);
@@ -1924,15 +1933,15 @@ class H3TM_Admin {
             }
 
             // Extract ZIP
-            $temp_extract_dir = $s3->extract_tour_temporarily($temp_zip_path, $tour_name);
+            $temp_extract_dir = $s3->extract_tour_temporarily($temp_zip_path, $tour_id);
 
             if (!$temp_extract_dir) {
                 if (file_exists($temp_zip_path)) unlink($temp_zip_path);
                 wp_send_json_error('Failed to extract tour ZIP');
             }
 
-            // Update tour in S3
-            $success = $s3->update_tour($tour_name, $temp_extract_dir);
+            // STEP 2: Update tour in S3 (uploads to tours/{tour_id}/)
+            $success = $s3->update_tour($tour_id, $temp_extract_dir);
 
             // Cleanup
             if (file_exists($temp_zip_path)) unlink($temp_zip_path);
