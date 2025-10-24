@@ -219,6 +219,15 @@ class H3TM_Lambda_Webhook {
             delete_transient('h3tm_s3_tours_cache');
             error_log('H3TM Lambda Webhook: Cleared S3 tour cache');
 
+            // Invalidate CloudFront cache for the tour
+            if ($tour_id && class_exists('H3TM_CDN_Helper')) {
+                $cdn_helper = H3TM_CDN_Helper::get_instance();
+                if ($cdn_helper && $cdn_helper->is_cloudfront_enabled()) {
+                    $cdn_helper->invalidate_tour_cache($tour_id);
+                    error_log("H3TM Lambda Webhook: Invalidated CloudFront cache for tour_id: {$tour_id}");
+                }
+            }
+
             // Clear any processing transients
             if (isset($payload['s3Key'])) {
                 $this->cleanup_processing_transients($payload['s3Key']);
