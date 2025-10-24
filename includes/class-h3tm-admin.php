@@ -1924,46 +1924,16 @@ class H3TM_Admin {
                 // Continue anyway - maybe first upload attempt
             }
 
-            // Download ZIP from S3
-            $file_name = basename($s3_key);
-            $temp_zip_path = $s3->download_zip_temporarily($s3_key, $file_name);
-
-            if (!$temp_zip_path) {
-                wp_send_json_error('Failed to download tour from S3');
+            // STEP 2: Mark tour as processing
+            // Lambda will handle extraction, upload, and webhook notification
+            if (class_exists('H3TM_Tour_Metadata')) {
+                $metadata = new H3TM_Tour_Metadata();
+                $metadata->update_status($tour_id, 'processing');
+                error_log('H3TM Update: Marked tour as processing, Lambda will handle the rest');
             }
 
-            // Extract ZIP
-            $temp_extract_dir = $s3->extract_tour_temporarily($temp_zip_path, $tour_id);
-
-            if (!$temp_extract_dir) {
-                if (file_exists($temp_zip_path)) unlink($temp_zip_path);
-                wp_send_json_error('Failed to extract tour ZIP');
-            }
-
-            // STEP 2: Update tour in S3 (uploads to tours/{tour_id}/)
-            $success = $s3->update_tour($tour_id, $temp_extract_dir);
-
-            // Cleanup
-            if (file_exists($temp_zip_path)) unlink($temp_zip_path);
-            if (is_dir($temp_extract_dir)) {
-                $iterator = new RecursiveIteratorIterator(
-                    new RecursiveDirectoryIterator($temp_extract_dir, RecursiveDirectoryIterator::SKIP_DOTS),
-                    RecursiveIteratorIterator::CHILD_FIRST
-                );
-                foreach ($iterator as $file) {
-                    $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
-                }
-                rmdir($temp_extract_dir);
-            }
-
-            // Delete S3 upload
-            $s3->delete_s3_object($s3_key);
-
-            if ($success) {
-                wp_send_json_success('Tour updated successfully! CloudFront cache has been invalidated.');
-            } else {
-                wp_send_json_error('Failed to update tour files in S3');
-            }
+            // SUCCESS - Lambda will process the tour and send webhook when complete
+            wp_send_json_success('Tour update initiated! Lambda is processing the tour.');
 
         } catch (Exception $e) {
             error_log('H3TM Update Error: ' . $e->getMessage());
