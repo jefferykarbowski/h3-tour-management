@@ -39,6 +39,12 @@ exports.handler = async (event) => {
         return await handleTourDeletion(parsedEvent);
     }
 
+    // Check if this is a tour update request
+    if (parsedEvent.action === 'update_tour') {
+        console.log('🔄 Update tour action detected');
+        return await handleTourUpdate(parsedEvent);
+    }
+
     // Check if this is an S3 event (has Records array)
     if (!parsedEvent.Records || !Array.isArray(parsedEvent.Records)) {
         console.log('❌ Unknown event type - neither deletion nor S3 event');
@@ -246,12 +252,291 @@ function injectAnalyticsScript(htmlContent, tourName, tourId) {
     }
 }
 
-// Notify WordPress that tour processing is complete
-async function notifyWordPress(tourName, tourId, bucket, filesCount) {
-    try {
-        const webhookUrl = process.env.WORDPRESS_WEBHOOK_URL;
+/**
+ * Send progress webhook to WordPress
+ */
+async function sendProgressWebhook(webhookUrl, webhookSecret, tourId, stage, progress, message, additionalData = {}) {
+    if (!webhookUrl) return { success: false, error: 'No webhook URL provided' };
 
-        if (!webhookUrl) {
+    const crypto = require('crypto');
+    const https = require('https');
+
+    const payload = {
+        type: 'progress',
+        tourId: tourId,
+        status: 'processing',
+        stage: stage,
+        progress: progress,
+        message: message,
+        timestamp: new Date().toISOString(),
+        ...additionalData
+    };
+
+    const signature = 'sha256=' + crypto
+        .createHmac('sha256', webhookSecret)
+        .update(JSON.stringify(payload))
+        .digest('hex');
+
+    return new Promise((resolve) => {
+        try {
+            const url = new URL(webhookUrl);
+            const postData = JSON.stringify(payload);
+
+            const options = {
+                hostname: url.hostname,
+                port: url.port || 443,
+                path: url.pathname + url.search,
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'X-Webhook-Signature': signature
+                },
+                timeout: 10000
+            };
+
+            const req = https.request(options, (res) => {
+                let body = '';
+                res.on('data', (chunk) => body += chunk);
+                res.on('end', () => {
+                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                        console.log(`✅ Progress webhook sent: ${stage} ${progress}% - ${message}`);
+                        resolve({ success: true, body });
+                    } else {
+                        console.warn(`⚠️ Progress webhook failed: ${res.statusCode}`);
+                        resolve({ success: false, statusCode: res.statusCode });
+                    }
+                });
+            });
+
+            req.on('error', (error) => {
+                console.error(`❌ Progress webhook error: ${error.message}`);
+                resolve({ success: false, error: error.message });
+            });
+
+            req.on('timeout', () => {
+                req.destroy();
+                console.warn('⚠️ Progress webhook timeout');
+                resolve({ success: false, error: 'timeout' });
+            });
+
+            req.write(postData);
+            req.end();
+        } catch (error) {
+            console.error('❌ Progress webhook exception:', error);
+            resolve({ success: false, error: error.message });
+        }
+    });
+}
+
+/**
+ * Handle tour update request
+ * Downloads ZIP from S3, extracts, uploads to tours/ directory, and invalidates cache
+ */
+async function handleTourUpdate(event) {
+    const { bucket, tourId, s3Key, webhookUrl, webhookSecret, enableProgressUpdates = false } = event;
+    const startTime = Date.now();
+
+    console.log(`🔄 Starting tour update for: ${tourId}`);
+    console.log(`📦 Source: s3://${bucket}/${s3Key}`);
+    console.log(`📡 Progress updates: ${enableProgressUpdates ? 'enabled' : 'disabled'}`);
+
+    try {
+        // Extract tour name from tourId for display
+        const tourName = tourId.replace(/\//g, '-');
+
+        // Step 0: Initial progress
+        if (enableProgressUpdates && webhookUrl && webhookSecret) {
+            await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'initializing', 5,
+                'Starting tour update process...');
+        }
+
+        // Step 1: Download ZIP from S3
+        console.log('⬇️ Step 1: Downloading ZIP from S3...');
+        if (enableProgressUpdates && webhookUrl && webhookSecret) {
+            await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'downloading', 15,
+                `Downloading ${s3Key.split('/').pop()} from S3...`);
+        }
+
+        const zipData = await downloadZipFromS3(bucket, s3Key);
+        if (!zipData) {
+            throw new Error('Failed to download ZIP from S3');
+        }
+
+        console.log(`📦 Downloaded ${zipData.length} bytes`);
+        if (enableProgressUpdates && webhookUrl && webhookSecret) {
+            await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'downloading', 30,
+                'Download complete');
+        }
+
+        // Step 2: Extract ZIP
+        console.log('📂 Step 2: Extracting ZIP...');
+        if (enableProgressUpdates && webhookUrl && webhookSecret) {
+            await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'extracting', 35,
+                'Extracting tour files...');
+        }
+
+        const extractedFiles = await extractAndProcessZip(zipData, tourId);
+        if (!extractedFiles || extractedFiles.length === 0) {
+            throw new Error('No files extracted from ZIP');
+        }
+
+        console.log(`📋 Extracted ${extractedFiles.length} files`);
+        if (enableProgressUpdates && webhookUrl && webhookSecret) {
+            await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'extracting', 50,
+                `Extracted ${extractedFiles.length} files`,
+                { filesProcessed: extractedFiles.length, totalFiles: extractedFiles.length });
+        }
+
+        // Step 3: Upload to S3
+        console.log('⬆️ Step 3: Uploading files to S3 tours/...');
+        if (enableProgressUpdates && webhookUrl && webhookSecret) {
+            await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'uploading', 55,
+                `Uploading ${extractedFiles.length} files to S3...`,
+                { filesProcessed: 0, totalFiles: extractedFiles.length });
+        }
+
+        let uploadedCount = 0;
+        for (const file of extractedFiles) {
+            const s3UploadKey = `tours/${tourId}/${file.path}`;
+            let fileData = file.data;
+
+            // Inject analytics script into index files
+            if (file.path === 'index.htm' || file.path === 'index.html') {
+                console.log('📊 Injecting analytics script into index file...');
+                fileData = injectAnalyticsScript(file.data.toString(), tourName, tourId);
+            }
+
+            await s3.send(new PutObjectCommand({
+                Bucket: bucket,
+                Key: s3UploadKey,
+                Body: fileData,
+                ContentType: getContentType(file.path)
+            }));
+
+            uploadedCount++;
+
+            // Send progress update every 10 files or at completion
+            if (enableProgressUpdates && webhookUrl && webhookSecret &&
+                (uploadedCount % 10 === 0 || uploadedCount === extractedFiles.length)) {
+                const uploadProgress = 55 + Math.floor((uploadedCount / extractedFiles.length) * 30);
+                await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'uploading', uploadProgress,
+                    `Uploaded ${uploadedCount}/${extractedFiles.length} files`,
+                    { filesProcessed: uploadedCount, totalFiles: extractedFiles.length });
+            }
+
+            if (uploadedCount % 10 === 0) {
+                console.log(`📤 Uploaded ${uploadedCount}/${extractedFiles.length} files...`);
+            }
+        }
+
+        console.log(`✅ Successfully uploaded ${uploadedCount} tour files`);
+
+        // Step 4: CloudFront invalidation (if configured)
+        if (enableProgressUpdates && webhookUrl && webhookSecret) {
+            await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'invalidating', 88,
+                'Invalidating CloudFront cache...');
+        }
+
+        // Note: CloudFront invalidation is now handled by WordPress after receiving the webhook
+        console.log('📡 CloudFront invalidation will be handled by WordPress');
+
+        if (enableProgressUpdates && webhookUrl && webhookSecret) {
+            await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'invalidating', 95,
+                'Cache invalidation queued');
+        }
+
+        // Step 5: Cleanup
+        console.log('🧹 Step 5: Cleaning up uploaded ZIP...');
+        if (enableProgressUpdates && webhookUrl && webhookSecret) {
+            await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'cleanup', 97,
+                'Cleaning up temporary files...');
+        }
+
+        await s3.send(new DeleteObjectCommand({
+            Bucket: bucket,
+            Key: s3Key
+        }));
+
+        console.log(`🧹 Cleaned up: ${s3Key}`);
+
+        const processingTime = Date.now() - startTime;
+
+        // Send completion progress
+        if (enableProgressUpdates && webhookUrl && webhookSecret) {
+            await sendProgressWebhook(webhookUrl, webhookSecret, tourId, 'completing', 100,
+                'Tour update complete!');
+        }
+
+        // Step 6: Notify WordPress of completion
+        console.log('📞 Step 6: Notifying WordPress...');
+        await notifyWordPress(tourName, tourId, bucket, uploadedCount, webhookUrl, webhookSecret, zipData.length, processingTime);
+
+        console.log(`🎉 Tour "${tourName}" (ID: ${tourId}) updated successfully!`);
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                success: true,
+                message: 'Tour updated successfully',
+                tourId: tourId,
+                filesUploaded: uploadedCount,
+                processingTime: processingTime
+            })
+        };
+
+    } catch (error) {
+        console.error('❌ Tour update failed:', error);
+
+        // Send failure webhook
+        if (webhookUrl && webhookSecret) {
+            const crypto = require('crypto');
+            const failurePayload = {
+                success: false,
+                tourName: tourId.replace(/\//g, '-'),
+                tourId: tourId,
+                s3Key: s3Key,
+                message: error.message,
+                timestamp: new Date().toISOString(),
+                processingTime: Date.now() - startTime
+            };
+
+            try {
+                await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Webhook-Signature': 'sha256=' + crypto
+                            .createHmac('sha256', webhookSecret)
+                            .update(JSON.stringify(failurePayload))
+                            .digest('hex')
+                    },
+                    body: JSON.stringify(failurePayload)
+                });
+            } catch (webhookError) {
+                console.error('❌ Failed to send failure webhook:', webhookError);
+            }
+        }
+
+        return {
+            statusCode: 500,
+            body: JSON.stringify({
+                success: false,
+                message: error.message,
+                error: error.stack
+            })
+        };
+    }
+}
+
+// Notify WordPress that tour processing is complete
+async function notifyWordPress(tourName, tourId, bucket, filesCount, webhookUrl = null, webhookSecret = null, totalSize = 0, processingTime = 0) {
+    try {
+        // Use provided webhook URL or fall back to environment variable
+        const effectiveWebhookUrl = webhookUrl || process.env.WORDPRESS_WEBHOOK_URL;
+        const effectiveWebhookSecret = webhookSecret || '';
+
+        if (!effectiveWebhookUrl) {
             console.log('⚠️ WORDPRESS_WEBHOOK_URL not configured, skipping notification');
             return false;
         }
@@ -264,22 +549,36 @@ async function notifyWordPress(tourName, tourId, bucket, filesCount) {
             s3FolderName: tourId,  // Folder name is now the tour_id
             s3Bucket: bucket,
             filesExtracted: filesCount,
-            processingTime: 0, // Could track this with start/end timestamps
-            totalSize: 0, // Could sum file sizes
+            processingTime: processingTime,
+            totalSize: totalSize,
             message: `Tour "${tourName}" (ID: ${tourId}) processed successfully`,
             timestamp: new Date().toISOString(),
             s3Url: `https://${bucket}.s3.us-east-1.amazonaws.com/tours/${tourId}/`
         };
 
-        console.log(`📞 Sending webhook to: ${webhookUrl}`);
+        console.log(`📞 Sending webhook to: ${effectiveWebhookUrl}`);
         console.log(`📊 Payload:`, JSON.stringify(payload, null, 2));
 
-        const response = await fetch(webhookUrl, {
+        // Build headers
+        const headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'H3-Lambda-Processor/1.0'
+        };
+
+        // Add signature if webhook secret is provided
+        if (effectiveWebhookSecret) {
+            const crypto = require('crypto');
+            const signature = 'sha256=' + crypto
+                .createHmac('sha256', effectiveWebhookSecret)
+                .update(JSON.stringify(payload))
+                .digest('hex');
+            headers['X-Webhook-Signature'] = signature;
+            console.log('🔐 Added webhook signature to completion webhook');
+        }
+
+        const response = await fetch(effectiveWebhookUrl, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'User-Agent': 'H3-Lambda-Processor/1.0'
-            },
+            headers: headers,
             body: JSON.stringify(payload)
         });
 

@@ -99,8 +99,10 @@ class H3TM_Lambda_Webhook {
                 error_log($log_prefix . 'Signature verification disabled - accepting webhook without authentication');
             }
 
-            // Process the webhook based on success/failure
-            if ($payload['success']) {
+            // Handle progress updates separately from completion
+            if (isset($payload['type']) && $payload['type'] === 'progress') {
+                $result = $this->handle_progress_update($payload);
+            } else if ($payload['success']) {
                 $result = $this->handle_processing_success($payload);
             } else {
                 $result = $this->handle_processing_failure($payload);
@@ -122,9 +124,19 @@ class H3TM_Lambda_Webhook {
 
     /**
      * Validate webhook payload structure
+     * Handles both completion and progress update payloads
      */
     private function validate_webhook_payload($payload) {
-        $required_fields = ['success', 'tourName', 's3Key', 'message', 'timestamp'];
+        // Check if this is a progress update (different validation rules)
+        $is_progress = isset($payload['type']) && $payload['type'] === 'progress';
+
+        if ($is_progress) {
+            // Progress updates require different fields
+            $required_fields = ['type', 'tourId', 'status', 'message', 'timestamp'];
+        } else {
+            // Completion webhooks require these fields
+            $required_fields = ['success', 'tourName', 's3Key', 'message', 'timestamp'];
+        }
 
         foreach ($required_fields as $field) {
             if (!isset($payload[$field])) {
@@ -135,20 +147,29 @@ class H3TM_Lambda_Webhook {
             }
         }
 
-        // Validate tour name format
-        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $payload['tourName'])) {
-            return [
-                'valid' => false,
-                'error' => 'Invalid tour name format'
-            ];
-        }
+        // Validate tour name/ID format
+        if ($is_progress) {
+            if (!preg_match('/^\d{8}_\d{6}_[a-z0-9]{8}$/', $payload['tourId'])) {
+                return [
+                    'valid' => false,
+                    'error' => 'Invalid tour ID format'
+                ];
+            }
+        } else {
+            if (!preg_match('/^[a-zA-Z0-9_-]+$/', $payload['tourName'])) {
+                return [
+                    'valid' => false,
+                    'error' => 'Invalid tour name format'
+                ];
+            }
 
-        // Validate S3 key format
-        if (!preg_match('/^uploads\/.*\.zip$/', $payload['s3Key'])) {
-            return [
-                'valid' => false,
-                'error' => 'Invalid S3 key format'
-            ];
+            // Validate S3 key format (only for completion webhooks)
+            if (!preg_match('/^uploads\/.*\.zip$/', $payload['s3Key'])) {
+                return [
+                    'valid' => false,
+                    'error' => 'Invalid S3 key format'
+                ];
+            }
         }
 
         // Validate timestamp is recent (within last 24 hours)
@@ -219,15 +240,6 @@ class H3TM_Lambda_Webhook {
             delete_transient('h3tm_s3_tours_cache');
             error_log('H3TM Lambda Webhook: Cleared S3 tour cache');
 
-            // Invalidate CloudFront cache for the tour
-            if ($tour_id && class_exists('H3TM_CDN_Helper')) {
-                $cdn_helper = H3TM_CDN_Helper::get_instance();
-                if ($cdn_helper && $cdn_helper->is_cloudfront_enabled()) {
-                    $cdn_helper->invalidate_tour_cache($tour_id);
-                    error_log("H3TM Lambda Webhook: Invalidated CloudFront cache for tour_id: {$tour_id}");
-                }
-            }
-
             // Clear any processing transients
             if (isset($payload['s3Key'])) {
                 $this->cleanup_processing_transients($payload['s3Key']);
@@ -285,6 +297,56 @@ class H3TM_Lambda_Webhook {
             return [
                 'success' => false,
                 'message' => 'Failed to handle processing failure: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Handle progress update from Lambda
+     * Updates the transient with real-time progress information
+     *
+     * @param array $payload Progress webhook payload from Lambda
+     * @return array Result with 'success' and 'message' keys
+     */
+    private function handle_progress_update($payload) {
+        try {
+            $tour_id = isset($payload['tourId']) ? sanitize_text_field($payload['tourId']) : null;
+
+            if (!$tour_id) {
+                error_log('H3TM Lambda Progress: Missing tourId in progress update');
+                return [
+                    'success' => false,
+                    'message' => 'Missing tourId in progress update'
+                ];
+            }
+
+            $progress_key = 'h3tm_update_progress_' . $tour_id;
+            $progress_data = array(
+                'status' => sanitize_text_field($payload['status'] ?? 'processing'),
+                'progress' => intval($payload['progress'] ?? 0),
+                'message' => sanitize_text_field($payload['message'] ?? ''),
+                'tour_id' => $tour_id,
+                'stage' => sanitize_text_field($payload['stage'] ?? 'processing'),
+                'files_processed' => intval($payload['filesProcessed'] ?? 0),
+                'total_files' => intval($payload['totalFiles'] ?? 0),
+                'updated_at' => current_time('mysql')
+            );
+
+            // Update the progress transient (extends expiration by 1 hour)
+            set_transient($progress_key, $progress_data, 3600);
+
+            error_log('H3TM Lambda Progress: Updated progress for tour_id ' . $tour_id . ' - ' . $progress_data['progress'] . '% - ' . $progress_data['message']);
+
+            return [
+                'success' => true,
+                'message' => 'Progress updated successfully'
+            ];
+
+        } catch (Exception $e) {
+            error_log('H3TM Lambda Progress Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Failed to update progress: ' . $e->getMessage()
             ];
         }
     }

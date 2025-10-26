@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useDropzone } from "react-dropzone";
 import { Upload, FileArchive, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
@@ -66,7 +66,17 @@ export function UpdateTourModal({ isOpen, onClose, tourId, tourName, onUpdateCom
   const [progress, setProgress] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
   const [processingPhase, setProcessingPhase] = useState<"uploading" | "processing">("uploading");
+  const [progressMessage, setProgressMessage] = useState<string>('');
+  const [processingStage, setProcessingStage] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      stopPolling();
+    };
+  }, []);
 
   const handleFileChange = (newFiles: File[]) => {
     if (newFiles.length > 0) {
@@ -90,12 +100,83 @@ export function UpdateTourModal({ isOpen, onClose, tourId, tourName, onUpdateCom
     onDrop: handleFileChange,
   });
 
+  const pollProgress = async (tourId: string) => {
+    const formData = new FormData();
+    formData.append('action', 'h3tm_get_update_progress');
+    formData.append('tour_id', tourId);
+    formData.append('nonce', (window as any).h3tm_ajax?.nonce || '');
+
+    try {
+      const response = await fetch((window as any).h3tm_ajax?.ajax_url || '/wp-admin/admin-ajax.php', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.data) {
+        const progressData = data.data;
+        const currentProgress = progressData.progress || 0;
+
+        setProgress(currentProgress);
+        setProgressMessage(progressData.message || '');
+        setProcessingStage(progressData.stage || '');
+
+        // Check if processing is complete
+        if (progressData.status === 'completed' || currentProgress >= 100) {
+          stopPolling();
+          setProgress(100);
+          setIsComplete(true);
+
+          setTimeout(() => {
+            setIsProcessing(false);
+            setIsComplete(false);
+            setFile(null);
+            setProgress(0);
+            setProgressMessage('');
+            setProcessingStage('');
+            onClose();
+            onUpdateComplete?.();
+          }, 1500);
+        } else if (progressData.status === 'failed') {
+          stopPolling();
+          throw new Error(progressData.message || 'Tour update failed');
+        }
+      }
+    } catch (error) {
+      console.error('Error polling progress:', error);
+      // Don't stop polling on transient errors - Lambda might still be processing
+    }
+  };
+
+  const startPolling = (tourId: string) => {
+    // Clear any existing interval
+    stopPolling();
+
+    // Poll every 2 seconds
+    pollingIntervalRef.current = setInterval(() => {
+      pollProgress(tourId);
+    }, 2000);
+
+    // Do an immediate poll
+    pollProgress(tourId);
+  };
+
+  const stopPolling = () => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  };
+
   const handleUpdate = async () => {
     if (!file) return;
 
     setIsProcessing(true);
     setProgress(0);
     setProcessingPhase("uploading");
+    setProgressMessage('');
+    setProcessingStage('');
 
     try {
       // Step 1: Get presigned URL
@@ -109,9 +190,10 @@ export function UpdateTourModal({ isOpen, onClose, tourId, tourName, onUpdateCom
       // Step 2: Upload to S3
       await uploadToS3(file, presignedData);
 
-      // Step 3: Process update via backend
+      // Step 3: Trigger asynchronous Lambda processing
       setProcessingPhase("processing");
       setProgress(0);
+      setProgressMessage('Initializing tour update...');
 
       const formData = new FormData();
       formData.append("action", "h3tm_update_tour");
@@ -125,7 +207,12 @@ export function UpdateTourModal({ isOpen, onClose, tourId, tourName, onUpdateCom
       });
 
       const data = await response.json();
-      if (data.success) {
+
+      if (data.success && data.data?.async) {
+        // New async flow - start polling for progress
+        startPolling(tourId);
+      } else if (data.success) {
+        // Old synchronous flow (backward compatibility)
         setProgress(100);
         setIsComplete(true);
 
@@ -143,8 +230,11 @@ export function UpdateTourModal({ isOpen, onClose, tourId, tourName, onUpdateCom
     } catch (error) {
       console.error("Error updating tour:", error);
       alert(`Failed to update tour: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      stopPolling();
       setIsProcessing(false);
       setProgress(0);
+      setProgressMessage('');
+      setProcessingStage('');
     }
   };
 
@@ -438,14 +528,19 @@ export function UpdateTourModal({ isOpen, onClose, tourId, tourName, onUpdateCom
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                    <span>Processing tour update...</span>
+                    <span>{progressMessage || 'Processing tour update...'}</span>
                   </div>
+                  {processingStage && (
+                    <div className="pl-6 text-xs text-blue-600 font-medium">
+                      Stage: {processingStage}
+                    </div>
+                  )}
                   <div className="pl-6 space-y-1 text-xs text-muted-foreground">
-                    <div>• Archiving current version</div>
-                    <div>• Downloading from S3</div>
-                    <div>• Extracting tour files</div>
-                    <div>• Deploying to tours directory</div>
-                    <div>• Invalidating CloudFront cache</div>
+                    <div className={processingStage === 'downloading' ? 'text-blue-600 font-medium' : ''}>• Downloading from S3</div>
+                    <div className={processingStage === 'extracting' ? 'text-blue-600 font-medium' : ''}>• Extracting tour files</div>
+                    <div className={processingStage === 'uploading' ? 'text-blue-600 font-medium' : ''}>• Uploading to tours directory</div>
+                    <div className={processingStage === 'invalidating' ? 'text-blue-600 font-medium' : ''}>• Invalidating CloudFront cache</div>
+                    <div className={processingStage === 'cleanup' ? 'text-blue-600 font-medium' : ''}>• Cleaning up temporary files</div>
                   </div>
                 </div>
               )}

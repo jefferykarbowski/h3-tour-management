@@ -43,6 +43,7 @@ class H3TM_Admin {
         // add_action('wp_ajax_h3tm_update_tours_analytics', array($this, 'handle_update_tours_analytics')); // Disabled with analytics settings
 
         add_action('wp_ajax_h3tm_update_tour', array($this, 'handle_update_tour'));
+        add_action('wp_ajax_h3tm_get_update_progress', array($this, 'handle_get_update_progress'));
         add_action('wp_ajax_h3tm_get_embed_script', array($this, 'handle_get_embed_script'));
         add_action('wp_ajax_h3tm_change_tour_url', array($this, 'handle_change_tour_url'));
         add_action('wp_ajax_h3tm_rebuild_metadata', array($this, 'handle_rebuild_metadata'));
@@ -1894,7 +1895,9 @@ class H3TM_Admin {
 
     /**
      * Handle Update Tour AJAX request
-     * Overwrites existing tour files and invalidates CloudFront cache
+     * Triggers Lambda function for asynchronous processing with real-time progress updates
+     *
+     * @since 2.6.3 - Converted to asynchronous Lambda-based processing to prevent 504 timeouts
      */
     public function handle_update_tour() {
         check_ajax_referer('h3tm_ajax_nonce', 'nonce');
@@ -1910,35 +1913,156 @@ class H3TM_Admin {
             wp_send_json_error('Missing required parameters');
         }
 
-        error_log('H3TM Update: Starting update for tour_id: ' . $tour_id);
+        error_log('H3TM Update: Starting asynchronous Lambda update for tour_id: ' . $tour_id);
 
         try {
-            $s3 = new H3TM_S3_Simple();
+            // Initialize progress tracking
+            $progress_key = 'h3tm_update_progress_' . $tour_id;
+            set_transient($progress_key, array(
+                'status' => 'initializing',
+                'progress' => 0,
+                'message' => 'Initializing tour update...',
+                'tour_id' => $tour_id,
+                's3_key' => $s3_key,
+                'started_at' => current_time('mysql')
+            ), 3600); // 1 hour expiration
 
-            // STEP 1: Archive existing tour files
-            error_log('H3TM Update: Archiving current version');
-            $archive_result = $s3->archive_tour_by_id($tour_id);
-
-            if (!$archive_result['success']) {
-                error_log('H3TM Update: Archive failed: ' . $archive_result['message']);
-                // Continue anyway - maybe first upload attempt
-            }
-
-            // STEP 2: Mark tour as processing
-            // Lambda will handle extraction, upload, and webhook notification
+            // Update metadata status to 'updating'
             if (class_exists('H3TM_Tour_Metadata')) {
                 $metadata = new H3TM_Tour_Metadata();
-                $metadata->update_status($tour_id, 'processing');
-                error_log('H3TM Update: Marked tour as processing, Lambda will handle the rest');
+                $tour = $metadata->get_by_tour_id($tour_id);
+
+                if ($tour) {
+                    global $wpdb;
+                    $table_name = $wpdb->prefix . 'h3tm_tour_metadata';
+                    $wpdb->update(
+                        $table_name,
+                        array('status' => 'updating'),
+                        array('tour_id' => $tour_id),
+                        array('%s'),
+                        array('%s')
+                    );
+                }
             }
 
-            // SUCCESS - Lambda will process the tour and send webhook when complete
-            wp_send_json_success('Tour update initiated! Lambda is processing the tour.');
+            // Invoke Lambda function asynchronously
+            $lambda_result = $this->invoke_lambda_update($tour_id, $s3_key);
+
+            if (!$lambda_result['success']) {
+                // Rollback progress tracking
+                delete_transient($progress_key);
+
+                // Rollback metadata status
+                if (class_exists('H3TM_Tour_Metadata') && isset($tour)) {
+                    global $wpdb;
+                    $table_name = $wpdb->prefix . 'h3tm_tour_metadata';
+                    $wpdb->update(
+                        $table_name,
+                        array('status' => 'completed'),
+                        array('tour_id' => $tour_id),
+                        array('%s'),
+                        array('%s')
+                    );
+                }
+
+                wp_send_json_error('Failed to trigger Lambda update: ' . $lambda_result['message']);
+            }
+
+            // Return immediately with progress tracking key
+            wp_send_json_success(array(
+                'message' => 'Tour update initiated successfully',
+                'tour_id' => $tour_id,
+                'progress_key' => $progress_key,
+                'async' => true
+            ));
 
         } catch (Exception $e) {
             error_log('H3TM Update Error: ' . $e->getMessage());
             wp_send_json_error('Update failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Invoke Lambda function for tour update processing
+     *
+     * @param string $tour_id The tour ID to update
+     * @param string $s3_key The S3 key of the uploaded ZIP file
+     * @return array Result with 'success' and 'message' keys
+     */
+    private function invoke_lambda_update($tour_id, $s3_key) {
+        $lambda_function_url = get_option('h3tm_lambda_function_url', '');
+
+        if (empty($lambda_function_url)) {
+            error_log('H3TM Update: Lambda function URL not configured');
+            return array('success' => false, 'message' => 'Lambda not configured');
+        }
+
+        $webhook_url = admin_url('admin-ajax.php?action=h3tm_lambda_webhook');
+        $webhook_secret = get_option('h3tm_lambda_webhook_secret', '');
+
+        error_log('H3TM Update: Invoking Lambda for tour_id: ' . $tour_id);
+
+        // Invoke Lambda via HTTP (using Function URL)
+        $response = wp_remote_post($lambda_function_url, array(
+            'timeout' => 30,
+            'headers' => array('Content-Type' => 'application/json'),
+            'body' => json_encode(array(
+                'action' => 'update_tour',
+                'bucket' => get_option('h3tm_s3_bucket', 'h3-tour-files-h3vt'),
+                'tourId' => $tour_id,
+                's3Key' => $s3_key,
+                'webhookUrl' => $webhook_url,
+                'webhookSecret' => $webhook_secret,
+                'enableProgressUpdates' => true // Request real-time progress notifications
+            ))
+        ));
+
+        if (is_wp_error($response)) {
+            error_log('H3TM Update: Lambda invocation failed: ' . $response->get_error_message());
+            return array('success' => false, 'message' => 'Lambda invocation failed: ' . $response->get_error_message());
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+
+        error_log('H3TM Update: Lambda response: ' . $response_code . ' - ' . $response_body);
+
+        if ($response_code === 403) {
+            error_log('H3TM Update: 403 Forbidden - Check Lambda Function URL auth type is NONE');
+        }
+
+        return array(
+            'success' => $response_code === 200,
+            'message' => $response_body,
+            'response_code' => $response_code
+        );
+    }
+
+    /**
+     * Get update progress for a tour
+     * AJAX endpoint for frontend to poll progress status
+     */
+    public function handle_get_update_progress() {
+        check_ajax_referer('h3tm_ajax_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+
+        $tour_id = isset($_POST['tour_id']) ? sanitize_text_field($_POST['tour_id']) : '';
+
+        if (empty($tour_id)) {
+            wp_send_json_error('Missing tour_id parameter');
+        }
+
+        $progress_key = 'h3tm_update_progress_' . $tour_id;
+        $progress = get_transient($progress_key);
+
+        if ($progress === false) {
+            wp_send_json_error('No progress data found for this tour');
+        }
+
+        wp_send_json_success($progress);
     }
 
     /**
