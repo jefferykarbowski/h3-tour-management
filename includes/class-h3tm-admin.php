@@ -2003,8 +2003,10 @@ class H3TM_Admin {
         error_log('H3TM Update: Invoking Lambda for tour_id: ' . $tour_id);
 
         // Invoke Lambda via HTTP (using Function URL)
+        // Note: Generous timeout (5 minutes) to handle large tour files
+        // Progress updates are sent via webhooks, but we need to wait for initial Lambda response
         $response = wp_remote_post($lambda_function_url, array(
-            'timeout' => 30,
+            'timeout' => 300, // 5 minutes - Lambda processes synchronously before responding
             'headers' => array('Content-Type' => 'application/json'),
             'body' => json_encode(array(
                 'action' => 'update_tour',
