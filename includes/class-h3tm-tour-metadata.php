@@ -334,6 +334,20 @@ class H3TM_Tour_Metadata {
 
         $count = $wpdb->get_var($wpdb->prepare($query, $params));
 
+        // Debug logging
+        error_log("H3TM slug_exists: Checking '{$tour_slug}' (exclude_id: " . ($exclude_id ?? 'none') . ") - Count: {$count}");
+
+        // Log conflicting tours if any found
+        if ($count > 0) {
+            $conflicting = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, tour_id, display_name, status FROM {$this->table_name} WHERE tour_slug = %s AND status NOT IN ('deleted', 'archived', 'failed')" . ($exclude_id ? " AND id != %d" : ""),
+                $exclude_id ? array($tour_slug, $exclude_id) : array($tour_slug)
+            ));
+            foreach ($conflicting as $tour) {
+                error_log("H3TM slug_exists: CONFLICT - Tour #{$tour->id} ({$tour->tour_id}): {$tour->display_name} [Status: {$tour->status}]");
+            }
+        }
+
         return $count > 0;
     }
 

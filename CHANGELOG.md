@@ -5,6 +5,21 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.7] - 2025-10-28
+
+### Added
+- **Debug Tools**: Added comprehensive debugging and cleanup tools for slug conflicts
+  - `tools/debug-slug-conflict.php` - Check database for conflicting slugs
+  - `tools/cleanup-orphaned-slugs.php` - Remove orphaned database entries
+  - `tools/fix-arden-pikesville-slug.sql` - SQL script for manual cleanup
+  - Enhanced logging in slug_exists() to identify conflicting tours
+
+### Fixed
+- **URL Slug Debugging**: Enhanced slug_exists() with detailed error logging
+  - Logs conflicting tours when slug validation fails
+  - Shows tour ID, display name, and status of blocking tours
+  - File modified: `includes/class-h3tm-tour-metadata.php`
+
 ## [2.6.6] - 2025-10-28
 
 ### Fixed

@@ -35,3 +35,4 @@ package-lock.json
 # plugin-update-checker/
 # Codemachine memory
 .codemachine/memory/
+downloads/
