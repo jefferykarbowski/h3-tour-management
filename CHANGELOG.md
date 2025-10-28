@@ -5,6 +5,22 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.8] - 2025-10-28
+
+### Added
+- **Diagnostics Page**: New admin page under 3D Tours → Diagnostics
+  - Real-time slug conflict checker with visual feedback
+  - Database overview showing tour counts by status
+  - Orphaned tours finder and cleanup tool
+  - Recent database changes viewer
+  - AJAX-powered interface for instant results
+  - File added: `includes/class-h3tm-diagnostics.php`
+
+### Improved
+- **Admin UI**: Easier debugging without needing to check logs
+- **Troubleshooting**: All diagnostic tools accessible from WordPress admin
+- **User Experience**: Visual status indicators and formatted output
+
 ## [2.6.7] - 2025-10-28
 
 ### Added
