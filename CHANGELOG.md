@@ -5,6 +5,16 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2025-10-28
+
+### Fixed
+- **Diagnostics Page - Orphaned Tours Tool**: Fixed critical bug preventing orphaned tours detection
+  - Corrected S3 method call from `list_tours()` to `list_s3_tours()`
+  - Updated to handle proper array return format instead of success/tours structure
+  - Now correctly compares both tour_id (new format) and display_name (legacy format)
+  - Handles both ID-based and name-based tour formats from S3
+  - File fixed: `includes/class-h3tm-diagnostics.php`
+
 ## [2.6.9] - 2025-10-28
 
 ### Fixed

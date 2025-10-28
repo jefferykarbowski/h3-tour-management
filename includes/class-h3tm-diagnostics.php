@@ -459,11 +459,11 @@ class H3TM_Diagnostics {
 
         try {
             $s3 = new H3TM_S3_Simple();
-            $s3_result = $s3->list_tours();
+            $s3_tours = $s3->list_s3_tours(); // Returns array of tours or empty array on error
 
-            if (!$s3_result['success']) {
-                $output .= "<span class='h3tm-result-error'>❌ ERROR: Could not list S3 tours</span>\n";
-                $output .= "Message: " . esc_html($s3_result['message']) . "\n";
+            if (empty($s3_tours)) {
+                $output .= "<span class='h3tm-result-error'>❌ ERROR: No tours found in S3 or S3 not configured</span>\n";
+                $output .= "Check S3 settings under 3D Tours → S3 Settings\n";
                 wp_send_json_success(array('output' => $output, 'orphaned_ids' => array()));
                 return;
             }
@@ -473,19 +473,40 @@ class H3TM_Diagnostics {
             return;
         }
 
+        // Build list of S3 tour IDs and display names
         $s3_tour_ids = array();
-        foreach ($s3_result['tours'] as $tour) {
-            $s3_tour_ids[] = $tour['name'];
+        $s3_tour_names = array();
+        foreach ($s3_tours as $tour) {
+            // Handle both array format (new ID-based) and string format (legacy name-based)
+            if (is_array($tour)) {
+                $s3_tour_ids[] = $tour['tour_id'];
+                $s3_tour_names[] = $tour['name'];
+            } else {
+                // Legacy string format - use the tour name as both ID and name
+                $s3_tour_names[] = $tour;
+            }
         }
 
-        $output .= "S3 tours: " . count($s3_tour_ids) . "\n\n";
+        $output .= "S3 tours: " . count($s3_tours) . "\n\n";
 
-        // Find orphaned
+        // Find orphaned - check both tour_id (new format) and display_name (legacy format)
         $orphaned = array();
         $orphaned_ids = array();
 
         foreach ($db_tours as $tour) {
-            if (!in_array($tour->tour_id, $s3_tour_ids)) {
+            $found_in_s3 = false;
+
+            // Check if tour exists in S3 by tour_id (new format)
+            if (!empty($s3_tour_ids) && in_array($tour->tour_id, $s3_tour_ids)) {
+                $found_in_s3 = true;
+            }
+
+            // Check if tour exists in S3 by display_name (legacy format)
+            if (!$found_in_s3 && in_array($tour->display_name, $s3_tour_names)) {
+                $found_in_s3 = true;
+            }
+
+            if (!$found_in_s3) {
                 $orphaned[] = $tour;
                 $orphaned_ids[] = $tour->id;
             }
