@@ -451,15 +451,25 @@ class H3TM_Diagnostics {
 
         // Get tours from S3
         if (!class_exists('H3TM_S3_Simple')) {
-            wp_send_json_error('H3TM_S3_Simple class not found');
+            $output .= "<span class='h3tm-result-error'>❌ ERROR: H3TM_S3_Simple class not found</span>\n";
+            $output .= "Make sure the S3 integration is properly loaded.\n";
+            wp_send_json_success(array('output' => $output, 'orphaned_ids' => array()));
             return;
         }
 
-        $s3 = new H3TM_S3_Simple();
-        $s3_result = $s3->list_tours();
+        try {
+            $s3 = new H3TM_S3_Simple();
+            $s3_result = $s3->list_tours();
 
-        if (!$s3_result['success']) {
-            wp_send_json_error('Could not list S3 tours: ' . $s3_result['message']);
+            if (!$s3_result['success']) {
+                $output .= "<span class='h3tm-result-error'>❌ ERROR: Could not list S3 tours</span>\n";
+                $output .= "Message: " . esc_html($s3_result['message']) . "\n";
+                wp_send_json_success(array('output' => $output, 'orphaned_ids' => array()));
+                return;
+            }
+        } catch (Exception $e) {
+            $output .= "<span class='h3tm-result-error'>❌ EXCEPTION: " . esc_html($e->getMessage()) . "</span>\n";
+            wp_send_json_success(array('output' => $output, 'orphaned_ids' => array()));
             return;
         }
 

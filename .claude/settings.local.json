@@ -10,7 +10,10 @@
       "Bash(wp eval-file:*)",
       "Bash(npm run build:*)",
       "Bash(terminus auth:whoami:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
