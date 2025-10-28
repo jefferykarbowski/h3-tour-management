@@ -5,6 +5,15 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.5] - 2025-10-28
+
+### Fixed
+- **URL Slug Reuse**: Removed historical slug validation that prevented reusing URL slugs
+  - Tours can now be assigned any URL slug that isn't currently in use by another active tour
+  - Previously used slugs can now be reused freely
+  - Maintains validation for format and active slug uniqueness
+  - Files modified: `includes/class-h3tm-new-handlers.php`, `includes/class-h3tm-admin.php`
+
 ## [2.0.0] - 2025-09-27
 
 ### 🎉 **MAJOR RELEASE: Complete AWS Serverless Architecture**

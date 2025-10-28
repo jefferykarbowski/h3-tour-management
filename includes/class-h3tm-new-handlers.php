@@ -169,18 +169,13 @@ trait H3TM_New_Handlers {
 
         $old_slug = $tour->tour_slug;
 
-        // Check if new slug already exists
+        // Check if new slug already exists (but allow reuse of historical slugs)
         if ($metadata->slug_exists($new_slug, $tour->id)) {
             wp_send_json_error('URL slug already in use by another tour');
         }
 
-        // Check if new slug is in any tour's history
-        if (class_exists('H3TM_URL_Redirector')) {
-            $redirector = new H3TM_URL_Redirector();
-            if ($redirector->is_slug_historical($new_slug)) {
-                wp_send_json_error('This URL slug was previously used and cannot be reused');
-            }
-        }
+        // Historical slug check removed - allow URL reuse
+        // Tours can now be assigned any URL that isn't currently in use by another active tour
 
         // Validate slug format
         if (!preg_match('/^[a-z0-9-]+$/', $new_slug)) {
