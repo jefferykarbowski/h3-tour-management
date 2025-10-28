@@ -323,7 +323,8 @@ class H3TM_Tour_Metadata {
     public function slug_exists($tour_slug, $exclude_id = null) {
         global $wpdb;
 
-        $query = "SELECT COUNT(*) FROM {$this->table_name} WHERE tour_slug = %s";
+        // Only check for active tours (exclude deleted, archived, or failed tours)
+        $query = "SELECT COUNT(*) FROM {$this->table_name} WHERE tour_slug = %s AND status NOT IN ('deleted', 'archived', 'failed')";
         $params = array($tour_slug);
 
         if ($exclude_id) {
