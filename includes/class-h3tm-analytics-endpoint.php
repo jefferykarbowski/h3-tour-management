@@ -140,7 +140,7 @@ class H3TM_Analytics_Endpoint {
         $page_path = isset($_GET['path']) ? sanitize_text_field($_GET['path']) : '/tours/' . $tour_folder . '/';
 
         // Get GA settings
-        $ga_measurement_id = get_option('h3tm_ga_measurement_id', 'G-6P29YLK8Q9');
+        $ga_measurement_id = get_option('h3tm_ga_measurement_id', 'G-08Q1M637NJ');
         $analytics_enabled = get_option('h3tm_analytics_enabled', '1');
 
         // Set headers for JavaScript
