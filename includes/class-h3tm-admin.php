@@ -46,7 +46,6 @@ class H3TM_Admin {
         add_action('wp_ajax_h3tm_get_update_progress', array($this, 'handle_get_update_progress'));
         add_action('wp_ajax_h3tm_get_embed_script', array($this, 'handle_get_embed_script'));
         add_action('wp_ajax_h3tm_change_tour_url', array($this, 'handle_change_tour_url'));
-        add_action('wp_ajax_h3tm_rebuild_metadata', array($this, 'handle_rebuild_metadata'));
 
     }
 
@@ -690,16 +689,6 @@ class H3TM_Admin {
                 <div id="s3-test-result" style="margin-top: 10px;"></div>
             </div>
 
-            <div class="h3tm-section" style="background: #f0f6fc; border-left: 4px solid #2271b1; padding: 15px; margin-bottom: 20px;">
-                <h3 style="margin-top: 0;"><?php _e('Tour Metadata Management', 'h3-tour-management'); ?></h3>
-                <p><?php _e('If tour names or URLs are incorrect, rebuild the metadata to match the actual S3 folder structure.', 'h3-tour-management'); ?></p>
-                <button type="button" id="rebuild-tour-metadata" class="button button-secondary">
-                    <?php _e('Rebuild Tour Metadata', 'h3-tour-management'); ?>
-                </button>
-                <span class="spinner" style="float: none; margin-left: 10px;"></span>
-                <div id="rebuild-metadata-result" style="margin-top: 10px;"></div>
-            </div>
-
             <?php if (defined('H3_S3_BUCKET') || defined('AWS_ACCESS_KEY_ID')) : ?>
                 <div class="notice notice-info">
                     <p><strong><?php _e('Note:', 'h3-tour-management'); ?></strong>
@@ -855,44 +844,6 @@ class H3TM_Admin {
                     },
                     complete: function() {
                         $button.prop('disabled', false).text('Test Connection');
-                    }
-                });
-            });
-
-            $('#rebuild-tour-metadata').on('click', function() {
-                var $button = $(this);
-                var $spinner = $button.next('.spinner');
-                var $result = $('#rebuild-metadata-result');
-
-                if (!confirm('This will rebuild all tour metadata. Continue?')) {
-                    return;
-                }
-
-                $button.prop('disabled', true);
-                $spinner.addClass('is-active');
-                $result.html('');
-
-                $.ajax({
-                    url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                    type: 'POST',
-                    data: {
-                        action: 'h3tm_rebuild_metadata',
-                        nonce: '<?php echo wp_create_nonce('h3tm_ajax_nonce'); ?>'
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            $result.html('<div class="notice notice-success inline"><p>' + response.data + '</p></div>');
-                            setTimeout(function() { location.reload(); }, 2000);
-                        } else {
-                            $result.html('<div class="notice notice-error inline"><p>' + response.data + '</p></div>');
-                        }
-                    },
-                    error: function() {
-                        $result.html('<div class="notice notice-error inline"><p>Request failed</p></div>');
-                    },
-                    complete: function() {
-                        $button.prop('disabled', false);
-                        $spinner.removeClass('is-active');
                     }
                 });
             });
@@ -2211,47 +2162,6 @@ class H3TM_Admin {
             ));
         } else {
             wp_send_json_error('Failed to change tour URL');
-        }
-    }
-
-    /**
-     * Handle Rebuild Metadata AJAX request
-     * Clears and rebuilds tour metadata table
-     */
-    public function handle_rebuild_metadata() {
-        check_ajax_referer('h3tm_ajax_nonce', 'nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_die('Unauthorized');
-        }
-
-        try {
-            global $wpdb;
-            $metadata_table = $wpdb->prefix . 'h3tm_tour_metadata';
-
-            // Clear existing metadata
-            $wpdb->query("TRUNCATE TABLE {$metadata_table}");
-
-            // Reset migration flag
-            delete_option('h3tm_metadata_migrated');
-
-            // Run migration with updated code
-            H3TM_Activator::activate();
-
-            // Clear tour cache
-            if (class_exists('H3TM_S3_Simple')) {
-                $s3 = new H3TM_S3_Simple();
-                $s3->clear_tour_cache();
-            }
-
-            // Count rebuilt entries
-            $count = $wpdb->get_var("SELECT COUNT(*) FROM {$metadata_table}");
-
-            wp_send_json_success("Metadata rebuilt successfully! {$count} tours updated.");
-
-        } catch (Exception $e) {
-            error_log('H3TM Rebuild Metadata Error: ' . $e->getMessage());
-            wp_send_json_error('Failed to rebuild metadata: ' . $e->getMessage());
         }
     }
 

@@ -6,7 +6,6 @@
  * - Update Tour (overwrite existing tour files)
  * - Get Embed Script (generate iframe embed codes)
  * - Change Tour URL (modify tour slug with redirect history)
- * - Rebuild Metadata (sync metadata table with S3)
  *
  * @package H3_Tour_Management
  * @since 1.0.0
@@ -240,47 +239,6 @@ trait Trait_H3TM_Tour_Handlers {
             ));
         } else {
             wp_send_json_error('Failed to change tour URL');
-        }
-    }
-
-    /**
-     * Handle Rebuild Metadata AJAX request
-     * Clears and rebuilds tour metadata table
-     */
-    public function handle_rebuild_metadata() {
-        check_ajax_referer('h3tm_ajax_nonce', 'nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_die('Unauthorized');
-        }
-
-        try {
-            global $wpdb;
-            $metadata_table = $wpdb->prefix . 'h3tm_tour_metadata';
-
-            // Clear existing metadata
-            $wpdb->query("TRUNCATE TABLE {$metadata_table}");
-
-            // Reset migration flag
-            delete_option('h3tm_metadata_migrated');
-
-            // Run migration with updated code
-            H3TM_Activator::activate();
-
-            // Clear tour cache
-            if (class_exists('H3TM_S3_Simple')) {
-                $s3 = new H3TM_S3_Simple();
-                $s3->clear_tour_cache();
-            }
-
-            // Count rebuilt entries
-            $count = $wpdb->get_var("SELECT COUNT(*) FROM {$metadata_table}");
-
-            wp_send_json_success("Metadata rebuilt successfully! {$count} tours updated.");
-
-        } catch (Exception $e) {
-            error_log('H3TM Rebuild Metadata Error: ' . $e->getMessage());
-            wp_send_json_error('Failed to rebuild metadata: ' . $e->getMessage());
         }
     }
 }

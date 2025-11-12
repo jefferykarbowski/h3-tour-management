@@ -255,16 +255,6 @@ trait Trait_H3TM_Page_Renderers {
                 <div id="s3-test-result" style="margin-top: 10px;"></div>
             </div>
 
-            <div class="h3tm-section" style="background: #f0f6fc; border-left: 4px solid #2271b1; padding: 15px; margin-bottom: 20px;">
-                <h3 style="margin-top: 0;"><?php _e('Tour Metadata Management', 'h3-tour-management'); ?></h3>
-                <p><?php _e('If tour names or URLs are incorrect, rebuild the metadata to match the actual S3 folder structure.', 'h3-tour-management'); ?></p>
-                <button type="button" id="rebuild-tour-metadata" class="button button-secondary">
-                    <?php _e('Rebuild Tour Metadata', 'h3-tour-management'); ?>
-                </button>
-                <span class="spinner" style="float: none; margin-left: 10px;"></span>
-                <div id="rebuild-metadata-result" style="margin-top: 10px;"></div>
-            </div>
-
             <?php if (defined('H3_S3_BUCKET') || defined('AWS_ACCESS_KEY_ID')) : ?>
                 <div class="notice notice-info">
                     <p><strong><?php _e('Note:', 'h3-tour-management'); ?></strong>
@@ -420,44 +410,6 @@ trait Trait_H3TM_Page_Renderers {
                     },
                     complete: function() {
                         $button.prop('disabled', false).text('Test Connection');
-                    }
-                });
-            });
-
-            $('#rebuild-tour-metadata').on('click', function() {
-                var $button = $(this);
-                var $spinner = $button.next('.spinner');
-                var $result = $('#rebuild-metadata-result');
-
-                if (!confirm('This will rebuild all tour metadata. Continue?')) {
-                    return;
-                }
-
-                $button.prop('disabled', true);
-                $spinner.addClass('is-active');
-                $result.html('');
-
-                $.ajax({
-                    url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                    type: 'POST',
-                    data: {
-                        action: 'h3tm_rebuild_metadata',
-                        nonce: '<?php echo wp_create_nonce('h3tm_ajax_nonce'); ?>'
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            $result.html('<div class="notice notice-success inline"><p>' + response.data + '</p></div>');
-                            setTimeout(function() { location.reload(); }, 2000);
-                        } else {
-                            $result.html('<div class="notice notice-error inline"><p>' + response.data + '</p></div>');
-                        }
-                    },
-                    error: function() {
-                        $result.html('<div class="notice notice-error inline"><p>Request failed</p></div>');
-                    },
-                    complete: function() {
-                        $button.prop('disabled', false);
-                        $spinner.removeClass('is-active');
                     }
                 });
             });

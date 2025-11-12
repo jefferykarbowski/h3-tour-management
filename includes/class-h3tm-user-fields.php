@@ -44,9 +44,13 @@ class H3TM_User_Fields {
                 <th><label for="h3tm_tours"><?php _e('Assigned Tours', 'h3-tour-management'); ?></label></th>
                 <td>
                     <select name="h3tm_tours[]" id="h3tm_tours" class="h3tm-tours-select" multiple="multiple" style="width: 350px;">
-                        <?php foreach ($available_tours as $tour) : ?>
-                            <option value="<?php echo esc_attr($tour); ?>" <?php selected(in_array($tour, $user_tours)); ?>>
-                                <?php echo esc_html($tour); ?>
+                        <?php foreach ($available_tours as $tour) :
+                            // Handle both array (new ID-based tours) and string (legacy tours) formats
+                            $tour_name = is_array($tour) ? $tour['name'] : $tour;
+                            $tour_value = $tour_name; // Use display name for both value and display
+                        ?>
+                            <option value="<?php echo esc_attr($tour_value); ?>" <?php selected(in_array($tour_value, $user_tours)); ?>>
+                                <?php echo esc_html($tour_name); ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
