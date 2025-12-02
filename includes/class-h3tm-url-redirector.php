@@ -81,16 +81,39 @@ class H3TM_URL_Redirector {
             }
 
             // It's a slug - check if it needs to be redirected
-            $requested_slug = sanitize_title($identifier);
+            // URL decode the identifier for comparison (spaces come as %20)
+            $decoded_identifier = urldecode($identifier);
+            $requested_slug = sanitize_title($decoded_identifier);
 
-            // Check if this slug needs to be redirected
+            // Check if URL needs normalization (has spaces, capitals, etc.)
+            // Compare decoded identifier with canonical slug format
+            if ($decoded_identifier !== $requested_slug) {
+                // Check if the canonical slug exists as a current tour
+                $tour = $this->metadata->get_by_slug($requested_slug);
+
+                if ($tour) {
+                    // URL is non-canonical (spaces/capitals), redirect to canonical form
+                    $canonical_path = '/h3panos/' . $tour->tour_slug;
+                    if (preg_match('#^/h3panos/[^/]+/(.+)$#', $request_uri, $path_matches)) {
+                        $canonical_path .= '/' . $path_matches[1];
+                    }
+
+                    wp_redirect($canonical_path, 301);
+                    exit;
+                }
+            }
+
+            // Check if this slug needs to be redirected from old slug
             $tour = $this->metadata->find_by_old_slug($requested_slug);
 
             if ($tour) {
                 // Found in url_history, redirect to current slug
-                $current_path = str_replace('/h3panos/' . $requested_slug, '/h3panos/' . $tour->tour_slug, $request_uri);
+                $canonical_path = '/h3panos/' . $tour->tour_slug;
+                if (preg_match('#^/h3panos/[^/]+/(.+)$#', $request_uri, $path_matches)) {
+                    $canonical_path .= '/' . $path_matches[1];
+                }
 
-                wp_redirect($current_path, 301);
+                wp_redirect($canonical_path, 301);
                 exit;
             }
         }
@@ -124,12 +147,14 @@ class H3TM_URL_Redirector {
             return;
         }
 
-        // It's a slug - try to find tour
-        $tour = $this->metadata->get_by_slug($tour_identifier);
+        // It's a slug - normalize and try to find tour
+        // Normalize the identifier (lowercase, hyphens instead of spaces)
+        $normalized_slug = sanitize_title(urldecode($tour_identifier));
+        $tour = $this->metadata->get_by_slug($normalized_slug);
 
         if (!$tour) {
             // Tour not found by slug, try old slug
-            $tour = $this->metadata->find_by_old_slug($tour_identifier);
+            $tour = $this->metadata->find_by_old_slug($normalized_slug);
 
             if ($tour) {
                 // Redirect to current slug

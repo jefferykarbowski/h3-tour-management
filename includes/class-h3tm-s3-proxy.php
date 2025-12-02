@@ -556,16 +556,19 @@ class H3TM_S3_Proxy {
         if (class_exists('H3TM_Tour_Metadata')) {
             $metadata = new H3TM_Tour_Metadata();
 
+            // Normalize identifier (handle spaces, capitals, etc.)
+            $normalized_slug = sanitize_title(urldecode($identifier));
+
             // First try current slug
-            $tour = $metadata->get_by_slug($identifier);
+            $tour = $metadata->get_by_slug($normalized_slug);
 
             if ($tour && !empty($tour->tour_id)) {
-                error_log('H3TM S3 Proxy: Resolved slug "' . $identifier . '" to tour_id: ' . $tour->tour_id);
+                error_log('H3TM S3 Proxy: Resolved slug "' . $identifier . '" (normalized: "' . $normalized_slug . '") to tour_id: ' . $tour->tour_id);
                 return $tour->tour_id;
             }
 
             // Check if this is an old slug that needs 301 redirect
-            $tour = $metadata->find_by_old_slug($identifier);
+            $tour = $metadata->find_by_old_slug($normalized_slug);
 
             if ($tour && !empty($tour->tour_slug)) {
                 error_log('H3TM S3 Proxy: Old slug "' . $identifier . '" found, should redirect to: ' . $tour->tour_slug);
