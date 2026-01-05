@@ -15,12 +15,11 @@ class H3TM_S3_Proxy {
         // Add rewrite rules for tour URLs
         add_action('init', array($this, 'add_rewrite_rules'));
 
-        // Pantheon-specific: Use early hook to catch requests before template_redirect
-        if (defined('PANTHEON_ENVIRONMENT')) {
-            add_action('init', array($this, 'pantheon_early_tour_handler'), 999);
-        }
+        // Universal early handler - catches h3panos requests before template_redirect
+        // Works on all hosts (Pantheon, Bluehost, etc.)
+        add_action('init', array($this, 'early_tour_handler'), 999);
 
-        // Standard WordPress hook for tour handling
+        // Standard WordPress hook for tour handling (fallback)
         add_action('template_redirect', array($this, 'handle_tour_requests'));
 
         // Update tour manager to show local URLs
@@ -72,10 +71,11 @@ class H3TM_S3_Proxy {
     }
 
     /**
-     * Pantheon-specific early tour handler
+     * Universal early tour handler
      * Catches h3panos requests before WordPress fully processes them
+     * Works on all hosts (Pantheon, Bluehost, etc.)
      */
-    public function pantheon_early_tour_handler() {
+    public function early_tour_handler() {
         $request_uri = $_SERVER['REQUEST_URI'] ?? '';
 
         // Only process h3panos requests
@@ -83,14 +83,14 @@ class H3TM_S3_Proxy {
             return;
         }
 
-        error_log('H3TM S3 Proxy: Pantheon early handler for: ' . $request_uri);
+        error_log('H3TM S3 Proxy: Early handler for: ' . $request_uri);
 
         // Parse the URL to extract tour name and file
         if (preg_match('#/h3panos/([^/?\#]+)(/([^?\#]*))?#', $request_uri, $matches)) {
             $tour_name = urldecode($matches[1]);
             $file_path = isset($matches[3]) && $matches[3] ? $matches[3] : 'index.htm';
 
-            error_log('H3TM S3 Proxy: Pantheon parsed tour=' . $tour_name . ', file=' . $file_path);
+            error_log('H3TM S3 Proxy: Parsed tour=' . $tour_name . ', file=' . $file_path);
 
             // Resolve tour identifier (slug or display name) to tour_id for S3 lookup
             $resolved = $this->resolve_tour_identifier($tour_name);
@@ -118,7 +118,7 @@ class H3TM_S3_Proxy {
                 $redirect_url = add_query_arg('_redirected', '1',
                     site_url('/h3panos/' . rawurlencode($tour_name) . '/')
                 );
-                error_log('H3TM S3 Proxy: Pantheon redirecting to: ' . $redirect_url);
+                error_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
                 wp_redirect($redirect_url, 301);
                 die();
             }
@@ -155,7 +155,7 @@ class H3TM_S3_Proxy {
                 if ($this->is_tour_id($resolved_tour_id)) {
                     // Tour IDs are used directly as S3 folder names
                     $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
-                    error_log('H3TM S3 Proxy: Pantheon using tour_id format: ' . $s3_url);
+                    error_log('H3TM S3 Proxy: Using tour_id format: ' . $s3_url);
                     $this->proxy_s3_file($s3_url, $file_path);
                 } else {
                     // Legacy: Fallback to original logic with resolved identifier
@@ -194,9 +194,9 @@ class H3TM_S3_Proxy {
         $tour_name = urldecode($tour_name);
 
         if (empty($tour_name)) {
-            // Pantheon nginx fallback: Parse URL directly if query vars not set
+            // Fallback: Parse URL directly if query vars not set
             if (strpos($request_uri, 'h3panos') !== false && preg_match('#/h3panos/([^/]+)(/(.*))?#', $request_uri, $matches)) {
-                error_log('H3TM S3 Proxy: Pantheon fallback - parsing URL directly');
+                error_log('H3TM S3 Proxy: Fallback - parsing URL directly');
                 $tour_name = urldecode($matches[1]);
                 $file_path = isset($matches[3]) && $matches[3] ? $matches[3] : 'index.htm';
                 error_log('H3TM S3 Proxy: Parsed tour_name=' . $tour_name . ', file_path=' . $file_path);
