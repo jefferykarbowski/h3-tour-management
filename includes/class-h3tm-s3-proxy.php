@@ -88,9 +88,7 @@ class H3TM_S3_Proxy {
         // Parse the URL to extract tour name and file
         if (preg_match('#/h3panos/([^/?\#]+)(/([^?\#]*))?#', $request_uri, $matches)) {
             $tour_name = urldecode($matches[1]);
-            $file_path = isset($matches[3]) && $matches[3] ? $matches[3] : 'index.htm';
-
-            error_log('H3TM S3 Proxy: Parsed tour=' . $tour_name . ', file=' . $file_path);
+            $requested_file = isset($matches[3]) && $matches[3] ? $matches[3] : null;
 
             // Resolve tour identifier (slug or display name) to tour_id for S3 lookup
             $resolved = $this->resolve_tour_identifier($tour_name);
@@ -98,8 +96,8 @@ class H3TM_S3_Proxy {
             // Check if we need to redirect to current slug (old slug accessed)
             if (is_array($resolved) && isset($resolved['redirect']) && $resolved['redirect']) {
                 $redirect_url = site_url('/h3panos/' . $resolved['current_slug']);
-                if ($file_path && $file_path !== 'index.htm') {
-                    $redirect_url .= '/' . $file_path;
+                if ($requested_file) {
+                    $redirect_url .= '/' . $requested_file;
                 } else {
                     $redirect_url .= '/';
                 }
@@ -110,8 +108,16 @@ class H3TM_S3_Proxy {
 
             $resolved_tour_id = $resolved; // It's a string (tour_id)
 
+            // Determine file path - use custom entry file if no specific file requested
+            $file_path = $requested_file ? $requested_file : $this->get_entry_file($tour_name);
+
+            error_log('H3TM S3 Proxy: Parsed tour=' . $tour_name . ', file=' . $file_path);
+
+            // Get the default entry file for redirect comparison
+            $entry_file = $this->get_entry_file($tour_name);
+
             // Redirect to directory URL for proper base tag resolution (with loop prevention)
-            if ($file_path === 'index.htm' &&
+            if ($file_path === $entry_file &&
                 !preg_match('#/h3panos/[^/]+/$#', $request_uri) &&
                 !isset($_GET['_redirected'])) {  // Prevent infinite redirect loops
 
@@ -189,19 +195,21 @@ class H3TM_S3_Proxy {
         // Decode URL encoding (convert %20 to spaces)
         $tour_name = urldecode($tour_name);
 
+        // Track if a specific file was requested vs using default
+        $requested_file = null;
+
         if (empty($tour_name)) {
             // Fallback: Parse URL directly if query vars not set
             if (strpos($request_uri, 'h3panos') !== false && preg_match('#/h3panos/([^/]+)(/(.*))?#', $request_uri, $matches)) {
                 error_log('H3TM S3 Proxy: Fallback - parsing URL directly');
                 $tour_name = urldecode($matches[1]);
-                $file_path = isset($matches[3]) && $matches[3] ? $matches[3] : 'index.htm';
-                error_log('H3TM S3 Proxy: Parsed tour_name=' . $tour_name . ', file_path=' . $file_path);
+                $requested_file = isset($matches[3]) && $matches[3] ? $matches[3] : null;
             } else {
                 return; // Not a tour request
             }
+        } else {
+            $requested_file = !empty($file_path) ? $file_path : null;
         }
-
-        error_log('H3TM S3 Proxy: Processing tour request for=' . $tour_name . ', file=' . $file_path);
 
         // Resolve tour identifier (slug or display name) to tour_id for S3 lookup
         $resolved = $this->resolve_tour_identifier($tour_name);
@@ -209,8 +217,8 @@ class H3TM_S3_Proxy {
         // Check if we need to redirect to current slug (old slug accessed)
         if (is_array($resolved) && isset($resolved['redirect']) && $resolved['redirect']) {
             $redirect_url = site_url('/h3panos/' . $resolved['current_slug']);
-            if ($file_path && $file_path !== 'index.htm') {
-                $redirect_url .= '/' . $file_path;
+            if ($requested_file) {
+                $redirect_url .= '/' . $requested_file;
             } else {
                 $redirect_url .= '/';
             }
@@ -221,13 +229,16 @@ class H3TM_S3_Proxy {
 
         $resolved_tour_id = $resolved; // It's a string (tour_id)
 
-        // Default to index.htm if no file specified
-        if (empty($file_path)) {
-            $file_path = 'index.htm';
-        }
+        // Determine file path - use custom entry file if no specific file requested
+        $file_path = $requested_file ? $requested_file : $this->get_entry_file($tour_name);
+
+        error_log('H3TM S3 Proxy: Processing tour request for=' . $tour_name . ', file=' . $file_path);
+
+        // Get the default entry file for redirect comparison
+        $entry_file = $this->get_entry_file($tour_name);
 
         // Redirect to directory URL for proper base tag resolution (with loop prevention)
-        if ($file_path === 'index.htm' &&
+        if ($file_path === $entry_file &&
             $_SERVER['REQUEST_URI'] &&
             !preg_match('#/h3panos/[^/]+/$#', $_SERVER['REQUEST_URI']) &&
             !isset($_GET['_redirected'])) {  // Prevent infinite redirect loops
@@ -576,6 +587,37 @@ class H3TM_S3_Proxy {
         // Fallback: assume it's a legacy tour name (convert spaces to dashes for S3)
         error_log('H3TM S3 Proxy: No metadata found for "' . $identifier . '", using as legacy tour name');
         return $identifier;
+    }
+
+    /**
+     * Get the entry file for a tour (custom or default index.htm)
+     *
+     * @param string $tour_identifier Tour slug, tour_id, or display name
+     * @return string Entry file path (e.g., 'index.htm', 'index.html', 'Mellott.html')
+     */
+    private function get_entry_file($tour_identifier) {
+        if (!class_exists('H3TM_Tour_Metadata')) {
+            return 'index.htm';
+        }
+
+        $metadata = new H3TM_Tour_Metadata();
+        $tour = null;
+
+        // Try to find tour by tour_id first
+        if ($this->is_tour_id($tour_identifier)) {
+            $tour = $metadata->get_by_tour_id($tour_identifier);
+        } else {
+            // Try by slug
+            $normalized_slug = sanitize_title(urldecode($tour_identifier));
+            $tour = $metadata->get_by_slug($normalized_slug);
+        }
+
+        if ($tour && !empty($tour->entry_file)) {
+            error_log('H3TM S3 Proxy: Using custom entry file: ' . $tour->entry_file);
+            return $tour->entry_file;
+        }
+
+        return 'index.htm';
     }
 
     /**

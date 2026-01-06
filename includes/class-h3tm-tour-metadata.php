@@ -39,6 +39,7 @@ class H3TM_Tour_Metadata {
             'display_name' => '',
             's3_folder' => '',
             'status' => 'completed',
+            'entry_file' => 'index.htm',
             'url_history' => json_encode(array()),
             'created_date' => current_time('mysql'),
             'updated_date' => current_time('mysql')
@@ -49,7 +50,7 @@ class H3TM_Tour_Metadata {
         $result = $wpdb->insert(
             $this->table_name,
             $data,
-            array('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')
+            array('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')
         );
 
         return $result ? $wpdb->insert_id : false;

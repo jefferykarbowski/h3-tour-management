@@ -519,6 +519,7 @@ class H3TM_S3_Simple {
 
         $file_name = isset($_POST['file_name']) ? sanitize_file_name($_POST['file_name']) : '';
         $file_size = isset($_POST['file_size']) ? intval($_POST['file_size']) : 0;
+        $entry_file = isset($_POST['entry_file']) ? sanitize_text_field($_POST['entry_file']) : 'index.htm';
         $is_update = isset($_POST['is_update']) && $_POST['is_update'] === 'true';
 
         // Check if metadata class exists
@@ -581,6 +582,7 @@ class H3TM_S3_Simple {
                 'display_name' => $tour_name,
                 's3_folder' => $s3_folder,
                 'status' => 'uploading',
+                'entry_file' => $entry_file,
                 'url_history' => json_encode(array())
             ));
 
@@ -589,7 +591,7 @@ class H3TM_S3_Simple {
                 wp_send_json_error('Failed to create tour metadata');
             }
 
-            error_log('H3TM S3 Simple: Created metadata entry with ID: ' . $metadata_id . ', status=uploading');
+            error_log('H3TM S3 Simple: Created metadata entry with ID: ' . $metadata_id . ', status=uploading, entry_file=' . $entry_file);
 
             // Clear tour list cache so new tour appears immediately (even with 'uploading' status)
             $this->clear_tour_cache();

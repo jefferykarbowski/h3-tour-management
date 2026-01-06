@@ -63,6 +63,7 @@ class H3TM_Activator {
               display_name varchar(255) NOT NULL,
               s3_folder varchar(255) NOT NULL,
               status varchar(20) DEFAULT 'completed',
+              entry_file varchar(255) DEFAULT 'index.htm',
               url_history text,
               created_date datetime DEFAULT CURRENT_TIMESTAMP,
               updated_date datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -171,6 +172,22 @@ class H3TM_Activator {
             ");
 
             error_log('H3TM: Added status column and index');
+        }
+
+        // Check if entry_file column already exists
+        $entry_file_column_exists = $wpdb->get_results(
+            "SHOW COLUMNS FROM `{$metadata_table}` LIKE 'entry_file'"
+        );
+
+        if (empty($entry_file_column_exists)) {
+            error_log('H3TM: Adding entry_file column to tour metadata table');
+
+            // Add entry_file column (default to 'index.htm' for existing tours)
+            $wpdb->query("ALTER TABLE `{$metadata_table}`
+                ADD COLUMN `entry_file` varchar(255) DEFAULT 'index.htm' AFTER `status`
+            ");
+
+            error_log('H3TM: Added entry_file column');
         }
 
         // Mark upgrade as complete

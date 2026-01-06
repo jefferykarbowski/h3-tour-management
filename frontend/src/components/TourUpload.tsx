@@ -59,6 +59,7 @@ function GridPattern() {
 
 export function TourUpload({ onUploadComplete }: TourUploadProps) {
   const [tourName, setTourName] = useState("");
+  const [entryFile, setEntryFile] = useState("index.htm");
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -99,7 +100,7 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
 
     try {
       // Step 1: Request presigned URL from server (returns tour_id)
-      const presignedData = await requestPresignedUrl(file, tourName);
+      const presignedData = await requestPresignedUrl(file, tourName, entryFile);
 
       // Extract tour_id from response
       const uploadTourId = presignedData.tour_id;
@@ -124,6 +125,7 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
         setIsComplete(false);
         onUploadComplete?.(tourName, file);
         setTourName("");
+        setEntryFile("index.htm");
         setFile(null);
         setProgress(0);
       }, 1500);
@@ -136,10 +138,11 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
     }
   };
 
-  const requestPresignedUrl = async (file: File, tourName: string) => {
+  const requestPresignedUrl = async (file: File, tourName: string, entryFile: string) => {
     const formData = new FormData();
     formData.append('action', 'h3tm_get_s3_presigned_url');
     formData.append('tour_name', tourName);
+    formData.append('entry_file', entryFile);
     formData.append('file_name', file.name);
     formData.append('file_size', file.size.toString());
     formData.append('file_type', file.type || 'application/zip');
@@ -318,6 +321,22 @@ export function TourUpload({ onUploadComplete }: TourUploadProps) {
             onChange={(e) => setTourName(e.target.value)}
             className="w-full"
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="entry-file" className="text-sm font-medium">
+            Entry File <span className="text-muted-foreground font-normal">(optional)</span>
+          </Label>
+          <Input
+            id="entry-file"
+            placeholder="index.htm"
+            value={entryFile}
+            onChange={(e) => setEntryFile(e.target.value || "index.htm")}
+            className="w-full"
+          />
+          <p className="text-xs text-muted-foreground">
+            Default: index.htm. Change if your tour uses a different entry point (e.g., index.html, Mellott.html)
+          </p>
         </div>
 
         <div className="space-y-2">
