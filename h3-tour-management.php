@@ -3,7 +3,7 @@
  * Plugin Name: H3 Tour Management
  * Plugin URI: https://github.com/jefferykarbowski/h3-tour-management
  * Description: Cloud-based Tour Management system with S3/CloudFront delivery, analytics, and user management
- * Version: 2.7.7
+ * Version: 2.7.8
  * Author: H3 Photography
  * Author URI: https://h3vt.com/
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('H3TM_VERSION', '2.7.7');
+define('H3TM_VERSION', '2.7.8');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -61,6 +61,9 @@ register_deactivation_hook(__FILE__, array('H3TM_Activator', 'deactivate'));
 // Initialize plugin
 add_action('plugins_loaded', 'h3tm_init');
 function h3tm_init() {
+    // Run database upgrades if needed (for updates via GitHub without deactivate/reactivate)
+    H3TM_Activator::maybe_upgrade_tour_metadata_table();
+
     // Initialize components
     new H3TM_Admin();
     new H3TM_User_Fields();

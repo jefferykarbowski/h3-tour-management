@@ -120,16 +120,11 @@ class H3TM_Activator {
     }
 
     /**
-     * Upgrade tour metadata table to add tour_id column
-     * Runs on plugin activation to upgrade existing installations
+     * Upgrade tour metadata table to add new columns
+     * Runs on plugin activation AND on plugins_loaded to handle GitHub updates
      */
-    private static function maybe_upgrade_tour_metadata_table() {
+    public static function maybe_upgrade_tour_metadata_table() {
         global $wpdb;
-
-        // Check if upgrade has already been run
-        if (get_option('h3tm_metadata_upgraded_to_v2', false)) {
-            return;
-        }
 
         $metadata_table = $wpdb->prefix . 'h3tm_tour_metadata';
 
@@ -139,60 +134,68 @@ class H3TM_Activator {
             return; // Table will be created with new schema
         }
 
-        // Check if tour_id column already exists
-        $column_exists = $wpdb->get_results(
-            "SHOW COLUMNS FROM `{$metadata_table}` LIKE 'tour_id'"
-        );
+        // V2 upgrade: tour_id and status columns
+        if (!get_option('h3tm_metadata_upgraded_to_v2', false)) {
+            // Check if tour_id column already exists
+            $column_exists = $wpdb->get_results(
+                "SHOW COLUMNS FROM `{$metadata_table}` LIKE 'tour_id'"
+            );
 
-        if (empty($column_exists)) {
-            error_log('H3TM: Upgrading tour metadata table to add tour_id column');
+            if (empty($column_exists)) {
+                error_log('H3TM: Upgrading tour metadata table to add tour_id column');
 
-            // Add tour_id column (nullable for backward compatibility)
-            $wpdb->query("ALTER TABLE `{$metadata_table}`
-                ADD COLUMN `tour_id` varchar(32) DEFAULT NULL AFTER `id`,
-                ADD UNIQUE KEY `tour_id` (`tour_id`),
-                ADD KEY `idx_tour_id` (`tour_id`)
-            ");
+                // Add tour_id column (nullable for backward compatibility)
+                $wpdb->query("ALTER TABLE `{$metadata_table}`
+                    ADD COLUMN `tour_id` varchar(32) DEFAULT NULL AFTER `id`,
+                    ADD UNIQUE KEY `tour_id` (`tour_id`),
+                    ADD KEY `idx_tour_id` (`tour_id`)
+                ");
 
-            error_log('H3TM: Added tour_id column and indexes');
+                error_log('H3TM: Added tour_id column and indexes');
+            }
+
+            // Check if status column already exists
+            $status_column_exists = $wpdb->get_results(
+                "SHOW COLUMNS FROM `{$metadata_table}` LIKE 'status'"
+            );
+
+            if (empty($status_column_exists)) {
+                error_log('H3TM: Adding status column to tour metadata table');
+
+                // Add status column (default to 'completed' for existing tours)
+                $wpdb->query("ALTER TABLE `{$metadata_table}`
+                    ADD COLUMN `status` varchar(20) DEFAULT 'completed' AFTER `s3_folder`,
+                    ADD KEY `idx_status` (`status`)
+                ");
+
+                error_log('H3TM: Added status column and index');
+            }
+
+            update_option('h3tm_metadata_upgraded_to_v2', true);
+            error_log('H3TM: Tour metadata table v2 upgrade completed');
         }
 
-        // Check if status column already exists
-        $status_column_exists = $wpdb->get_results(
-            "SHOW COLUMNS FROM `{$metadata_table}` LIKE 'status'"
-        );
+        // V2.1 upgrade: entry_file column (added in v2.7.6)
+        // Always check this regardless of v2 flag since it was added later
+        if (!get_option('h3tm_metadata_upgraded_to_v2_1', false)) {
+            $entry_file_column_exists = $wpdb->get_results(
+                "SHOW COLUMNS FROM `{$metadata_table}` LIKE 'entry_file'"
+            );
 
-        if (empty($status_column_exists)) {
-            error_log('H3TM: Adding status column to tour metadata table');
+            if (empty($entry_file_column_exists)) {
+                error_log('H3TM: Adding entry_file column to tour metadata table');
 
-            // Add status column (default to 'completed' for existing tours)
-            $wpdb->query("ALTER TABLE `{$metadata_table}`
-                ADD COLUMN `status` varchar(20) DEFAULT 'completed' AFTER `s3_folder`,
-                ADD KEY `idx_status` (`status`)
-            ");
+                // Add entry_file column (default to 'index.htm' for existing tours)
+                $wpdb->query("ALTER TABLE `{$metadata_table}`
+                    ADD COLUMN `entry_file` varchar(255) DEFAULT 'index.htm' AFTER `status`
+                ");
 
-            error_log('H3TM: Added status column and index');
+                error_log('H3TM: Added entry_file column');
+            }
+
+            update_option('h3tm_metadata_upgraded_to_v2_1', true);
+            error_log('H3TM: Tour metadata table v2.1 upgrade completed');
         }
-
-        // Check if entry_file column already exists
-        $entry_file_column_exists = $wpdb->get_results(
-            "SHOW COLUMNS FROM `{$metadata_table}` LIKE 'entry_file'"
-        );
-
-        if (empty($entry_file_column_exists)) {
-            error_log('H3TM: Adding entry_file column to tour metadata table');
-
-            // Add entry_file column (default to 'index.htm' for existing tours)
-            $wpdb->query("ALTER TABLE `{$metadata_table}`
-                ADD COLUMN `entry_file` varchar(255) DEFAULT 'index.htm' AFTER `status`
-            ");
-
-            error_log('H3TM: Added entry_file column');
-        }
-
-        // Mark upgrade as complete
-        update_option('h3tm_metadata_upgraded_to_v2', true);
-        error_log('H3TM: Tour metadata table upgrade completed');
     }
 
     /**
