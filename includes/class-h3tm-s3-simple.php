@@ -287,8 +287,8 @@ class H3TM_S3_Simple {
             if (class_exists('H3TM_Tour_Metadata')) {
                 global $wpdb;
                 $table_name = $wpdb->prefix . 'h3tm_tour_metadata';
-                // Get all tours including uploading/processing status
-                $results = $wpdb->get_results("SELECT tour_id, tour_slug, display_name, status FROM $table_name");
+                // Get all tours including uploading/processing status, with updated_date for frontend
+                $results = $wpdb->get_results("SELECT tour_id, tour_slug, display_name, status, updated_date FROM $table_name");
 
                 foreach ($results as $row) {
                     if (!empty($row->tour_id)) {
@@ -296,7 +296,8 @@ class H3TM_S3_Simple {
                             'display_name' => $row->display_name,
                             'tour_slug' => $row->tour_slug,
                             'status' => $row->status,
-                            'tour_id' => $row->tour_id
+                            'tour_id' => $row->tour_id,
+                            'updated_date' => $row->updated_date
                         );
                     }
                 }
@@ -313,11 +314,20 @@ class H3TM_S3_Simple {
                             'name' => $tour_data['display_name'],
                             'tour_slug' => $tour_data['tour_slug'],
                             'status' => $tour_data['status'],
-                            'tour_id' => $tour_data['tour_id']
+                            'tour_id' => $tour_data['tour_id'],
+                            'updated_date' => $tour_data['updated_date']
                         );
                         error_log('H3TM S3: Added ID-based tour: ' . $tour_data['display_name'] . ' (Slug: ' . $tour_data['tour_slug'] . ', ID: ' . $tour_folder . ')');
                     } else {
-                        error_log('H3TM S3: WARNING - Tour ID folder found but no metadata: ' . $tour_folder);
+                        // Fallback: show tour with tour_id as display name when metadata is missing
+                        error_log('H3TM S3: WARNING - Tour ID folder found but no metadata: ' . $tour_folder . ' - adding with fallback display');
+                        $tours[] = array(
+                            'name' => 'Tour ' . $tour_folder,
+                            'tour_slug' => $tour_folder,
+                            'status' => 'unknown',
+                            'tour_id' => $tour_folder,
+                            'updated_date' => null
+                        );
                     }
                 } else {
                     // Legacy name-based folder - convert dashes to spaces
@@ -326,6 +336,30 @@ class H3TM_S3_Simple {
                     $tour_display_name = str_replace('-', ' ', $tour_folder);
                     $tours[] = $tour_display_name;
                     error_log('H3TM S3: Added legacy tour: ' . $tour_display_name . ' (S3 folder: ' . $tour_folder . ')');
+                }
+            }
+
+            // Also add tours from metadata that are still uploading/processing
+            // These may not have S3 folders yet but should still appear in the list
+            $tour_ids_in_list = array();
+            foreach ($tours as $tour) {
+                if (isset($tour['tour_id'])) {
+                    $tour_ids_in_list[$tour['tour_id']] = true;
+                }
+            }
+
+            foreach ($metadata_tours as $tour_id => $tour_data) {
+                // Add tours with uploading/processing status that aren't in the list yet
+                if (!isset($tour_ids_in_list[$tour_id]) &&
+                    in_array($tour_data['status'], array('uploading', 'processing'))) {
+                    $tours[] = array(
+                        'name' => $tour_data['display_name'],
+                        'tour_slug' => $tour_data['tour_slug'],
+                        'status' => $tour_data['status'],
+                        'tour_id' => $tour_data['tour_id'],
+                        'updated_date' => $tour_data['updated_date']
+                    );
+                    error_log('H3TM S3: Added pending tour from metadata: ' . $tour_data['display_name'] . ' (Status: ' . $tour_data['status'] . ')');
                 }
             }
 
