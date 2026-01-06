@@ -137,18 +137,14 @@ class H3TM_S3_Proxy {
                 $urls = $this->cdn_helper->get_tour_urls($resolved_tour_id, $file_path);
                 error_log('H3TM S3 Proxy: Using CDN helper, trying URLs: ' . implode(', ', $urls));
 
-                $success = false;
                 foreach ($urls as $url) {
                     if ($this->try_proxy_s3_file($url, $file_path)) {
-                        $success = true;
-                        break;
+                        die(); // Successfully served - exit immediately
                     }
                 }
 
-                if (!$success) {
-                    error_log('H3TM S3 Proxy: All URLs failed');
-                    wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
-                }
+                error_log('H3TM S3 Proxy: All URLs failed');
+                wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
             } else {
                 // Use resolved tour_id for S3 URLs
                 // Check if this is a tour_id (immutable identifier)
@@ -157,6 +153,7 @@ class H3TM_S3_Proxy {
                     $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
                     error_log('H3TM S3 Proxy: Using tour_id format: ' . $s3_url);
                     $this->proxy_s3_file($s3_url, $file_path);
+                    die(); // Exit after serving
                 } else {
                     // Legacy: Fallback to original logic with resolved identifier
                     $s3_url_with_spaces = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
@@ -165,15 +162,14 @@ class H3TM_S3_Proxy {
                     error_log('H3TM S3 Proxy: Trying S3 URLs - spaces: ' . $s3_url_with_spaces . ', dashes: ' . $s3_url_with_dashes);
 
                     // Try with spaces first, then with dashes if that fails
-                    if (!$this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
-                        error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
-                        $this->proxy_s3_file($s3_url_with_dashes, $file_path);
+                    if ($this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
+                        die(); // Successfully served - exit immediately
                     }
+                    error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
+                    $this->proxy_s3_file($s3_url_with_dashes, $file_path);
+                    die(); // Exit after serving
                 }
             }
-
-            // Properly terminate after serving content
-            die();
         }
     }
 
@@ -260,19 +256,16 @@ class H3TM_S3_Proxy {
             error_log('H3TM S3 Proxy: Using CDN helper for "' . $tour_name . '"');
             error_log('H3TM S3 Proxy: CDN URLs: ' . implode(', ', $urls));
 
-            $success = false;
             foreach ($urls as $url) {
                 if ($this->try_proxy_s3_file($url, $file_path)) {
-                    $success = true;
-                    break;
+                    die(); // Successfully served - exit immediately
                 }
                 error_log('H3TM S3 Proxy: Failed to fetch from ' . $url);
             }
 
-            if (!$success) {
-                error_log('H3TM S3 Proxy: All CDN URLs failed');
-                wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
-            }
+            // All URLs failed
+            error_log('H3TM S3 Proxy: All CDN URLs failed');
+            wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
         } else {
             // Use resolved tour_id for S3 URLs
             // Check if this is a tour_id (immutable identifier)
@@ -281,6 +274,7 @@ class H3TM_S3_Proxy {
                 $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
                 error_log('H3TM S3 Proxy: Using tour_id format: ' . $s3_url);
                 $this->proxy_s3_file($s3_url, $file_path);
+                die(); // Exit after serving
             } else {
                 // Legacy: Fallback to original logic with resolved identifier
                 $s3_url_with_spaces = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
@@ -291,15 +285,14 @@ class H3TM_S3_Proxy {
                 error_log('H3TM S3 Proxy: URL with dashes: ' . $s3_url_with_dashes);
 
                 // Try with spaces first, then with dashes if that fails
-                if (!$this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
-                    error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
-                    $this->proxy_s3_file($s3_url_with_dashes, $file_path);
+                if ($this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
+                    die(); // Successfully served - exit immediately
                 }
+                error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
+                $this->proxy_s3_file($s3_url_with_dashes, $file_path);
+                die(); // Exit after serving
             }
         }
-
-        // For Pantheon compatibility, use wp_die() instead of exit()
-        wp_die('', '', array('response' => 200));
     }
 
     /**
