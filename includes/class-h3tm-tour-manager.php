@@ -91,37 +91,61 @@ class H3TM_Tour_Manager {
     }
     
     /**
-     * Get tour title from tour identifier (tour_id, slug, or s3_folder)
-     * Looks up the display_name from h3tm_tour_metadata table
+     * Get tour title from tour identifier
+     * Returns the display_name for email display purposes
      *
-     * @param string $tour_identifier The tour ID, slug, or S3 folder name
+     * @param string $tour_identifier The tour ID, slug, s3_folder, or display_name
      * @return string The display name if found, otherwise the identifier
      */
     public function get_tour_title($tour_identifier) {
+        $metadata = $this->get_tour_metadata($tour_identifier);
+        if ($metadata && !empty($metadata->display_name)) {
+            return $metadata->display_name;
+        }
+        return $tour_identifier;
+    }
+
+    /**
+     * Get tour_id from tour identifier for GA4 pagePath queries
+     * The tour_id is used in the pagePath format: /tours/{tour_id}/
+     *
+     * @param string $tour_identifier The tour ID, slug, s3_folder, or display_name
+     * @return string|null The tour_id if found, null otherwise
+     */
+    public function get_tour_id($tour_identifier) {
+        $metadata = $this->get_tour_metadata($tour_identifier);
+        if ($metadata && !empty($metadata->tour_id)) {
+            return $metadata->tour_id;
+        }
+        return null;
+    }
+
+    /**
+     * Get tour metadata by any identifier
+     * Searches by tour_id, tour_slug, s3_folder, or display_name
+     *
+     * @param string $tour_identifier Any tour identifier
+     * @return object|null The metadata row or null
+     */
+    public function get_tour_metadata($tour_identifier) {
         global $wpdb;
         $table_name = $wpdb->prefix . 'h3tm_tour_metadata';
 
         // Check if metadata table exists
         if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") !== $table_name) {
-            return $tour_identifier;
+            return null;
         }
 
-        // Try to find by tour_id, tour_slug, or s3_folder
-        $metadata = $wpdb->get_row($wpdb->prepare(
-            "SELECT display_name FROM $table_name
-             WHERE tour_id = %s OR tour_slug = %s OR s3_folder = %s
+        // Try to find by tour_id, tour_slug, s3_folder, or display_name
+        return $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $table_name
+             WHERE tour_id = %s OR tour_slug = %s OR s3_folder = %s OR display_name = %s
              LIMIT 1",
+            $tour_identifier,
             $tour_identifier,
             $tour_identifier,
             $tour_identifier
         ));
-
-        if ($metadata && !empty($metadata->display_name)) {
-            return $metadata->display_name;
-        }
-
-        // Fall back to the identifier if no metadata found
-        return $tour_identifier;
     }
 
     /**

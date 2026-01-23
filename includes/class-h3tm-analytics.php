@@ -186,19 +186,19 @@ class H3TM_Analytics {
     /**
      * Generate analytics email body with updated metrics
      */
-    private function generate_analytics_email($tour, $tour_title) {
-        // Get analytics data with new vs returning user breakdown
+    private function generate_analytics_email($tour, $tour_title, $tour_id) {
+        // Get analytics data with new vs returning user breakdown using tour_id for pagePath queries
         $weekAgo = date('Y-m-d', strtotime('-7 days'));
-        $weekStats = $this->get_enhanced_report($tour_title, $weekAgo);
+        $weekStats = $this->get_enhanced_report($tour_id, $weekAgo);
 
         $monthAgo = date('Y-m-d', strtotime('-30 days'));
-        $monthStats = $this->get_enhanced_report($tour_title, $monthAgo);
+        $monthStats = $this->get_enhanced_report($tour_id, $monthAgo);
 
         $ninetyDaysAgo = date('Y-m-d', strtotime('-90 days'));
-        $ninetyDayStats = $this->get_enhanced_report($tour_title, $ninetyDaysAgo);
+        $ninetyDayStats = $this->get_enhanced_report($tour_id, $ninetyDaysAgo);
 
         $threeYearsAgo = date('Y-m-d', strtotime('-3 years'));
-        $allTimeStats = $this->get_enhanced_report($tour_title, $threeYearsAgo);
+        $allTimeStats = $this->get_enhanced_report($tour_id, $threeYearsAgo);
         
         // Build clean email HTML - removed thumbnail, pie chart, and country table
         $body = '<!DOCTYPE html>
@@ -308,16 +308,16 @@ class H3TM_Analytics {
     /**
      * Get enhanced analytics report with new vs returning user breakdown
      *
-     * @param string $page_title The tour display name (looked up from metadata)
+     * @param string $tour_id The tour_id for pagePath filtering (e.g., "20251229_175901_2s5v83o1")
      * @param string $start_date The start date for the report
      */
-    private function get_enhanced_report($page_title, $start_date) {
-        // Get basic metrics - filters by pageTitle
-        $basic_report = $this->get_report($page_title, $start_date);
+    private function get_enhanced_report($tour_id, $start_date) {
+        // Get basic metrics - filters by pagePath containing tour_id
+        $basic_report = $this->get_report($tour_id, $start_date);
         $basic_data = $this->report_results($basic_report);
 
         // Get new vs returning users
-        $users_report = $this->get_new_vs_returning_users($page_title, $start_date);
+        $users_report = $this->get_new_vs_returning_users($tour_id, $start_date);
         $users_data = $this->extract_user_breakdown($users_report);
 
         return array(
@@ -407,11 +407,21 @@ class H3TM_Analytics {
         foreach ($tours as $tour) {
             $tour_title = trim($tour_manager->get_tour_title($tour));
 
-            // Get enhanced analytics data for this tour
-            $weekStats = $this->get_enhanced_report($tour_title, date('Y-m-d', strtotime('-7 days')));
-            $monthStats = $this->get_enhanced_report($tour_title, date('Y-m-d', strtotime('-30 days')));
-            $ninetyDayStats = $this->get_enhanced_report($tour_title, date('Y-m-d', strtotime('-90 days')));
-            $allTimeStats = $this->get_enhanced_report($tour_title, date('Y-m-d', strtotime('-3 years')));
+            // Get tour_id for GA4 pagePath queries
+            // The tour_id is used in pagePath format: /tours/{tour_id}/
+            $tour_id = $tour_manager->get_tour_id($tour);
+
+            // Skip this tour if we can't find a tour_id (no metadata entry)
+            if (empty($tour_id)) {
+                error_log('H3TM Analytics: No tour_id found for tour: ' . $tour);
+                continue;
+            }
+
+            // Get enhanced analytics data for this tour using tour_id for pagePath filtering
+            $weekStats = $this->get_enhanced_report($tour_id, date('Y-m-d', strtotime('-7 days')));
+            $monthStats = $this->get_enhanced_report($tour_id, date('Y-m-d', strtotime('-30 days')));
+            $ninetyDayStats = $this->get_enhanced_report($tour_id, date('Y-m-d', strtotime('-90 days')));
+            $allTimeStats = $this->get_enhanced_report($tour_id, date('Y-m-d', strtotime('-3 years')));
 
             // Add clean tour section without thumbnail, pie chart, or country table
             $body .= '
@@ -501,10 +511,10 @@ class H3TM_Analytics {
     /**
      * Get analytics report
      *
-     * @param string $page_title The tour display name (e.g., "Arden Courts of Largo")
+     * @param string $tour_id The tour_id for pagePath filtering (e.g., "20251229_175901_2s5v83o1")
      * @param string $start_date The start date for the report
      */
-    private function get_report($page_title, $start_date) {
+    private function get_report($tour_id, $start_date) {
         $PROPERTY_ID = "properties/491286260";
 
         $dateRange = new Google_Service_AnalyticsData_DateRange();
@@ -523,13 +533,14 @@ class H3TM_Analytics {
         $avgSessionDuration = new Google_Service_AnalyticsData_Metric();
         $avgSessionDuration->setName("averageSessionDuration");
 
-        // Filter by pageTitle using CONTAINS to handle slight formatting differences
+        // Filter by pagePath containing the tour_id
+        // GA4 pagePath format: /tours/{tour_id}/
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
         $stringFilter->setMatchType('CONTAINS');
-        $stringFilter->setValue($page_title);
+        $stringFilter->setValue('/tours/' . $tour_id);
         $filter->setStringFilter($stringFilter);
-        $filter->setFieldName('pageTitle');
+        $filter->setFieldName('pagePath');
 
         $filterExpression = new Google_Service_AnalyticsData_FilterExpression();
         $filterExpression->setFilter($filter);
@@ -567,10 +578,10 @@ class H3TM_Analytics {
     /**
      * Get countries
      *
-     * @param string $page_title The tour display name
+     * @param string $tour_id The tour_id for pagePath filtering
      * @param string $start_date The start date for the report
      */
-    private function get_countries($page_title, $start_date) {
+    private function get_countries($tour_id, $start_date) {
         $PROPERTY_ID = "properties/491286260";
 
         $dateRange = new Google_Service_AnalyticsData_DateRange();
@@ -587,13 +598,14 @@ class H3TM_Analytics {
         $country = new Google_Service_AnalyticsData_Dimension();
         $country->setName("country");
 
-        // Filter by pageTitle using CONTAINS
+        // Filter by pagePath containing the tour_id
+        // GA4 pagePath format: /tours/{tour_id}/
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
         $stringFilter->setMatchType('CONTAINS');
-        $stringFilter->setValue($page_title);
+        $stringFilter->setValue('/tours/' . $tour_id);
         $filter->setStringFilter($stringFilter);
-        $filter->setFieldName('pageTitle');
+        $filter->setFieldName('pagePath');
 
         $filterExpression = new Google_Service_AnalyticsData_FilterExpression();
         $filterExpression->setFilter($filter);
@@ -657,10 +669,10 @@ class H3TM_Analytics {
     /**
      * Get new vs returning users
      *
-     * @param string $page_title The tour display name
+     * @param string $tour_id The tour_id for pagePath filtering
      * @param string $start_date The start date for the report
      */
-    private function get_new_vs_returning_users($page_title, $start_date) {
+    private function get_new_vs_returning_users($tour_id, $start_date) {
         $PROPERTY_ID = "properties/491286260";
 
         $dateRange = new Google_Service_AnalyticsData_DateRange();
@@ -673,13 +685,14 @@ class H3TM_Analytics {
         $userType = new Google_Service_AnalyticsData_Dimension();
         $userType->setName("newVsReturning");
 
-        // Filter by pageTitle using CONTAINS
+        // Filter by pagePath containing the tour_id
+        // GA4 pagePath format: /tours/{tour_id}/
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
         $stringFilter->setMatchType('CONTAINS');
-        $stringFilter->setValue($page_title);
+        $stringFilter->setValue('/tours/' . $tour_id);
         $filter->setStringFilter($stringFilter);
-        $filter->setFieldName('pageTitle');
+        $filter->setFieldName('pagePath');
 
         $filterExpression = new Google_Service_AnalyticsData_FilterExpression();
         $filterExpression->setFilter($filter);
