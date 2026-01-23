@@ -91,12 +91,37 @@ class H3TM_Tour_Manager {
     }
     
     /**
-     * Get tour title from tour name
+     * Get tour title from tour identifier (tour_id, slug, or s3_folder)
+     * Looks up the display_name from h3tm_tour_metadata table
+     *
+     * @param string $tour_identifier The tour ID, slug, or S3 folder name
+     * @return string The display name if found, otherwise the identifier
      */
-    public function get_tour_title($tour_name) {
-        // For now, just return the tour name as the title
-        // This can be enhanced later to read from a metadata file if needed
-        return $tour_name;
+    public function get_tour_title($tour_identifier) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'h3tm_tour_metadata';
+
+        // Check if metadata table exists
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") !== $table_name) {
+            return $tour_identifier;
+        }
+
+        // Try to find by tour_id, tour_slug, or s3_folder
+        $metadata = $wpdb->get_row($wpdb->prepare(
+            "SELECT display_name FROM $table_name
+             WHERE tour_id = %s OR tour_slug = %s OR s3_folder = %s
+             LIMIT 1",
+            $tour_identifier,
+            $tour_identifier,
+            $tour_identifier
+        ));
+
+        if ($metadata && !empty($metadata->display_name)) {
+            return $metadata->display_name;
+        }
+
+        // Fall back to the identifier if no metadata found
+        return $tour_identifier;
     }
 
     /**
