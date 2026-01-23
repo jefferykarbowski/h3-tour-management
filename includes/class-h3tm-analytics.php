@@ -307,14 +307,17 @@ class H3TM_Analytics {
 
     /**
      * Get enhanced analytics report with new vs returning user breakdown
+     *
+     * @param string $tour_identifier The tour folder name or tour ID (used to filter by pagePath)
+     * @param string $start_date The start date for the report
      */
-    private function get_enhanced_report($page_title, $start_date) {
-        // Get basic metrics
-        $basic_report = $this->get_report($page_title, $start_date);
+    private function get_enhanced_report($tour_identifier, $start_date) {
+        // Get basic metrics - filters by pagePath containing the tour identifier
+        $basic_report = $this->get_report($tour_identifier, $start_date);
         $basic_data = $this->report_results($basic_report);
 
         // Get new vs returning users
-        $users_report = $this->get_new_vs_returning_users($page_title, $start_date);
+        $users_report = $this->get_new_vs_returning_users($tour_identifier, $start_date);
         $users_data = $this->extract_user_breakdown($users_report);
 
         return array(
@@ -497,42 +500,47 @@ class H3TM_Analytics {
     
     /**
      * Get analytics report
+     *
+     * @param string $tour_identifier The tour folder name or tour ID
+     * @param string $start_date The start date for the report
      */
-    private function get_report($page_title, $start_date) {
+    private function get_report($tour_identifier, $start_date) {
         $PROPERTY_ID = "properties/491286260";
-        
+
         $dateRange = new Google_Service_AnalyticsData_DateRange();
         $dateRange->setStartDate($start_date);
         $dateRange->setEndDate("today");
-        
+
         $sessions = new Google_Service_AnalyticsData_Metric();
         $sessions->setName("sessions");
-        
+
         $users = new Google_Service_AnalyticsData_Metric();
         $users->setName("totalUsers");
-        
+
         $events = new Google_Service_AnalyticsData_Metric();
         $events->setName("eventCount");
-        
+
         $avgSessionDuration = new Google_Service_AnalyticsData_Metric();
         $avgSessionDuration->setName("averageSessionDuration");
-        
+
+        // Filter by pagePath which contains the tour identifier
+        // GA4 pagePath format: /tours/{tour_id}/ or /h3panos/{tour_name}/
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
-        $stringFilter->setMatchType('EXACT');
-        $stringFilter->setValue($page_title);
+        $stringFilter->setMatchType('CONTAINS');
+        $stringFilter->setValue('/' . $tour_identifier . '/');
         $filter->setStringFilter($stringFilter);
-        $filter->setFieldName('pageTitle');
-        
+        $filter->setFieldName('pagePath');
+
         $filterExpression = new Google_Service_AnalyticsData_FilterExpression();
         $filterExpression->setFilter($filter);
-        
+
         $request = new Google_Service_AnalyticsData_RunReportRequest();
         $request->setProperty($PROPERTY_ID);
         $request->setDateRanges([$dateRange]);
         $request->setMetrics([$events, $sessions, $users, $avgSessionDuration]);
         $request->setDimensionFilter($filterExpression);
-        
+
         return $this->analytics_service->properties->runReport($PROPERTY_ID, $request);
     }
     
@@ -559,40 +567,44 @@ class H3TM_Analytics {
     
     /**
      * Get countries
+     *
+     * @param string $tour_identifier The tour folder name or tour ID
+     * @param string $start_date The start date for the report
      */
-    private function get_countries($page_title, $start_date) {
+    private function get_countries($tour_identifier, $start_date) {
         $PROPERTY_ID = "properties/491286260";
-        
+
         $dateRange = new Google_Service_AnalyticsData_DateRange();
         $dateRange->setStartDate($start_date);
         $dateRange->setEndDate("today");
-        
+
         $users = new Google_Service_AnalyticsData_Metric();
         $users->setName("totalUsers");
-        
+
         $sessions = new Google_Service_AnalyticsData_Metric();
         $sessions->setName("sessions");
-        
+
         // Use country dimension
         $country = new Google_Service_AnalyticsData_Dimension();
         $country->setName("country");
-        
+
+        // Filter by pagePath which contains the tour identifier
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
-        $stringFilter->setMatchType('EXACT');
-        $stringFilter->setValue($page_title);
+        $stringFilter->setMatchType('CONTAINS');
+        $stringFilter->setValue('/' . $tour_identifier . '/');
         $filter->setStringFilter($stringFilter);
-        $filter->setFieldName('pageTitle');
-        
+        $filter->setFieldName('pagePath');
+
         $filterExpression = new Google_Service_AnalyticsData_FilterExpression();
         $filterExpression->setFilter($filter);
-        
+
         $ordering = new Google_Service_AnalyticsData_OrderBy();
         $metricOrdering = new Google_Service_AnalyticsData_MetricOrderBy();
         $metricOrdering->setMetricName("totalUsers");
         $ordering->setMetric($metricOrdering);
         $ordering->setDesc(true);
-        
+
         $request = new Google_Service_AnalyticsData_RunReportRequest();
         $request->setProperty($PROPERTY_ID);
         $request->setDateRanges([$dateRange]);
@@ -601,7 +613,7 @@ class H3TM_Analytics {
         $request->setOrderBys([$ordering]);
         $request->setDimensionFilter($filterExpression);
         $request->setLimit(10);
-        
+
         return $this->analytics_service->properties->runReport($PROPERTY_ID, $request);
     }
     
@@ -645,37 +657,41 @@ class H3TM_Analytics {
     
     /**
      * Get new vs returning users
+     *
+     * @param string $tour_identifier The tour folder name or tour ID
+     * @param string $start_date The start date for the report
      */
-    private function get_new_vs_returning_users($page_title, $start_date) {
+    private function get_new_vs_returning_users($tour_identifier, $start_date) {
         $PROPERTY_ID = "properties/491286260";
-        
+
         $dateRange = new Google_Service_AnalyticsData_DateRange();
         $dateRange->setStartDate($start_date);
         $dateRange->setEndDate("today");
-        
+
         $users = new Google_Service_AnalyticsData_Metric();
         $users->setName("totalUsers");
-        
+
         $userType = new Google_Service_AnalyticsData_Dimension();
         $userType->setName("newVsReturning");
-        
+
+        // Filter by pagePath which contains the tour identifier
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
-        $stringFilter->setMatchType('EXACT');
-        $stringFilter->setValue($page_title);
+        $stringFilter->setMatchType('CONTAINS');
+        $stringFilter->setValue('/' . $tour_identifier . '/');
         $filter->setStringFilter($stringFilter);
-        $filter->setFieldName('pageTitle');
-        
+        $filter->setFieldName('pagePath');
+
         $filterExpression = new Google_Service_AnalyticsData_FilterExpression();
         $filterExpression->setFilter($filter);
-        
+
         $request = new Google_Service_AnalyticsData_RunReportRequest();
         $request->setProperty($PROPERTY_ID);
         $request->setDateRanges([$dateRange]);
         $request->setDimensions([$userType]);
         $request->setMetrics([$users]);
         $request->setDimensionFilter($filterExpression);
-        
+
         return $this->analytics_service->properties->runReport($PROPERTY_ID, $request);
     }
     
