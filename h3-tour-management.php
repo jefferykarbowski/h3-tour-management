@@ -3,7 +3,7 @@
  * Plugin Name: H3 Tour Management
  * Plugin URI: https://github.com/jefferykarbowski/h3-tour-management
  * Description: Cloud-based Tour Management system with S3/CloudFront delivery, analytics, and user management
- * Version: 2.8.0
+ * Version: 2.7.11
  * Author: H3 Photography
  * Author URI: https://h3vt.com/
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('H3TM_VERSION', '2.8.0');
+define('H3TM_VERSION', '2.7.11');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -103,11 +103,18 @@ if (!function_exists('wp_new_user_notification')) {
 require 'plugin-update-checker/plugin-update-checker.php';
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
+// Read the plugin file to extract the Plugin URI
+$plugin_data = get_file_data(__FILE__, array('PluginURI' => 'Plugin URI'));
+$plugin_uri = $plugin_data['PluginURI'];
+
+// Parse the Plugin URI to get the slug
+$plugin_slug = basename(parse_url($plugin_uri, PHP_URL_PATH));
+
 $myUpdateChecker = PucFactory::buildUpdateChecker(
-	'https://github.com/jefferykarbowski/h3-tour-management/',
+	$plugin_uri,
 	__FILE__,
-	'h3-tour-management'
+	$plugin_slug
 );
 
-// Use GitHub releases for update detection (requires tagged releases with .zip assets).
-$myUpdateChecker->getVcsApi()->enableReleaseAssets();
+//Set the branch that contains the stable release.
+$myUpdateChecker->setBranch('main');

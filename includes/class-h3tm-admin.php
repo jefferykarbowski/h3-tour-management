@@ -64,8 +64,8 @@ class H3TM_Admin {
      */
     public function add_admin_menu() {
         add_menu_page(
-            __('H3VT Tours Management', 'h3-tour-management'),
-            __('H3VT Tours', 'h3-tour-management'),
+            __('3D Tours Management', 'h3-tour-management'),
+            __('3D Tours', 'h3-tour-management'),
             'manage_options',
             'h3-tour-management',
             array($this, 'render_main_page'),
