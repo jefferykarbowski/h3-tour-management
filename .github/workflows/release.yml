@@ -1,10 +1,7 @@
 name: Create Release
 
-# Grant permissions needed for creating releases
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
 
 on:
   push:
@@ -27,72 +24,25 @@ jobs:
       - name: Get current version
         id: get_version
         run: |
-          # Hardcode the main PHP file name
-          PHP_FILE="h3-tour-management.php"
-          
-          # Check if the file exists
-          if [ ! -f "$PHP_FILE" ]; then
-            echo "Error: $PHP_FILE not found in the root directory."
-            echo "Files in current directory:"
-            ls -la
-            exit 1
-          fi
-          
-          # Get version using more compatible grep pattern
-          VERSION=$(grep -E "Version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+" "$PHP_FILE" | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n 1)
+          VERSION=$(grep -E "Version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+" "h3-tour-management.php" | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n 1)
           if [ -z "$VERSION" ]; then
-            echo "Error: No version found in $PHP_FILE."
-            echo "First 10 lines of file:"
-            head -n 10 "$PHP_FILE"
+            echo "Error: No version found"
             exit 1
           fi
-          
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Current version: $VERSION"
-      
+
       - name: Check if version changed
         id: check_version
         run: |
-          # Hardcode the main PHP file name for reliability
-          MAIN_PHP_FILE="h3-tour-management.php"
-          
-          # Check if the file exists
-          if [ ! -f "$MAIN_PHP_FILE" ]; then
-            echo "Error: Main PHP file not found: $MAIN_PHP_FILE"
-            echo "Files in current directory:"
-            ls -la
-            exit 1
-          fi
-          
-          # Get current version more safely
-          CURRENT_VERSION=$(grep -E "Version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+" "$MAIN_PHP_FILE" | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n 1)
-          if [ -z "$CURRENT_VERSION" ]; then
-            echo "Error: Could not extract current version from $MAIN_PHP_FILE"
-            echo "First 10 lines of file:"
-            head -n 10 "$MAIN_PHP_FILE"
-            exit 1
-          fi
-          
-          # Try to get the previous version
+          CURRENT_VERSION=$(grep -E "Version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+" "h3-tour-management.php" | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n 1)
           PREVIOUS_VERSION=""
-          if git show HEAD~1:"$MAIN_PHP_FILE" &>/dev/null; then
-            PREVIOUS_VERSION=$(git show HEAD~1:"$MAIN_PHP_FILE" | grep -E "Version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+" | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n 1)
+          if git show HEAD~1:"h3-tour-management.php" &>/dev/null; then
+            PREVIOUS_VERSION=$(git show HEAD~1:"h3-tour-management.php" | grep -E "Version:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+" | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n 1)
           fi
-          
-          # If previous version couldn't be found, default to 0.0.0
-          if [ -z "$PREVIOUS_VERSION" ]; then
-            PREVIOUS_VERSION="0.0.0"
-            echo "Warning: Could not determine previous version, defaulting to $PREVIOUS_VERSION"
-          fi
-          
-          echo "Previous version: $PREVIOUS_VERSION"
-          echo "Current version: $CURRENT_VERSION"
-
+          [ -z "$PREVIOUS_VERSION" ] && PREVIOUS_VERSION="0.0.0"
           if [ "$PREVIOUS_VERSION" != "$CURRENT_VERSION" ]; then
-            echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
             echo "create_release=true" >> $GITHUB_OUTPUT
           else
-            echo "Version unchanged"
             echo "create_release=false" >> $GITHUB_OUTPUT
           fi
 
@@ -105,15 +55,49 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Build plugin zip
+        run: |
+          PLUGIN_SLUG="h3-tour-management"
+          mkdir -p build/${PLUGIN_SLUG}
+          rsync -av --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.gitignore' \
+            --exclude='node_modules' \
+            --exclude='frontend/node_modules' \
+            --exclude='.serena' \
+            --exclude='.codemachine' \
+            --exclude='.claude' \
+            --exclude='build' \
+            --exclude='outputs' \
+            --exclude='docs' \
+            --exclude='*.md' \
+            --exclude='tools' \
+            --exclude='debug-*' \
+            --exclude='fix-*' \
+            --exclude='diagnose-*' \
+            --exclude='verify-*' \
+            --exclude='clear-*' \
+            --exclude='*.sh' \
+            --exclude='analytics_captura.jpg' \
+            ./ build/${PLUGIN_SLUG}/
+          cd build && zip -r ../${PLUGIN_SLUG}.zip ${PLUGIN_SLUG}/
+
       - name: Create Release
-        id: create_release
         uses: ncipollo/release-action@v1
         with:
           tag: v${{ needs.check_version.outputs.version }}
           name: Version ${{ needs.check_version.outputs.version }}
           draft: false
           prerelease: false
+          artifacts: "h3-tour-management.zip"
+          artifactContentType: application/zip
           body: |
             Release version ${{ needs.check_version.outputs.version }}
 
-            See the commit history for changes in this release.
+            ## Changes
+            - Renamed admin menu from "3D Tours" to "H3VT Tours"
+            - Plugin Update Checker now uses GitHub releases with .zip assets
+            - Automated release packaging via CI/CD
+
+            ## Installation
+            Download `h3-tour-management.zip` and upload via WordPress Plugins > Add New > Upload Plugin.
