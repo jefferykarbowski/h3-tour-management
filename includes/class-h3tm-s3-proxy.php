@@ -27,6 +27,22 @@ class H3TM_S3_Proxy {
     }
 
     /**
+     * Verbose request-level logging.
+     *
+     * The S3 proxy runs on every tour asset request, so logging each one fills
+     * the PHP error log extremely quickly (it had grown past 1 GB). These
+     * messages are gated behind a debug flag and disabled by default. To
+     * re-enable, add the following to wp-config.php:
+     *
+     *     define('H3TM_S3_PROXY_DEBUG', true);
+     */
+    private static function debug_log($message) {
+        if (defined('H3TM_S3_PROXY_DEBUG') && H3TM_S3_PROXY_DEBUG) {
+            error_log($message);
+        }
+    }
+
+    /**
      * Add rewrite rules for h3panos tours
      */
     public function add_rewrite_rules() {
@@ -66,7 +82,7 @@ class H3TM_S3_Proxy {
         if (get_option('h3tm_s3_rewrite_rules_flushed') !== H3TM_VERSION) {
             flush_rewrite_rules();
             update_option('h3tm_s3_rewrite_rules_flushed', H3TM_VERSION);
-            error_log('H3TM S3 Proxy: Flushed rewrite rules for version ' . H3TM_VERSION);
+            self::debug_log('H3TM S3 Proxy: Flushed rewrite rules for version ' . H3TM_VERSION);
         }
     }
 
@@ -83,7 +99,7 @@ class H3TM_S3_Proxy {
             return;
         }
 
-        error_log('H3TM S3 Proxy: Early handler for: ' . $request_uri);
+        self::debug_log('H3TM S3 Proxy: Early handler for: ' . $request_uri);
 
         // Parse the URL to extract tour name and file
         if (preg_match('#/h3panos/([^/?\#]+)(/([^?\#]*))?#', $request_uri, $matches)) {
@@ -101,7 +117,7 @@ class H3TM_S3_Proxy {
                 } else {
                     $redirect_url .= '/';
                 }
-                error_log('H3TM S3 Proxy: 301 redirect from old slug to: ' . $redirect_url);
+                self::debug_log('H3TM S3 Proxy: 301 redirect from old slug to: ' . $redirect_url);
                 wp_redirect($redirect_url, 301);
                 die();
             }
@@ -111,7 +127,7 @@ class H3TM_S3_Proxy {
             // Determine file path - use custom entry file if no specific file requested
             $file_path = $requested_file ? $requested_file : $this->get_entry_file($tour_name);
 
-            error_log('H3TM S3 Proxy: Parsed tour=' . $tour_name . ', file=' . $file_path);
+            self::debug_log('H3TM S3 Proxy: Parsed tour=' . $tour_name . ', file=' . $file_path);
 
             // Get the default entry file for redirect comparison
             $entry_file = $this->get_entry_file($tour_name);
@@ -124,7 +140,7 @@ class H3TM_S3_Proxy {
                 $redirect_url = add_query_arg('_redirected', '1',
                     site_url('/h3panos/' . rawurlencode($tour_name) . '/')
                 );
-                error_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
+                self::debug_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
                 wp_redirect($redirect_url, 301);
                 die();
             }
@@ -141,7 +157,7 @@ class H3TM_S3_Proxy {
             if ($this->cdn_helper) {
                 // Use resolved tour_id for CDN URLs
                 $urls = $this->cdn_helper->get_tour_urls($resolved_tour_id, $file_path);
-                error_log('H3TM S3 Proxy: Using CDN helper, trying URLs: ' . implode(', ', $urls));
+                self::debug_log('H3TM S3 Proxy: Using CDN helper, trying URLs: ' . implode(', ', $urls));
 
                 foreach ($urls as $url) {
                     if ($this->try_proxy_s3_file($url, $file_path)) {
@@ -149,7 +165,7 @@ class H3TM_S3_Proxy {
                     }
                 }
 
-                error_log('H3TM S3 Proxy: All URLs failed');
+                self::debug_log('H3TM S3 Proxy: All URLs failed');
                 wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
             } else {
                 // Use resolved tour_id for S3 URLs
@@ -157,7 +173,7 @@ class H3TM_S3_Proxy {
                 if ($this->is_tour_id($resolved_tour_id)) {
                     // Tour IDs are used directly as S3 folder names
                     $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
-                    error_log('H3TM S3 Proxy: Using tour_id format: ' . $s3_url);
+                    self::debug_log('H3TM S3 Proxy: Using tour_id format: ' . $s3_url);
                     $this->proxy_s3_file($s3_url, $file_path);
                     die(); // Exit after serving
                 } else {
@@ -165,13 +181,13 @@ class H3TM_S3_Proxy {
                     $s3_url_with_spaces = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
                     $s3_url_with_dashes = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode(str_replace(' ', '-', $resolved_tour_id)) . '/' . $file_path;
 
-                    error_log('H3TM S3 Proxy: Trying S3 URLs - spaces: ' . $s3_url_with_spaces . ', dashes: ' . $s3_url_with_dashes);
+                    self::debug_log('H3TM S3 Proxy: Trying S3 URLs - spaces: ' . $s3_url_with_spaces . ', dashes: ' . $s3_url_with_dashes);
 
                     // Try with spaces first, then with dashes if that fails
                     if ($this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
                         die(); // Successfully served - exit immediately
                     }
-                    error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
+                    self::debug_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
                     $this->proxy_s3_file($s3_url_with_dashes, $file_path);
                     die(); // Exit after serving
                 }
@@ -186,7 +202,7 @@ class H3TM_S3_Proxy {
         // Debug: Always log template_redirect calls
         $request_uri = $_SERVER['REQUEST_URI'] ?? '';
         if (strpos($request_uri, 'h3panos') !== false) {
-            error_log('H3TM S3 Proxy: template_redirect called for URI: ' . $request_uri);
+            self::debug_log('H3TM S3 Proxy: template_redirect called for URI: ' . $request_uri);
         }
 
         $tour_name = get_query_var('h3tm_tour');
@@ -201,7 +217,7 @@ class H3TM_S3_Proxy {
         if (empty($tour_name)) {
             // Fallback: Parse URL directly if query vars not set
             if (strpos($request_uri, 'h3panos') !== false && preg_match('#/h3panos/([^/]+)(/(.*))?#', $request_uri, $matches)) {
-                error_log('H3TM S3 Proxy: Fallback - parsing URL directly');
+                self::debug_log('H3TM S3 Proxy: Fallback - parsing URL directly');
                 $tour_name = urldecode($matches[1]);
                 $requested_file = isset($matches[3]) && $matches[3] ? $matches[3] : null;
             } else {
@@ -222,7 +238,7 @@ class H3TM_S3_Proxy {
             } else {
                 $redirect_url .= '/';
             }
-            error_log('H3TM S3 Proxy: 301 redirect from old slug to: ' . $redirect_url);
+            self::debug_log('H3TM S3 Proxy: 301 redirect from old slug to: ' . $redirect_url);
             wp_redirect($redirect_url, 301);
             die();
         }
@@ -232,7 +248,7 @@ class H3TM_S3_Proxy {
         // Determine file path - use custom entry file if no specific file requested
         $file_path = $requested_file ? $requested_file : $this->get_entry_file($tour_name);
 
-        error_log('H3TM S3 Proxy: Processing tour request for=' . $tour_name . ', file=' . $file_path);
+        self::debug_log('H3TM S3 Proxy: Processing tour request for=' . $tour_name . ', file=' . $file_path);
 
         // Get the default entry file for redirect comparison
         $entry_file = $this->get_entry_file($tour_name);
@@ -246,7 +262,7 @@ class H3TM_S3_Proxy {
             $redirect_url = add_query_arg('_redirected', '1',
                 site_url('/h3panos/' . rawurlencode($tour_name) . '/')
             );
-            error_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
+            self::debug_log('H3TM S3 Proxy: Redirecting to directory URL: ' . $redirect_url);
             wp_redirect($redirect_url, 301);
             // Use WordPress die() instead of exit() for Pantheon compatibility
             die();
@@ -264,18 +280,18 @@ class H3TM_S3_Proxy {
         if ($this->cdn_helper) {
             // Use resolved tour_id for CDN URLs
             $urls = $this->cdn_helper->get_tour_urls($resolved_tour_id, $file_path);
-            error_log('H3TM S3 Proxy: Using CDN helper for "' . $tour_name . '"');
-            error_log('H3TM S3 Proxy: CDN URLs: ' . implode(', ', $urls));
+            self::debug_log('H3TM S3 Proxy: Using CDN helper for "' . $tour_name . '"');
+            self::debug_log('H3TM S3 Proxy: CDN URLs: ' . implode(', ', $urls));
 
             foreach ($urls as $url) {
                 if ($this->try_proxy_s3_file($url, $file_path)) {
                     die(); // Successfully served - exit immediately
                 }
-                error_log('H3TM S3 Proxy: Failed to fetch from ' . $url);
+                self::debug_log('H3TM S3 Proxy: Failed to fetch from ' . $url);
             }
 
             // All URLs failed
-            error_log('H3TM S3 Proxy: All CDN URLs failed');
+            self::debug_log('H3TM S3 Proxy: All CDN URLs failed');
             wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
         } else {
             // Use resolved tour_id for S3 URLs
@@ -283,7 +299,7 @@ class H3TM_S3_Proxy {
             if ($this->is_tour_id($resolved_tour_id)) {
                 // Tour IDs are used directly as S3 folder names
                 $s3_url = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
-                error_log('H3TM S3 Proxy: Using tour_id format: ' . $s3_url);
+                self::debug_log('H3TM S3 Proxy: Using tour_id format: ' . $s3_url);
                 $this->proxy_s3_file($s3_url, $file_path);
                 die(); // Exit after serving
             } else {
@@ -291,15 +307,15 @@ class H3TM_S3_Proxy {
                 $s3_url_with_spaces = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode($resolved_tour_id) . '/' . $file_path;
                 $s3_url_with_dashes = 'https://' . $s3_config['bucket'] . '.s3.' . $s3_config['region'] . '.amazonaws.com/tours/' . rawurlencode(str_replace(' ', '-', $resolved_tour_id)) . '/' . $file_path;
 
-                error_log('H3TM S3 Proxy: Trying both naming conventions for "' . $resolved_tour_id . '"');
-                error_log('H3TM S3 Proxy: URL with spaces: ' . $s3_url_with_spaces);
-                error_log('H3TM S3 Proxy: URL with dashes: ' . $s3_url_with_dashes);
+                self::debug_log('H3TM S3 Proxy: Trying both naming conventions for "' . $resolved_tour_id . '"');
+                self::debug_log('H3TM S3 Proxy: URL with spaces: ' . $s3_url_with_spaces);
+                self::debug_log('H3TM S3 Proxy: URL with dashes: ' . $s3_url_with_dashes);
 
                 // Try with spaces first, then with dashes if that fails
                 if ($this->try_proxy_s3_file($s3_url_with_spaces, $file_path)) {
                     die(); // Successfully served - exit immediately
                 }
-                error_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
+                self::debug_log('H3TM S3 Proxy: Spaces version failed, trying with dashes');
                 $this->proxy_s3_file($s3_url_with_dashes, $file_path);
                 die(); // Exit after serving
             }
@@ -339,13 +355,13 @@ class H3TM_S3_Proxy {
         }
 
         if (is_wp_error($response)) {
-            error_log('H3TM S3 Proxy: Try failed - ' . $response->get_error_message());
+            self::debug_log('H3TM S3 Proxy: Try failed - ' . $response->get_error_message());
             return false;
         }
 
         $response_code = wp_remote_retrieve_response_code($response);
         if ($response_code !== 200) {
-            error_log('H3TM S3 Proxy: Try failed - S3 returned ' . $response_code);
+            self::debug_log('H3TM S3 Proxy: Try failed - S3 returned ' . $response_code);
             return false;
         }
 
@@ -432,14 +448,14 @@ class H3TM_S3_Proxy {
         }
 
         if (is_wp_error($response)) {
-            error_log('H3TM S3 Proxy Error: ' . $response->get_error_message());
+            self::debug_log('H3TM S3 Proxy Error: ' . $response->get_error_message());
             status_header(404);
             wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
         }
 
         $response_code = wp_remote_retrieve_response_code($response);
         if ($response_code !== 200) {
-            error_log('H3TM S3 Proxy: S3 returned ' . $response_code . ' for ' . $s3_url);
+            self::debug_log('H3TM S3 Proxy: S3 returned ' . $response_code . ' for ' . $s3_url);
             status_header(404);
             wp_die('Tour file not found', 'Tour Not Found', array('response' => 404));
         }
@@ -567,7 +583,7 @@ class H3TM_S3_Proxy {
             $tour = $metadata->get_by_slug($normalized_slug);
 
             if ($tour && !empty($tour->tour_id)) {
-                error_log('H3TM S3 Proxy: Resolved slug "' . $identifier . '" (normalized: "' . $normalized_slug . '") to tour_id: ' . $tour->tour_id);
+                self::debug_log('H3TM S3 Proxy: Resolved slug "' . $identifier . '" (normalized: "' . $normalized_slug . '") to tour_id: ' . $tour->tour_id);
                 return $tour->tour_id;
             }
 
@@ -575,7 +591,7 @@ class H3TM_S3_Proxy {
             $tour = $metadata->find_by_old_slug($normalized_slug);
 
             if ($tour && !empty($tour->tour_slug)) {
-                error_log('H3TM S3 Proxy: Old slug "' . $identifier . '" found, should redirect to: ' . $tour->tour_slug);
+                self::debug_log('H3TM S3 Proxy: Old slug "' . $identifier . '" found, should redirect to: ' . $tour->tour_slug);
                 return array(
                     'redirect' => true,
                     'current_slug' => $tour->tour_slug,
@@ -585,7 +601,7 @@ class H3TM_S3_Proxy {
         }
 
         // Fallback: assume it's a legacy tour name (convert spaces to dashes for S3)
-        error_log('H3TM S3 Proxy: No metadata found for "' . $identifier . '", using as legacy tour name');
+        self::debug_log('H3TM S3 Proxy: No metadata found for "' . $identifier . '", using as legacy tour name');
         return $identifier;
     }
 
@@ -613,7 +629,7 @@ class H3TM_S3_Proxy {
         }
 
         if ($tour && !empty($tour->entry_file)) {
-            error_log('H3TM S3 Proxy: Using custom entry file: ' . $tour->entry_file);
+            self::debug_log('H3TM S3 Proxy: Using custom entry file: ' . $tour->entry_file);
             return $tour->entry_file;
         }
 
@@ -633,7 +649,7 @@ class H3TM_S3_Proxy {
 
         // This would require AWS SDK to list and delete old uploads
         // For now, we rely on S3 lifecycle policies to clean up old uploads
-        error_log('H3TM S3 Proxy: Cleanup should be handled by S3 lifecycle policies');
+        self::debug_log('H3TM S3 Proxy: Cleanup should be handled by S3 lifecycle policies');
         return true;
     }
 }

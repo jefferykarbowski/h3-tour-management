@@ -346,8 +346,38 @@ class H3TM_Admin {
                     }
                     ?>
                 </p>
+                <p><strong><?php _e('Last Email Run:', 'h3-tour-management'); ?></strong>
+                    <?php
+                    $last_run = get_option('h3tm_analytics_last_run');
+                    if (!empty($last_run) && is_array($last_run)) {
+                        echo esc_html($last_run['started']);
+                        if (!empty($last_run['aborted'])) {
+                            echo ' &mdash; <span style="color:#dc3232;font-weight:bold;">ABORTED</span>: '
+                                . esc_html($last_run['aborted']);
+                        } elseif (!empty($last_run['finished'])) {
+                            echo ' &mdash; ' . sprintf(
+                                /* translators: 1: emails sent, 2: emails failed, 3: peak memory */
+                                __('completed (%1$d sent, %2$d failed, peak memory %3$s)', 'h3-tour-management'),
+                                (int) $last_run['sent'],
+                                (int) $last_run['failed'],
+                                esc_html(size_format((int) $last_run['peak_memory']))
+                            );
+                        } else {
+                            echo ' &mdash; <span style="color:#dc3232;font-weight:bold;">'
+                                . esc_html__('did not finish', 'h3-tour-management') . '</span> '
+                                . sprintf(
+                                    /* translators: %s: user ID */
+                                    __('(stopped at user %s)', 'h3-tour-management'),
+                                    esc_html((string) $last_run['current_user'])
+                                );
+                        }
+                    } else {
+                        echo esc_html__('No run recorded yet', 'h3-tour-management');
+                    }
+                    ?>
+                </p>
             </div>
-            
+
             <div class="h3tm-analytics-shortcode">
                 <h2><?php _e('Display Analytics', 'h3-tour-management'); ?></h2>
                 <p><?php _e('Use the following shortcode to display tour analytics on any page:', 'h3-tour-management'); ?></p>
