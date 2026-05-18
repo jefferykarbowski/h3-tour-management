@@ -3,9 +3,18 @@
  * Analytics functionality
  */
 class H3TM_Analytics {
-    
+
     private $analytics_service;
-    
+
+    /**
+     * Diagnostic record for the in-progress scheduled run.
+     *
+     * Populated by send_scheduled_analytics() and read by cron_shutdown_handler()
+     * so that a fatal error (memory exhaustion / timeout) is captured instead of
+     * aborting the run silently.
+     */
+    private $cron_run = null;
+
     public function __construct() {
         // Schedule cron hook
         add_action('h3tm_analytics_cron', array($this, 'send_scheduled_analytics'));
@@ -55,6 +64,12 @@ class H3TM_Analytics {
     public function send_scheduled_analytics() {
         global $wpdb;
         $table_name = $wpdb->prefix . 'h3tm_user_settings';
+
+        // A full run makes many slow Google Analytics API calls; don't let the
+        // host's execution-time limit kill the loop partway through.
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
         
         // Get current date/time
         $now = current_time('mysql');
@@ -118,26 +133,117 @@ class H3TM_Analytics {
             }
         }
         
+        // Start a diagnostic record for this run. It is persisted after every
+        // user so that if the process is killed (memory exhaustion / timeout)
+        // the last known state survives and cron_shutdown_handler() can flag it.
+        $this->cron_run = array(
+            'started'      => $now,
+            'finished'     => null,
+            'aborted'      => null,
+            'queued'       => count($users_to_email),
+            'sent'         => 0,
+            'failed'       => 0,
+            'current_user' => null,
+            'peak_memory'  => memory_get_peak_usage(true),
+            'results'      => array(),
+        );
+        update_option('h3tm_analytics_last_run', $this->cron_run, false);
+        register_shutdown_function(array($this, 'cron_shutdown_handler'));
+
+        error_log(sprintf(
+            'H3TM Analytics CRON: starting run - %d user(s) queued',
+            count($users_to_email)
+        ));
+
         // Send emails
-        if (!empty($users_to_email)) {
-            $this->initialize_analytics();
-            
-            foreach ($users_to_email as $user_id) {
-                try {
-                    $this->send_analytics_for_user($user_id);
-                    
-                    // Update last email sent
-                    $wpdb->query($wpdb->prepare(
-                        "INSERT INTO $table_name (user_id, last_email_sent) 
-                         VALUES (%d, %s) 
-                         ON DUPLICATE KEY UPDATE last_email_sent = %s",
-                        $user_id, $now, $now
-                    ));
-                } catch (Exception $e) {
-                    error_log('H3TM Analytics Error for user ' . $user_id . ': ' . $e->getMessage());
-                }
+        foreach ($users_to_email as $user_id) {
+            $this->cron_run['current_user'] = $user_id;
+
+            // Refresh the time limit per user in case the host caps it.
+            if (function_exists('set_time_limit')) {
+                @set_time_limit(0);
             }
+
+            try {
+                $this->send_analytics_for_user($user_id);
+
+                // Update last email sent
+                $wpdb->query($wpdb->prepare(
+                    "INSERT INTO $table_name (user_id, last_email_sent)
+                     VALUES (%d, %s)
+                     ON DUPLICATE KEY UPDATE last_email_sent = %s",
+                    $user_id, $now, $now
+                ));
+
+                $this->cron_run['sent']++;
+                $this->cron_run['results'][$user_id] = 'sent';
+                error_log(sprintf(
+                    'H3TM Analytics CRON: user %d sent OK (memory in use: %s)',
+                    $user_id,
+                    size_format(memory_get_usage(true))
+                ));
+            } catch (Exception $e) {
+                $this->cron_run['failed']++;
+                $this->cron_run['results'][$user_id] = 'error: ' . $e->getMessage();
+                error_log('H3TM Analytics Error for user ' . $user_id . ': ' . $e->getMessage());
+            }
+
+            // Release the Google API client between users so memory used for
+            // one user's report data is not carried into the next iteration.
+            $this->analytics_service = null;
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
+            }
+
+            $this->cron_run['current_user'] = null;
+            $this->cron_run['peak_memory'] = memory_get_peak_usage(true);
+            update_option('h3tm_analytics_last_run', $this->cron_run, false);
         }
+
+        $this->cron_run['finished'] = current_time('mysql');
+        $this->cron_run['peak_memory'] = memory_get_peak_usage(true);
+        update_option('h3tm_analytics_last_run', $this->cron_run, false);
+
+        error_log(sprintf(
+            'H3TM Analytics CRON: run finished - sent %d, failed %d, peak memory %s',
+            $this->cron_run['sent'],
+            $this->cron_run['failed'],
+            size_format($this->cron_run['peak_memory'])
+        ));
+    }
+
+    /**
+     * Shutdown handler registered for the duration of a scheduled run.
+     *
+     * The loop in send_scheduled_analytics() catches PHP Exceptions, but a fatal
+     * error (memory exhaustion, exceeded execution time) bypasses try/catch and
+     * would otherwise abort the run with no record of which user was in flight.
+     * This records the abort to both the error log and h3tm_analytics_last_run.
+     */
+    public function cron_shutdown_handler() {
+        // Nothing to do if no run is in progress or it already completed.
+        if (empty($this->cron_run) || !empty($this->cron_run['finished'])) {
+            return;
+        }
+
+        $error = error_get_last();
+        $fatal_types = array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR);
+
+        if (!$error || !in_array($error['type'], $fatal_types, true)) {
+            return;
+        }
+
+        $this->cron_run['aborted'] = sprintf(
+            'Fatal error while processing user %s: %s in %s:%d',
+            $this->cron_run['current_user'] !== null ? $this->cron_run['current_user'] : 'n/a',
+            $error['message'],
+            $error['file'],
+            $error['line']
+        );
+        $this->cron_run['peak_memory'] = memory_get_peak_usage(true);
+        update_option('h3tm_analytics_last_run', $this->cron_run, false);
+
+        error_log('H3TM Analytics CRON ABORTED: ' . $this->cron_run['aborted']);
     }
     
     /**

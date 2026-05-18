@@ -5,6 +5,34 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.2] - 2026-05-18
+
+### Fixed
+- **Scheduled analytics emails aborting mid-run**: The `h3tm_analytics_cron` job
+  could stop partway through, leaving later users with no analytics email
+  (observed on the May 1 monthly run: only 2 of 6 eligible users were emailed).
+  - `send_scheduled_analytics()` now releases the Google API client and runs
+    `gc_collect_cycles()` between users so one user's report data is not carried
+    into the next iteration.
+  - `set_time_limit(0)` is applied at the start of the run and refreshed per
+    user so a slow run is not killed by the host execution-time limit.
+
+### Added
+- **Analytics cron diagnostics**: each scheduled run is now recorded.
+  - Per-run logging to the PHP error log (start, per-user result with memory
+    usage, finish summary).
+  - A persisted `h3tm_analytics_last_run` option (start/finish, queued/sent/
+    failed counts, peak memory, per-user results).
+  - A shutdown handler that captures fatal errors (memory exhaustion / timeout)
+    which bypass try/catch, recording which user was being processed.
+  - A "Last Email Run" status line on the **3D Tours → Analytics Overview** page.
+
+### Changed
+- **S3 proxy logging**: `H3TM_S3_Proxy` logged every tour asset request, which
+  had grown the PHP error log past 1 GB. These verbose messages are now gated
+  behind a debug flag and off by default. To re-enable, add to wp-config.php:
+  `define('H3TM_S3_PROXY_DEBUG', true);`
+
 ## [2.7.0] - 2025-10-28
 
 ### Fixed
