@@ -378,6 +378,14 @@ class H3TM_Admin {
                 </p>
             </div>
 
+            <div class="h3tm-analytics-info">
+                <h2><?php _e('Tour Stats', 'h3-tour-management'); ?></h2>
+                <p>
+                    <?php _e('Look up visits for any tour and date range at any time:', 'h3-tour-management'); ?>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=h3tm-tour-stats')); ?>"><?php _e('Open Tour Stats', 'h3-tour-management'); ?></a>
+                </p>
+            </div>
+
             <div class="h3tm-analytics-shortcode">
                 <h2><?php _e('Display Analytics', 'h3-tour-management'); ?></h2>
                 <p><?php _e('Use the following shortcode to display tour analytics on any page:', 'h3-tour-management'); ?></p>

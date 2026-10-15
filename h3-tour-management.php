@@ -3,7 +3,7 @@
  * Plugin Name: H3 Tour Management
  * Plugin URI: https://github.com/jefferykarbowski/h3-tour-management
  * Description: Cloud-based Tour Management system with S3/CloudFront delivery, analytics, and user management
- * Version: 2.8.2
+ * Version: 2.9.0
  * Author: H3 Photography
  * Author URI: https://h3vt.com/
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('H3TM_VERSION', '2.8.2');
+define('H3TM_VERSION', '2.9.0');
 define('H3TM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H3TM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('H3TM_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -40,6 +40,7 @@ require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-s3-proxy.php';
 require_once H3TM_PLUGIN_DIR . 'admin/s3-settings.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-analytics-endpoint.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-shortcodes-v4.php';
+require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-stats.php';
 // Tour processing status tracking
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-tour-processing.php';
 require_once H3TM_PLUGIN_DIR . 'includes/class-h3tm-lambda-webhook.php';
@@ -75,6 +76,7 @@ function h3tm_init() {
     new H3TM_S3_Settings();
     new H3TM_Analytics_Endpoint();
     new H3TM_Shortcodes_V4();
+    new H3TM_Tour_Stats();
 
     // Initialize tour processing status tracking
     $tour_processing = new H3TM_Tour_Processing();
