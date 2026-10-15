@@ -53,6 +53,22 @@ class H3TM_User_Fields {
                                 <?php echo esc_html($tour_name); ?>
                             </option>
                         <?php endforeach; ?>
+                        <?php
+                        // New CPT (h3vt_tour) tours, stored as the marker "cpt:{post_id}".
+                        $cpt_tours = get_posts(array(
+                            'post_type'   => 'h3vt_tour',
+                            'post_status' => 'publish',
+                            'numberposts' => -1,
+                            'orderby'     => 'title',
+                            'order'       => 'ASC',
+                        ));
+                        foreach ($cpt_tours as $cpt_tour) :
+                            $cpt_value = 'cpt:' . $cpt_tour->ID;
+                        ?>
+                            <option value="<?php echo esc_attr($cpt_value); ?>" <?php selected(in_array($cpt_value, $user_tours)); ?>>
+                                <?php echo esc_html($cpt_tour->post_title); ?> (3D Tour)
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                     <p class="description"><?php _e('Select the tours this user should have access to.', 'h3-tour-management'); ?></p>
                 </td>

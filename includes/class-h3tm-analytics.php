@@ -107,7 +107,7 @@ class H3TM_Analytics {
             $monthly_users = $wpdb->get_results(
                 "SELECT user_id FROM $table_name 
                  WHERE email_frequency = 'monthly' 
-                 AND (last_email_sent IS NULL OR DATE(last_email_sent) < DATE_SUB('$today', INTERVAL 1 MONTH))"
+                 AND (last_email_sent IS NULL OR DATE(last_email_sent) < DATE_FORMAT('$today', '%Y-%m-01'))"
             );
             foreach ($monthly_users as $user) {
                 $users_to_email[] = $user->user_id;
@@ -274,7 +274,8 @@ class H3TM_Analytics {
         
         // Create subject based on number of tours
         if (count($tours) == 1) {
-            $tour_title = trim($tour_manager->get_tour_title($tours[0]));
+            $target = $this->resolve_tour_report_target($tours[0], $tour_manager);
+            $tour_title = $target ? $target['title'] : trim($tour_manager->get_tour_title($tours[0]));
             $subject = sprintf(__('Tour Analytics for %s', 'h3-tour-management'), $tour_title);
         } else {
             $subject = sprintf(__('Tour Analytics - %d Tours', 'h3-tour-management'), count($tours));
@@ -295,16 +296,16 @@ class H3TM_Analytics {
     private function generate_analytics_email($tour, $tour_title, $tour_id) {
         // Get analytics data with new vs returning user breakdown using tour_id for pagePath queries
         $weekAgo = date('Y-m-d', strtotime('-7 days'));
-        $weekStats = $this->get_enhanced_report($tour_id, $weekAgo);
+        $weekStats = $this->get_enhanced_report('/tours/' . $tour_id, $weekAgo);
 
         $monthAgo = date('Y-m-d', strtotime('-30 days'));
-        $monthStats = $this->get_enhanced_report($tour_id, $monthAgo);
+        $monthStats = $this->get_enhanced_report('/tours/' . $tour_id, $monthAgo);
 
         $ninetyDaysAgo = date('Y-m-d', strtotime('-90 days'));
-        $ninetyDayStats = $this->get_enhanced_report($tour_id, $ninetyDaysAgo);
+        $ninetyDayStats = $this->get_enhanced_report('/tours/' . $tour_id, $ninetyDaysAgo);
 
         $threeYearsAgo = date('Y-m-d', strtotime('-3 years'));
-        $allTimeStats = $this->get_enhanced_report($tour_id, $threeYearsAgo);
+        $allTimeStats = $this->get_enhanced_report('/tours/' . $tour_id, $threeYearsAgo);
         
         // Build clean email HTML - removed thumbnail, pie chart, and country table
         $body = '<!DOCTYPE html>
@@ -417,13 +418,13 @@ class H3TM_Analytics {
      * @param string $tour_id The tour_id for pagePath filtering (e.g., "20251229_175901_2s5v83o1")
      * @param string $start_date The start date for the report
      */
-    private function get_enhanced_report($tour_id, $start_date) {
+    private function get_enhanced_report($page_path, $start_date) {
         // Get basic metrics - filters by pagePath containing tour_id
-        $basic_report = $this->get_report($tour_id, $start_date);
+        $basic_report = $this->get_report($page_path, $start_date);
         $basic_data = $this->report_results($basic_report);
 
         // Get new vs returning users
-        $users_report = $this->get_new_vs_returning_users($tour_id, $start_date);
+        $users_report = $this->get_new_vs_returning_users($page_path, $start_date);
         $users_data = $this->extract_user_breakdown($users_report);
 
         return array(
@@ -482,6 +483,46 @@ class H3TM_Analytics {
     }
 
     /**
+     * Resolve an assigned tour value to its display title and GA4 pagePath fragment.
+     *
+     * Supports new CPT tours, stored as the marker "cpt:{post_id}" and tracked at
+     * /tour/{slug}, and legacy S3 tours (any metadata identifier) tracked at
+     * /tours/{tour_id}. Returns array('title' => ..., 'path' => ...) or null when
+     * the value cannot be resolved.
+     *
+     * @param mixed             $assigned     The stored assignment value.
+     * @param H3TM_Tour_Manager $tour_manager Tour manager for legacy lookups.
+     * @return array|null
+     */
+    private function resolve_tour_report_target($assigned, $tour_manager) {
+        // New CPT tour marker: "cpt:{post_id}".
+        if (is_string($assigned) && strpos($assigned, 'cpt:') === 0) {
+            $post_id = absint(substr($assigned, 4));
+            $post = $post_id ? get_post($post_id) : null;
+
+            if ($post && $post->post_type === 'h3vt_tour' && $post->post_status === 'publish') {
+                return array(
+                    'title' => trim(get_the_title($post)),
+                    'path'  => '/tour/' . $post->post_name,
+                );
+            }
+
+            return null;
+        }
+
+        // Legacy S3 tour resolved via the metadata table.
+        $tour_id = $tour_manager->get_tour_id($assigned);
+        if (empty($tour_id)) {
+            return null;
+        }
+
+        return array(
+            'title' => trim($tour_manager->get_tour_title($assigned)),
+            'path'  => '/tours/' . $tour_id,
+        );
+    }
+
+    /**
      * Generate consolidated analytics email for multiple tours
      */
     private function generate_consolidated_analytics_email($tours, $tour_manager) {
@@ -511,23 +552,24 @@ class H3TM_Analytics {
         
         // Add a section for each tour with updated metrics
         foreach ($tours as $tour) {
-            $tour_title = trim($tour_manager->get_tour_title($tour));
+            // Resolve the assigned tour to a display title and GA4 pagePath fragment.
+            // Supports new CPT tours (/tour/{slug}) and legacy S3 tours (/tours/{tour_id}).
+            $target = $this->resolve_tour_report_target($tour, $tour_manager);
 
-            // Get tour_id for GA4 pagePath queries
-            // The tour_id is used in pagePath format: /tours/{tour_id}/
-            $tour_id = $tour_manager->get_tour_id($tour);
-
-            // Skip this tour if we can't find a tour_id (no metadata entry)
-            if (empty($tour_id)) {
-                error_log('H3TM Analytics: No tour_id found for tour: ' . $tour);
+            // Skip this tour if it can't be resolved (no CPT post / no metadata entry)
+            if (empty($target)) {
+                error_log('H3TM Analytics: could not resolve tour: ' . (is_string($tour) ? $tour : wp_json_encode($tour)));
                 continue;
             }
 
-            // Get enhanced analytics data for this tour using tour_id for pagePath filtering
-            $weekStats = $this->get_enhanced_report($tour_id, date('Y-m-d', strtotime('-7 days')));
-            $monthStats = $this->get_enhanced_report($tour_id, date('Y-m-d', strtotime('-30 days')));
-            $ninetyDayStats = $this->get_enhanced_report($tour_id, date('Y-m-d', strtotime('-90 days')));
-            $allTimeStats = $this->get_enhanced_report($tour_id, date('Y-m-d', strtotime('-3 years')));
+            $tour_title = $target['title'];
+            $page_path  = $target['path'];
+
+            // Get enhanced analytics data for this tour using its pagePath fragment
+            $weekStats = $this->get_enhanced_report($page_path, date('Y-m-d', strtotime('-7 days')));
+            $monthStats = $this->get_enhanced_report($page_path, date('Y-m-d', strtotime('-30 days')));
+            $ninetyDayStats = $this->get_enhanced_report($page_path, date('Y-m-d', strtotime('-90 days')));
+            $allTimeStats = $this->get_enhanced_report($page_path, date('Y-m-d', strtotime('-3 years')));
 
             // Add clean tour section without thumbnail, pie chart, or country table
             $body .= '
@@ -620,7 +662,7 @@ class H3TM_Analytics {
      * @param string $tour_id The tour_id for pagePath filtering (e.g., "20251229_175901_2s5v83o1")
      * @param string $start_date The start date for the report
      */
-    private function get_report($tour_id, $start_date) {
+    private function get_report($page_path, $start_date) {
         $PROPERTY_ID = "properties/491286260";
 
         $dateRange = new Google_Service_AnalyticsData_DateRange();
@@ -644,7 +686,7 @@ class H3TM_Analytics {
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
         $stringFilter->setMatchType('CONTAINS');
-        $stringFilter->setValue('/tours/' . $tour_id);
+        $stringFilter->setValue($page_path);
         $filter->setStringFilter($stringFilter);
         $filter->setFieldName('pagePath');
 
@@ -687,7 +729,7 @@ class H3TM_Analytics {
      * @param string $tour_id The tour_id for pagePath filtering
      * @param string $start_date The start date for the report
      */
-    private function get_countries($tour_id, $start_date) {
+    private function get_countries($page_path, $start_date) {
         $PROPERTY_ID = "properties/491286260";
 
         $dateRange = new Google_Service_AnalyticsData_DateRange();
@@ -709,7 +751,7 @@ class H3TM_Analytics {
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
         $stringFilter->setMatchType('CONTAINS');
-        $stringFilter->setValue('/tours/' . $tour_id);
+        $stringFilter->setValue($page_path);
         $filter->setStringFilter($stringFilter);
         $filter->setFieldName('pagePath');
 
@@ -778,7 +820,7 @@ class H3TM_Analytics {
      * @param string $tour_id The tour_id for pagePath filtering
      * @param string $start_date The start date for the report
      */
-    private function get_new_vs_returning_users($tour_id, $start_date) {
+    private function get_new_vs_returning_users($page_path, $start_date) {
         $PROPERTY_ID = "properties/491286260";
 
         $dateRange = new Google_Service_AnalyticsData_DateRange();
@@ -796,7 +838,7 @@ class H3TM_Analytics {
         $filter = new Google_Service_AnalyticsData_Filter();
         $stringFilter = new Google_Service_AnalyticsData_StringFilter();
         $stringFilter->setMatchType('CONTAINS');
-        $stringFilter->setValue('/tours/' . $tour_id);
+        $stringFilter->setValue($page_path);
         $filter->setStringFilter($stringFilter);
         $filter->setFieldName('pagePath');
 
