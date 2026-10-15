@@ -5,6 +5,31 @@ All notable changes to H3 Tour Management will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] - 2026-10-15
+
+### Added
+- **3D Tours → Tour Stats**: an on-demand stats page for administrators. Pick
+  any tour (or all tours) and a date range (7, 30, 90 days, 12 months, all
+  time, or custom dates) to see views, visitors, new visitors, visits and
+  average visit length, each compared with the previous period of the same
+  length. A single tour adds a views-over-time chart, devices, traffic sources
+  and top locations. The all-tours view ranks every tour with visits and can be
+  downloaded as CSV. Results are cached for an hour; **Refresh** fetches fresh
+  numbers.
+
+### Fixed
+- **`[tour_analytics_display]` showed zero visits**: it matched tours on the
+  exact GA4 page title, but GA4 records titles such as "Arden Courts of Palm
+  Harbor" while assignments use "Arden Palm Harbor". Tours are now matched by
+  URL path (`/tours/{tour_id}/`, `/h3panos/{folder}/`, `/tour/{slug}/`), the
+  same way the analytics emails work. Tours assigned as `cpt:{id}` are
+  supported.
+- **Returning users on `[tour_analytics_display]`** reported all active users.
+  It now shows visitors who were not new in the period.
+- Committed the July 2026 production hotfixes (monthly email cadence, pagePath
+  report targets, CPT tour assignments) that had only been applied on the
+  server.
+
 ## [2.8.2] - 2026-05-18
 
 ### Fixed

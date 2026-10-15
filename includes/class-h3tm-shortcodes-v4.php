@@ -73,10 +73,12 @@ class H3TM_Shortcodes_V4 {
         // Prepare tour data
         $tours_data = array();
         foreach ($assigned_tours as $tour) {
-            $tour_title = trim($tour_manager->get_tour_title($tour));
+            // Match tours by URL path; GA4 page titles rarely equal the display names.
+            $target = H3TM_Tour_Stats::resolve_assigned($tour);
             $tours_data[] = array(
                 'directory' => $tour,
-                'title' => $tour_title
+                'title' => $target ? $target['title'] : trim($tour_manager->get_tour_title($tour)),
+                'path' => $target ? $target['path'] : null
             );
         }
 
@@ -94,16 +96,16 @@ class H3TM_Shortcodes_V4 {
             $display_title = 'All Tours';
         } else {
             // Get analytics for specific tour
-            $tour_title = '';
+            $selected_data = null;
             foreach ($tours_data as $tour) {
                 if ($tour['directory'] === $selected_tour) {
-                    $tour_title = $tour['title'];
+                    $selected_data = $tour;
                     break;
                 }
             }
-            if ($tour_title) {
-                $analytics_data = $this->get_analytics_data($tour_title, $start_date);
-                $display_title = $tour_title;
+            if ($selected_data) {
+                $analytics_data = $this->get_analytics_data($selected_data, $start_date);
+                $display_title = $selected_data['title'];
             } else {
                 $analytics_data = array('error' => 'Tour not found');
                 $display_title = 'Unknown Tour';
@@ -111,8 +113,16 @@ class H3TM_Shortcodes_V4 {
         }
 
         // Get enhanced analytics data
+        $filterExpression = null;
         if (!isset($analytics_data['error'])) {
-            $filterExpression = $this->build_filter_expression($selected_tour === 'all' ? $tours_data : array(array('title' => $tour_title)));
+            $filterExpression = $this->build_filter_expression($selected_tour === 'all' ? $tours_data : array($selected_data));
+        }
+        if (!$filterExpression && !isset($analytics_data['error'])) {
+            // No tour could be matched to a page path; an unfiltered query would show site-wide numbers.
+            $analytics_data['devices'] = array();
+            $analytics_data['referrals'] = array();
+            $analytics_data['states'] = array();
+        } elseif ($filterExpression) {
             $dateRange = $this->build_date_range($start_date);
 
             $analytics_data['devices'] = $this->get_device_data($filterExpression, $dateRange);
@@ -824,7 +834,6 @@ class H3TM_Shortcodes_V4 {
             // Initialize availableTitles to prevent null array_slice error
             $availableTitles = array();
 
-            // Combine all tour titles for filtering
             $tour_titles = array_column($tours, 'title');
 
             // Date range
@@ -840,7 +849,7 @@ class H3TM_Shortcodes_V4 {
             $newUsers->setName('newUsers');
 
             $returningUsers = new Google_Service_AnalyticsData_Metric();
-            $returningUsers->setName('activeUsers');
+            $returningUsers->setName('totalUsers');
 
             $avgSessionDuration = new Google_Service_AnalyticsData_Metric();
             $avgSessionDuration->setName('averageSessionDuration');
@@ -851,32 +860,10 @@ class H3TM_Shortcodes_V4 {
             $screenPageViewsPerSession = new Google_Service_AnalyticsData_Metric();
             $screenPageViewsPerSession->setName('screenPageViewsPerSession');
 
-            // Create OR filter for all tours
-            $filters = array();
-            foreach ($tour_titles as $title) {
-                $filter = new Google_Service_AnalyticsData_Filter();
-                $stringFilter = new Google_Service_AnalyticsData_StringFilter();
-                $stringFilter->setMatchType('EXACT');
-                $stringFilter->setValue($title);
-                $filter->setStringFilter($stringFilter);
-                $filter->setFieldName('pageTitle');
-                $filters[] = $filter;
-            }
-
-            $filterExpression = null;
-            if (count($filters) > 0) {
-                $filterExpression = new Google_Service_AnalyticsData_FilterExpression();
-                if (count($filters) === 1) {
-                    $filterExpression->setFilter($filters[0]);
-                } else {
-                    $orGroup = new Google_Service_AnalyticsData_FilterExpressionList();
-                    $orGroup->setExpressions(array_map(function($filter) {
-                        $expr = new Google_Service_AnalyticsData_FilterExpression();
-                        $expr->setFilter($filter);
-                        return $expr;
-                    }, $filters));
-                    $filterExpression->setOrGroup($orGroup);
-                }
+            $filterExpression = $this->build_filter_expression($tours);
+            if (!$filterExpression) {
+                // Without a filter the query would return the whole property.
+                return $this->empty_analytics_result();
             }
 
             // Get overall metrics
@@ -905,7 +892,8 @@ class H3TM_Shortcodes_V4 {
                 $metricValues = $row->getMetricValues();
                 $metrics['sessions'] = $metricValues[0]->getValue();        // Total Visits
                 $metrics['newUsers'] = $metricValues[1]->getValue();        // New Users
-                $metrics['returningUsers'] = $metricValues[2]->getValue();  // Returning Users
+                // totalUsers counts everyone, so returning visitors are those who were not new.
+                $metrics['returningUsers'] = max(0, $metricValues[2]->getValue() - $metricValues[1]->getValue());
                 $metrics['avgSessionDuration'] = $metricValues[3]->getValue(); // Avg Duration
                 $metrics['bounceRate'] = $metricValues[4]->getValue();      // Bounce Rate
                 $metrics['screenPageViewsPerSession'] = $metricValues[5]->getValue(); // Pages per Session
@@ -919,13 +907,13 @@ class H3TM_Shortcodes_V4 {
                 'metrics' => $metrics,
                 'states' => $states,
                 'debug_info' => array(
-                    'tours_searched' => $tour_title,
+                    'tours_searched' => implode(', ', $tour_titles),
                     'has_data' => !empty($rows),
-                    'rows_found' => count($rows),
-                    'method_used' => 'fixed_email_order_combined',
+                    'rows_found' => count((array) $rows),
+                    'method_used' => 'page_path_combined',
                     'available_page_titles' => array_slice($availableTitles, 0, 10),
                     'total_available_titles' => count($availableTitles),
-                    'filter_type' => 'EXACT',
+                    'filter_type' => 'BEGINS_WITH pagePath',
                     'property_id' => $PROPERTY_ID
                 )
             );
@@ -946,7 +934,8 @@ class H3TM_Shortcodes_V4 {
     /**
      * Get analytics data using GA4 API
      */
-    private function get_analytics_data($tour_title, $start_date) {
+    private function get_analytics_data($tour, $start_date) {
+        $tour_title = $tour['title'];
         try {
             $this->initialize_analytics();
 
@@ -965,7 +954,7 @@ class H3TM_Shortcodes_V4 {
             $newUsers->setName('newUsers');
 
             $returningUsers = new Google_Service_AnalyticsData_Metric();
-            $returningUsers->setName('activeUsers');
+            $returningUsers->setName('totalUsers');
 
             $avgSessionDuration = new Google_Service_AnalyticsData_Metric();
             $avgSessionDuration->setName('averageSessionDuration');
@@ -976,16 +965,10 @@ class H3TM_Shortcodes_V4 {
             $screenPageViewsPerSession = new Google_Service_AnalyticsData_Metric();
             $screenPageViewsPerSession->setName('screenPageViewsPerSession');
 
-            // Filter by page title
-            $filter = new Google_Service_AnalyticsData_Filter();
-            $stringFilter = new Google_Service_AnalyticsData_StringFilter();
-            $stringFilter->setMatchType('EXACT');
-            $stringFilter->setValue($tour_title);
-            $filter->setStringFilter($stringFilter);
-            $filter->setFieldName('pageTitle');
-
-            $filterExpression = new Google_Service_AnalyticsData_FilterExpression();
-            $filterExpression->setFilter($filter);
+            $filterExpression = $this->build_filter_expression(array($tour));
+            if (!$filterExpression) {
+                return $this->empty_analytics_result();
+            }
 
             // Get overall metrics
             $request = new Google_Service_AnalyticsData_RunReportRequest();
@@ -1007,33 +990,14 @@ class H3TM_Shortcodes_V4 {
 
             $rows = $response->getRows();
 
-            // Enhanced debugging: Try query without filter to see available data
-            $debugRequest = new Google_Service_AnalyticsData_RunReportRequest();
-            $debugRequest->setProperty($PROPERTY_ID);
-            $debugRequest->setDateRanges([$dateRange]);
-            $debugRequest->setMetrics([$sessions]);
-
-            // Add pageTitle dimension to see what titles exist
-            $pageTitle = new Google_Service_AnalyticsData_Dimension();
-            $pageTitle->setName('pageTitle');
-            $debugRequest->setDimensions([$pageTitle]);
-            $debugRequest->setLimit(50);
-
-            $debugResponse = $this->analytics_service->properties->runReport($PROPERTY_ID, $debugRequest);
-            $debugRows = $debugResponse->getRows();
             $availableTitles = array();
-            if (!empty($debugRows)) {
-                foreach($debugRows as $debugRow) {
-                    $dimensionValues = $debugRow->getDimensionValues();
-                    $availableTitles[] = $dimensionValues[0]->getValue();
-                }
-            }
             if (!empty($rows)) {
                 $row = $rows[0];
                 $metricValues = $row->getMetricValues();
                 $metrics['sessions'] = $metricValues[0]->getValue();        // Total Visits
                 $metrics['newUsers'] = $metricValues[1]->getValue();        // New Users
-                $metrics['returningUsers'] = $metricValues[2]->getValue();  // Returning Users
+                // totalUsers counts everyone, so returning visitors are those who were not new.
+                $metrics['returningUsers'] = max(0, $metricValues[2]->getValue() - $metricValues[1]->getValue());
                 $metrics['avgSessionDuration'] = $metricValues[3]->getValue(); // Avg Duration
                 $metrics['bounceRate'] = $metricValues[4]->getValue();      // Bounce Rate
                 $metrics['screenPageViewsPerSession'] = $metricValues[5]->getValue(); // Pages per Session
@@ -1049,11 +1013,11 @@ class H3TM_Shortcodes_V4 {
                 'debug_info' => array(
                     'tours_searched' => $tour_title,
                     'has_data' => !empty($rows),
-                    'rows_found' => count($rows),
-                    'method_used' => 'fixed_email_order_combined',
+                    'rows_found' => count((array) $rows),
+                    'method_used' => 'page_path',
                     'available_page_titles' => array_slice($availableTitles, 0, 10),
                     'total_available_titles' => count($availableTitles),
-                    'filter_type' => 'EXACT',
+                    'filter_type' => 'BEGINS_WITH pagePath',
                     'property_id' => $PROPERTY_ID
                 )
             );
@@ -1185,16 +1149,16 @@ class H3TM_Shortcodes_V4 {
      * Build filter expression for reuse
      */
     private function build_filter_expression($tours) {
-        $tour_titles = array_column($tours, 'title');
+        $paths = array_filter(array_unique(array_column($tours, 'path')));
 
         $filters = array();
-        foreach ($tour_titles as $title) {
+        foreach ($paths as $path) {
             $filter = new Google_Service_AnalyticsData_Filter();
             $stringFilter = new Google_Service_AnalyticsData_StringFilter();
-            $stringFilter->setMatchType('EXACT');
-            $stringFilter->setValue($title);
+            $stringFilter->setMatchType('BEGINS_WITH');
+            $stringFilter->setValue($path);
             $filter->setStringFilter($stringFilter);
-            $filter->setFieldName('pageTitle');
+            $filter->setFieldName('pagePath');
             $filters[] = $filter;
         }
 
@@ -1215,6 +1179,23 @@ class H3TM_Shortcodes_V4 {
         }
 
         return $filterExpression;
+    }
+
+    /**
+     * Zeroed result for tours that cannot be matched to a GA4 page path
+     */
+    private function empty_analytics_result() {
+        return array(
+            'metrics' => array(
+                'sessions' => 0,
+                'newUsers' => 0,
+                'returningUsers' => 0,
+                'avgSessionDuration' => 0,
+                'bounceRate' => 0,
+                'screenPageViewsPerSession' => 0
+            ),
+            'states' => array()
+        );
     }
 
     /**
